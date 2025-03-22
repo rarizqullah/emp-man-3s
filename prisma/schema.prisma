@@ -1,0 +1,331 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider  = "postgresql"
+    url       = env("DATABASE_URL")
+    directUrl = env("DIRECT_URL")
+}
+
+model User {
+    id                  String       @id @default(uuid())
+    email               String       @unique
+    name                String
+    password            String
+    role                Role         @default(EMPLOYEE)
+    createdAt           DateTime     @default(now())
+    updatedAt           DateTime     @updatedAt
+    employee            Employee?
+    permissions         Permission[] @relation("UserPermissions")
+    approvedPermissions Permission[] @relation("ApprovedPermissions")
+
+    @@map("users")
+}
+
+model Employee {
+    id                 String              @id @default(uuid())
+    userId             String              @unique
+    employeeId         String              @unique
+    departmentId       String
+    subDepartmentId    String?
+    positionId         String?
+    shiftId            String
+    contractType       ContractType
+    contractNumber     String?
+    contractStartDate  DateTime
+    contractEndDate    DateTime?
+    warningStatus      WarningStatus       @default(NONE)
+    gender             Gender              @default(MALE)
+    address            String?
+    faceData           String?
+    createdAt          DateTime            @default(now())
+    updatedAt          DateTime            @updatedAt
+    attendances        Attendance[]
+    employeeAllowances EmployeeAllowance[]
+    department         Department          @relation(fields: [departmentId], references: [id])
+    position           Position?           @relation(fields: [positionId], references: [id])
+    shift              Shift               @relation(fields: [shiftId], references: [id])
+    subDepartment      SubDepartment?      @relation(fields: [subDepartmentId], references: [id])
+    user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+    salaries           Salary[]
+    contractHistory    ContractHistory[]
+    shiftHistory       ShiftHistory[]
+    warningHistory     WarningHistory[]
+
+    @@map("employees")
+}
+
+model Position {
+    id          String     @id @default(uuid())
+    name        String     @unique
+    description String?
+    level       Int        @default(1)
+    createdAt   DateTime   @default(now())
+    updatedAt   DateTime   @updatedAt
+    employees   Employee[]
+
+    @@map("positions")
+}
+
+model Department {
+    id              String           @id @default(uuid())
+    name            String           @unique
+    createdAt       DateTime         @default(now())
+    updatedAt       DateTime         @updatedAt
+    allowanceValues AllowanceValue[]
+    employees       Employee[]
+    salaryRates     SalaryRate[]
+    subDepartments  SubDepartment[]
+
+    @@map("departments")
+}
+
+model SubDepartment {
+    id           String     @id @default(uuid())
+    name         String
+    departmentId String
+    createdAt    DateTime   @default(now())
+    updatedAt    DateTime   @updatedAt
+    employees    Employee[]
+    shifts       Shift[]
+    department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+    @@unique([name, departmentId])
+    @@map("sub_departments")
+}
+
+model Shift {
+    id                   String         @id @default(uuid())
+    name                 String         @unique
+    shiftType            ShiftType
+    mainWorkStart        DateTime
+    mainWorkEnd          DateTime
+    lunchBreakStart      DateTime?
+    lunchBreakEnd        DateTime?
+    createdAt            DateTime       @default(now())
+    updatedAt            DateTime       @updatedAt
+    regularOvertimeEnd   DateTime?
+    regularOvertimeStart DateTime?
+    subDepartmentId      String?
+    weeklyOvertimeEnd    DateTime?
+    weeklyOvertimeStart  DateTime?
+    employees            Employee[]
+    subDepartment        SubDepartment? @relation(fields: [subDepartmentId], references: [id])
+    ShiftHistory         ShiftHistory[]
+
+    @@map("shifts")
+}
+
+model Attendance {
+    id                   String           @id @default(uuid())
+    employeeId           String
+    attendanceDate       DateTime         @default(now())
+    checkInTime          DateTime
+    checkOutTime         DateTime?
+    mainWorkHours        Float?
+    regularOvertimeHours Float?
+    weeklyOvertimeHours  Float?
+    status               AttendanceStatus
+    createdAt            DateTime         @default(now())
+    updatedAt            DateTime         @updatedAt
+    employee             Employee         @relation(fields: [employeeId], references: [id])
+
+    @@map("attendances")
+}
+
+model Salary {
+    id                   String        @id @default(uuid())
+    employeeId           String
+    periodStart          DateTime
+    periodEnd            DateTime
+    mainWorkHours        Float
+    regularOvertimeHours Float
+    weeklyOvertimeHours  Float
+    baseSalary           Float
+    overtimeSalary       Float
+    weeklyOvertimeSalary Float
+    totalAllowances      Float
+    totalSalary          Float
+    paymentStatus        PaymentStatus @default(UNPAID)
+    createdAt            DateTime      @default(now())
+    updatedAt            DateTime      @updatedAt
+    employee             Employee      @relation(fields: [employeeId], references: [id])
+
+    @@map("salaries")
+}
+
+model SalaryRate {
+    id                  String       @id @default(uuid())
+    contractType        ContractType
+    departmentId        String
+    mainWorkHourRate    Float
+    regularOvertimeRate Float
+    weeklyOvertimeRate  Float
+    createdAt           DateTime     @default(now())
+    updatedAt           DateTime     @updatedAt
+    department          Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+    @@unique([contractType, departmentId])
+    @@map("salary_rates")
+}
+
+model AllowanceType {
+    id              String           @id @default(uuid())
+    name            String           @unique
+    description     String?
+    createdAt       DateTime         @default(now())
+    updatedAt       DateTime         @updatedAt
+    allowanceValues AllowanceValue[]
+
+    @@map("allowance_types")
+}
+
+model AllowanceValue {
+    id                 String              @id @default(uuid())
+    allowanceTypeId    String
+    departmentId       String
+    contractType       ContractType
+    value              Float
+    createdAt          DateTime            @default(now())
+    updatedAt          DateTime            @updatedAt
+    allowanceType      AllowanceType       @relation(fields: [allowanceTypeId], references: [id], onDelete: Cascade)
+    department         Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+    employeeAllowances EmployeeAllowance[]
+
+    @@unique([allowanceTypeId, departmentId, contractType])
+    @@map("allowance_values")
+}
+
+model EmployeeAllowance {
+    id               String         @id @default(uuid())
+    employeeId       String
+    allowanceValueId String
+    createdAt        DateTime       @default(now())
+    updatedAt        DateTime       @updatedAt
+    allowanceValue   AllowanceValue @relation(fields: [allowanceValueId], references: [id], onDelete: Cascade)
+    employee         Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+    @@unique([employeeId, allowanceValueId])
+    @@map("employee_allowances")
+}
+
+model Permission {
+    id              String           @id @default(uuid())
+    userId          String
+    type            PermissionType
+    startDate       DateTime
+    endDate         DateTime
+    reason          String
+    otherDetails    String?
+    status          PermissionStatus @default(PENDING)
+    approvedById    String?
+    approvedAt      DateTime?
+    rejectionReason String?
+    createdAt       DateTime         @default(now())
+    updatedAt       DateTime         @updatedAt
+    user            User             @relation("UserPermissions", fields: [userId], references: [id], onDelete: Cascade)
+    approvedBy      User?            @relation("ApprovedPermissions", fields: [approvedById], references: [id], onDelete: SetNull)
+
+    @@map("permissions")
+}
+
+model ContractHistory {
+    id             String       @id @default(uuid())
+    employeeId     String
+    employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+    contractType   ContractType
+    contractNumber String?
+    startDate      DateTime
+    endDate        DateTime?
+    status         String // 'Aktif', 'Selesai', 'Diperpanjang', dll
+    notes          String?
+    createdAt      DateTime     @default(now())
+    updatedAt      DateTime     @updatedAt
+
+    @@map("contract_history")
+}
+
+model ShiftHistory {
+    id         String    @id @default(uuid())
+    employeeId String
+    employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+    shiftId    String
+    shift      Shift     @relation(fields: [shiftId], references: [id])
+    startDate  DateTime
+    endDate    DateTime?
+    notes      String?
+    createdAt  DateTime  @default(now())
+    updatedAt  DateTime  @updatedAt
+
+    @@map("shift_history")
+}
+
+model WarningHistory {
+    id            String        @id @default(uuid())
+    employeeId    String
+    employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+    warningStatus WarningStatus
+    startDate     DateTime
+    endDate       DateTime?
+    reason        String
+    attachmentUrl String?
+    createdAt     DateTime      @default(now())
+    updatedAt     DateTime      @updatedAt
+
+    @@map("warning_history")
+}
+
+enum Role {
+    ADMIN
+    MANAGER
+    EMPLOYEE
+}
+
+enum ContractType {
+    PERMANENT
+    TRAINING
+}
+
+enum ShiftType {
+    NON_SHIFT
+    SHIFT_A
+    SHIFT_B
+}
+
+enum WarningStatus {
+    NONE
+    SP1
+    SP2
+    SP3
+}
+
+enum Gender {
+    MALE
+    FEMALE
+}
+
+enum AttendanceStatus {
+    PRESENT
+    ABSENT
+    LATE
+    PERMISSION
+}
+
+enum PaymentStatus {
+    PAID
+    UNPAID
+}
+
+enum PermissionType {
+    SICK
+    VACATION
+    PERSONAL
+    OTHER
+}
+
+enum PermissionStatus {
+    PENDING
+    APPROVED
+    REJECTED
+}
