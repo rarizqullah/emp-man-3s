@@ -26,7 +26,7 @@ import {
 import { format } from "date-fns"
 import { id } from "date-fns/locale"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/lib/auth-context"
 
 interface UserData {
   id: string
@@ -95,7 +95,7 @@ interface SummaryData {
 }
 
 export default function DashboardPage() {
-  const { data: session, status } = useSession();
+  const { user, isLoading: authLoading } = useAuth();
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [searchAttendance, setSearchAttendance] = useState("")
@@ -128,14 +128,14 @@ export default function DashboardPage() {
       return;
     }
     
-    console.log("[DashboardPage] Halaman dashboard dimuat, status session:", status);
+    console.log("[DashboardPage] Halaman dashboard dimuat, user:", user);
 
-    if (status === 'loading') {
-      console.log("[DashboardPage] Session masih loading");
+    if (authLoading) {
+      console.log("[DashboardPage] Auth masih loading");
       return;
     }
     
-    if (status === 'unauthenticated') {
+    if (!user) {
       console.log("[DashboardPage] User tidak terautentikasi");
       window.location.href = '/login';
       return;
@@ -149,16 +149,16 @@ export default function DashboardPage() {
           return;
         }
         
-        if (session?.user) {
-          console.log("[DashboardPage] Data user dari session:", session.user);
+        if (user) {
+          console.log("[DashboardPage] Data user dari context:", user);
           setUserData({
-            id: session.user.id,
-            name: session.user.name,
-            email: session.user.email,
-            role: session.user.role
+            id: user.id,
+            name: user.user_metadata?.name || 'User',
+            email: user.email || '',
+            role: user.user_metadata?.role || 'user'
           });
         } else {
-          console.log("[DashboardPage] Tidak ada data session user");
+          console.log("[DashboardPage] Tidak ada data user");
         }
 
         // Ambil data absensi hari ini
@@ -317,7 +317,7 @@ export default function DashboardPage() {
       clearTimeout(timer);
       console.log("[DashboardPage] Pembersihan komponen dashboard");
     };
-  }, [session, status]);
+  }, [user, authLoading]);
 
   // Filter presentEmployees berdasarkan pencarian dan departemen
   const filteredPresentEmployees = presentEmployees.filter(employee => {

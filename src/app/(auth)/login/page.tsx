@@ -1,204 +1,200 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
-import Link from "next/link";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, CheckCircle } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { signIn, useSession } from "next-auth/react";
-
-// Schema validasi
-const loginSchema = z.object({
-  email: z.string().email("Email tidak valid"),
-  password: z.string().min(6, "Password minimal 6 karakter"),
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
+import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { supabase } from '@/lib/supabase/client';
 
 export default function LoginPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: session, status } = useSession();
-  
+  const registered = searchParams.get('registered') === 'true';
+  const confirmationRequired = searchParams.get('confirmation') === 'required';
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const redirectedRef = useRef(false);
+  const [showResendButton, setShowResendButton] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
 
-  useEffect(() => {
-    const checkRedirectParams = () => {
-      // Periksa parameter URL untuk error atau registered
-      const errorParam = searchParams.get('error');
-      const registeredParam = searchParams.get('registered');
-      const messageParam = searchParams.get('message');
-
-      console.log("[LoginPage] URL Params:", { error: errorParam, registered: registeredParam, message: messageParam });
-
-      if (errorParam) {
-        if (errorParam === 'session_expired') {
-          setError('Sesi telah berakhir. Silakan login kembali.');
-        } else if (errorParam === 'auth') {
-          setError('Email atau password tidak valid.');
-        } else {
-          setError('Terjadi kesalahan. Silakan coba lagi.');
-        }
-      }
-
-      if (messageParam) {
-        setError(decodeURIComponent(messageParam));
-      }
-
-      if (registeredParam === 'success') {
-        setSuccessMessage('Pendaftaran berhasil! Silakan login dengan akun Anda.');
-      }
-    };
-
-    checkRedirectParams();
-  }, [searchParams]);
-
-  // Pisahkan effect untuk redirect agar tidak terjadi loop
-  useEffect(() => {
-    // Gunakan ref untuk memastikan redirect hanya terjadi sekali
-    if (status === 'authenticated' && session && !redirectedRef.current) {
-      console.log("[LoginPage] User sudah login, redirect ke dashboard");
-      redirectedRef.current = true;
-      
-      // Set timeout untuk menghindari race condition
-      setTimeout(() => {
-        const redirectTo = searchParams.get('redirect_to') || '/dashboard';
-        console.log(`[LoginPage] Redirecting to: ${redirectTo}`);
-        window.location.href = redirectTo; // Gunakan window.location.href daripada router.push
-      }, 100);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    
+    if (!email.trim() || !password.trim()) {
+      setError('Email dan password harus diisi');
+      return;
     }
-  }, [status, session, searchParams]);
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
-  });
-
-  const onSubmit = async (data: LoginFormValues) => {
+    
     setIsLoading(true);
-    setError("");
-    console.log("Memulai proses login dengan:", data.email);
 
     try {
-      // Gunakan signIn dari next-auth/react
-      const result = await signIn('credentials', {
-        redirect: false,
-        email: data.email,
-        password: data.password,
+      // Login with Supabase
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      console.log("Respons login diterima:", result);
-
-      if (!result?.ok) {
-        throw new Error(result?.error || "Login gagal");
+      if (signInError) {
+        // Display resend confirmation button if the error is about email confirmation
+        if (signInError.message.includes('Email not confirmed')) {
+          setShowResendButton(true);
+        }
+        throw signInError;
       }
 
-      console.log("Login berhasil, melakukan redirect...");
-
-      // Periksa apakah ada parameter redirect_to
-      const redirectTo = searchParams.get('redirect_to') || '/dashboard';
-      console.log(`[LoginPage] Login berhasil, redirecting to: ${redirectTo}`);
-      
-      // Gunakan window.location.href untuk hard redirect
-      window.location.href = redirectTo;
+      // Success - redirect to dashboard
+      if (data.user) {
+        router.push('/dashboard');
+      }
     } catch (err) {
-      console.error("Login gagal:", err);
-      setError(err instanceof Error ? err.message : "Email atau password tidak valid");
+      console.error('Login error:', err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Login gagal. Silakan periksa email dan password Anda.');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Render form login
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      setError('Masukkan email Anda terlebih dahulu');
+      return;
+    }
+
+    setResendLoading(true);
+    setResendSuccess(false);
+    setError('');
+
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+      });
+
+      if (resendError) {
+        throw resendError;
+      }
+
+      setResendSuccess(true);
+    } catch (err) {
+      console.error('Resend confirmation error:', err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Gagal mengirim ulang email konfirmasi. Silakan coba lagi.');
+      }
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold text-center">
-          EMS System
-        </CardTitle>
-        <CardDescription className="text-center">
-          Masukkan kredensial Anda untuk login ke sistem
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {successMessage && (
-          <Alert className="mb-4 bg-green-50 text-green-700 border-green-200">
-            <CheckCircle className="h-4 w-4" />
-            <AlertDescription>{successMessage}</AlertDescription>
-          </Alert>
-        )}
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="nama@perusahaan.com"
-              {...register("email")}
-            />
-            {errors.email && (
-              <p className="text-sm text-red-500">{errors.email.message}</p>
-            )}
+    <div className="min-h-screen flex flex-col justify-center items-center bg-gray-50 px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+          <div className="mb-8 text-center">
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">Masuk</h1>
+            <p className="text-gray-500 text-sm">Masuk ke Sistem Manajemen Karyawan</p>
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link
-                href="/forgot-password"
-                className="text-sm text-primary hover:underline"
-              >
-                Lupa password?
-              </Link>
+
+          {registered && confirmationRequired && (
+            <div className="mb-4 rounded-md bg-blue-50 p-4 text-sm text-blue-700 border border-blue-100">
+              Pendaftaran berhasil! Silakan periksa email Anda untuk konfirmasi akun sebelum masuk.
             </div>
-            <Input
-              id="password"
-              type="password"
-              {...register("password")}
-            />
-            {errors.password && (
-              <p className="text-sm text-red-500">{errors.password.message}</p>
-            )}
+          )}
+
+          {error && (
+            <div className="mb-4 rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-100">
+              {error}
+            </div>
+          )}
+
+          {resendSuccess && (
+            <div className="mb-4 rounded-md bg-green-50 p-4 text-sm text-green-700 border border-green-100">
+              Email konfirmasi berhasil dikirim ulang. Silakan periksa kotak masuk Anda.
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-0 text-sm"
+                style={{ backgroundColor: 'white' }}
+                placeholder="nama@perusahaan.com"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+                <Link href="/forgot-password" className="text-xs text-gray-600 hover:text-gray-800">
+                  Lupa password?
+                </Link>
+              </div>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-0 text-sm"
+                style={{ backgroundColor: 'white' }}
+                placeholder="********"
+              />
+            </div>
+
+            <div className="pt-2">
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-black hover:bg-gray-800 text-white font-medium py-2.5 rounded-md"
+              >
+                {isLoading ? 'Memproses...' : 'Masuk'}
+              </Button>
+            </div>
+          </form>
+
+          {showResendButton && (
+            <div className="mt-4">
+              <Button
+                type="button"
+                onClick={handleResendConfirmation}
+                disabled={resendLoading}
+                variant="outline"
+                className="w-full border-gray-300 text-gray-700 py-2 rounded-md text-sm"
+              >
+                {resendLoading ? 'Mengirim...' : 'Kirim Ulang Email Konfirmasi'}
+              </Button>
+            </div>
+          )}
+
+          <div className="mt-8 text-center text-sm">
+            <p className="text-gray-600">
+              Belum memiliki akun?{' '}
+              <Link href="/register" className="font-medium text-gray-800 hover:text-gray-600">
+                Daftar di sini
+              </Link>
+            </p>
           </div>
-
-          {error && <p className="text-sm text-red-500 text-center">{error}</p>}
-
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sedang Masuk...
-              </>
-            ) : (
-              "Masuk"
-            )}
-          </Button>
-        </form>
-      </CardContent>
-      <CardFooter className="flex flex-col">
-        <div className="text-sm text-gray-500 text-center mt-2">
-          Belum memiliki akun?{" "}
-          <Link href="/register" className="text-primary hover:underline">
-            Daftar
-          </Link>
         </div>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   );
 } 

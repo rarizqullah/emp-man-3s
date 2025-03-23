@@ -4,9 +4,9 @@ import React, { useState, useEffect, createContext, useContext } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Topbar } from "@/components/dashboard/Topbar";
 import { Loader2 } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Toaster } from "react-hot-toast";
-import { useSession as useNextAuthSession } from "next-auth/react";
+import { useAuth } from "@/lib/auth-context";
 
 // Buat context untuk mengelola status autentikasi global
 interface SessionContextType {
@@ -86,8 +86,8 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { data: sessionData, status: sessionStatus } = useNextAuthSession();
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const authChecked = React.useRef(false);
@@ -109,7 +109,7 @@ export default function DashboardLayout({
     // Jika autentikasi sudah diperiksa, tidak perlu periksa lagi
     if (authChecked.current) return;
 
-    // Menggunakan data dari NextAuth
+    // Menggunakan data dari Supabase
     checkAuth();
     
     // Listener untuk resize window
@@ -120,11 +120,11 @@ export default function DashboardLayout({
     return () => {
       window.removeEventListener("resize", handleResize);
     };
-  }, [sessionStatus, sessionData]);
+  }, [loading, user]);
 
   const checkAuth = () => {
     try {
-      console.log("[DashboardLayout] Memeriksa autentikasi dengan NextAuth, status:", sessionStatus);
+      console.log("[DashboardLayout] Memeriksa autentikasi dengan Supabase, loading:", loading);
       
       // Periksa apakah halaman saat ini adalah halaman izin atau cuti
       const isPermissionOrLeavePage = 
@@ -144,19 +144,18 @@ export default function DashboardLayout({
       console.log("[DashboardLayout] __FORCE_STAY_ON_PAGE__ disetel:", stayOnPage);
       
       // Masih loading session
-      if (sessionStatus === 'loading') {
+      if (loading) {
         console.log("[DashboardLayout] Session masih loading");
         return;
       }
       
-      // Periksa autentikasi dari NextAuth
-      if (sessionStatus !== 'authenticated' || !sessionData) {
+      // Periksa autentikasi dari Supabase
+      if (!user) {
         console.log("[DashboardLayout] Session tidak terautentikasi");
         
         if (stayOnPage || isPermissionOrLeavePage) {
           console.log("[DashboardLayout] Stay on page aktif, tidak melakukan redirect");
           authChecked.current = true;
-          setIsLoading(false);
           setIsAuthenticated(true); // tetap set true agar konten ditampilkan
           
           // Trigger event khusus
@@ -173,22 +172,18 @@ export default function DashboardLayout({
         console.log("[DashboardLayout] Redirect ke login");
         // Tandai untuk mencegah double redirect
         authChecked.current = true;
-        setIsLoading(false);
         
         // Tambahkan parameter redirect_to untuk kembali ke halaman ini setelah login
-        const redirectPath = `/login?redirect_to=${encodeURIComponent(pathname || '/')}`;
-        window.location.href = redirectPath;
+        router.push(`/login?redirect_to=${encodeURIComponent(pathname || '/')}`);
         return;
       }
       
       // User sudah terautentikasi
-      console.log("[DashboardLayout] User terautentikasi:", sessionData.user?.name);
+      console.log("[DashboardLayout] User terautentikasi:", user.email);
       authChecked.current = true;
-      setIsLoading(false);
       setIsAuthenticated(true);
     } catch (error) {
       console.error("[DashboardLayout] Error memeriksa autentikasi:", error);
-      setIsLoading(false);
       setIsAuthenticated(false);
     }
   };
@@ -201,7 +196,7 @@ export default function DashboardLayout({
   }, [pathname]);
 
   // Render loading state
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center gap-2">
@@ -213,7 +208,7 @@ export default function DashboardLayout({
   }
 
   // Jika belum autentikasi, kembalikan null
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center gap-2">

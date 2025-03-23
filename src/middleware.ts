@@ -1,26 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 
 // Daftar path yang tidak perlu autentikasi
 const PUBLIC_PATHS = [
   '/login',
   '/register',
   '/forgot-password',
+  '/reset-password',
+  '/auth/callback',
   '/api/auth',
   '/auth-fallback',
-  '/api/auth/login',
-  '/api/auth/register',
-  '/api/auth/session',
-  '/api/auth/csrf',
-  '/api/auth/callback',
-  '/api/auth/signin',
-  '/api/auth/signout',
-  '/api/auth/providers',
-  '/api/auth/callback',
-  '/api/auth/verify-request',
-  '/api/auth/error',
-  '/api/auth/token',
-  '/api/auth/refresh',
   '/_next/static',
   '/_next/image',
   '/favicon.ico',
@@ -29,7 +18,7 @@ const PUBLIC_PATHS = [
 // Middleware ini akan berjalan sebelum request sampai ke route handler
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  console.log('[Middleware] Processing request for:', pathname);
+  console.log('[Middleware] Memproses request untuk:', pathname);
 
   // Izinkan semua request ke _next, static, dll
   if (pathname.startsWith('/_next') || 
@@ -50,27 +39,40 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    // Gunakan getToken dari NextAuth untuk verifikasi
-    const token = await getToken({ 
-      req: request, 
-      secret: process.env.NEXTAUTH_SECRET 
-    });
+    // Buat response yang akan kita modifikasi
+    const res = NextResponse.next();
     
-    console.log('[Middleware] Token NextAuth:', token ? 'ditemukan' : 'tidak ditemukan');
+    // Inisialisasi Supabase client
+    const supabase = createMiddlewareClient({ req: request, res });
     
-    if (token) {
-      return NextResponse.next();
+    // Periksa sesi aktif
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log('[Middleware] Status sesi:', session ? 'aktif' : 'tidak aktif');
+    
+    // Cek apakah kita terjebak dalam loop redirect
+    const redirectCount = parseInt(request.headers.get('x-redirect-count') || '0');
+    if (redirectCount > 3) {
+      console.error('[Middleware] Terdeteksi loop redirect, mengarahkan ke fallback');
+      return NextResponse.redirect(new URL('/auth-fallback', request.url));
+    }
+    
+    if (session) {
+      // Session ada, lanjutkan dengan response yang sudah dimodifikasi oleh Supabase
+      return res;
     }
     
     // Jika API request dan tidak ada token yang valid, kembalikan 401
     if (pathname.startsWith('/api/')) {
-      console.log('[Middleware] API request tanpa token valid, mengembalikan 401');
+      console.log('[Middleware] API request tanpa sesi valid, mengembalikan 401');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    // Redirect ke login
-    console.log('[Middleware] Token tidak ditemukan, mengalihkan ke login:', pathname);
-    return NextResponse.redirect(new URL('/login', request.url));
+    // Redirect ke login dengan penghitung loop
+    console.log('[Middleware] Sesi tidak ditemukan, mengalihkan ke login:', pathname);
+    const redirectUrl = new URL('/login', request.url);
+    const redirectRes = NextResponse.redirect(redirectUrl);
+    redirectRes.headers.set('x-redirect-count', (redirectCount + 1).toString());
+    return redirectRes;
   } catch (error) {
     console.error('[Middleware] Error middleware:', error);
     

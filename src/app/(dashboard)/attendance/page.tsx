@@ -40,7 +40,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import FaceRecognition from '@/components/attendance/FaceRecognition';
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/lib/auth-context";
 import { 
   Dialog,
   DialogContent,
@@ -103,7 +103,7 @@ interface Shift {
 
 export default function AttendancePage() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { user, isLoading: authLoading } = useAuth();
   const [date] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
@@ -184,7 +184,7 @@ export default function AttendancePage() {
 
   // Fetch data karyawan saat ini
   const fetchCurrentEmployeeInfo = async () => {
-    if (!session?.user?.id) {
+    if (!user?.id) {
       console.error("User ID not available");
       toast.error("Tidak dapat mengidentifikasi pengguna. Silakan login kembali.");
       return;
@@ -193,7 +193,7 @@ export default function AttendancePage() {
     try {
       setIsLoading(true);
       // Gunakan endpoint baru untuk mendapatkan data karyawan
-      const response = await fetch(`/api/attendance/employee-data?userId=${session.user.id}`);
+      const response = await fetch(`/api/attendance/employee-data?userId=${user.id}`);
       
       if (!response.ok) {
         throw new Error("Gagal mengambil data karyawan");
@@ -377,7 +377,7 @@ export default function AttendancePage() {
       try {
         setIsLoading(true);
         // Fetch attendance data untuk pengguna saat ini
-        if (session?.user?.id) {
+        if (user?.id) {
           await fetchAttendance();
         }
         
@@ -399,13 +399,13 @@ export default function AttendancePage() {
     };
 
     fetchData();
-  }, [session?.user?.id]);
+  }, [user?.id]);
 
   // Fetch data presensi untuk hari ini
   const fetchAttendance = async () => {
     try {
       const today = format(new Date(), 'yyyy-MM-dd');
-      const response = await fetch(`/api/attendance/employee/${session?.user?.id}?date=${today}`);
+      const response = await fetch(`/api/attendance/employee/${user?.id}?date=${today}`);
       
       if (!response.ok) {
         throw new Error("Gagal mengambil data presensi");

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
 import { PermissionStatus } from "@prisma/client";
 
@@ -9,14 +9,35 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Cek session untuk autentikasi
-    const session = await getServerSession(authOptions);
+    // Cek session untuk autentikasi menggunakan Supabase
+    const supabase = createRouteHandlerClient({ cookies });
+    const { data: { session } } = await supabase.auth.getSession();
+    
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Ambil data user dari database berdasarkan authId
+    const user = await prisma.user.findUnique({
+      where: {
+        authId: session.user.id
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            departmentId: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
     // Hanya admin dan manager yang dapat menyetujui izin
-    if (session.user.role !== 'ADMIN' && session.user.role !== 'MANAGER') {
+    if (user.role !== 'ADMIN' && user.role !== 'MANAGER') {
       return NextResponse.json(
         { error: 'Anda tidak memiliki izin untuk menyetujui permintaan izin' },
         { status: 403 }
@@ -62,14 +83,9 @@ export async function PUT(
     }
 
     // Jika manager, pastikan hanya dapat menyetujui izin dari departemen yang sama
-    if (session.user.role === 'MANAGER' && session.user.employeeId) {
-      const managerEmployee = await prisma.employee.findUnique({
-        where: { id: session.user.employeeId },
-        select: { departmentId: true }
-      });
-
-      if (managerEmployee && existingPermission.user.employee?.departmentId) {
-        if (managerEmployee.departmentId !== existingPermission.user.employee.departmentId) {
+    if (user.role === 'MANAGER' && user.employee) {
+      if (user.employee.departmentId && existingPermission.user.employee?.departmentId) {
+        if (user.employee.departmentId !== existingPermission.user.employee.departmentId) {
           return NextResponse.json(
             { error: 'Anda hanya dapat menyetujui izin dari departemen Anda' },
             { status: 403 }
@@ -83,7 +99,7 @@ export async function PUT(
       where: { id },
       data: {
         status: PermissionStatus.APPROVED,
-        approvedById: session.user.id,
+        approvedById: user.id,
         approvedAt: new Date(),
       },
       include: {

@@ -13,8 +13,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { signOut, useSession } from "next-auth/react";
 import { Dispatch, SetStateAction } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { signOut } from "@/lib/supabase";
+import toast from "react-hot-toast";
 
 interface TopbarProps {
   isSidebarOpen: boolean;
@@ -23,7 +25,7 @@ interface TopbarProps {
 
 export function Topbar({ isSidebarOpen, setIsSidebarOpen }: TopbarProps) {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { user } = useAuth();
   const [currentTime, setCurrentTime] = useState(new Date());
   
   useEffect(() => {
@@ -36,8 +38,17 @@ export function Topbar({ isSidebarOpen, setIsSidebarOpen }: TopbarProps) {
   }, []);
   
   const handleLogout = async () => {
-    await signOut({ redirect: false });
-    router.push("/login");
+    try {
+      // Logout dari Supabase
+      const { error } = await signOut();
+      if (error) throw error;
+      
+      toast.success("Berhasil logout");
+      router.push("/login");
+    } catch (error) {
+      console.error("Error saat logout:", error);
+      toast.error("Gagal logout. Silakan coba lagi.");
+    }
   };
 
   const toggleSidebar = () => {
@@ -65,6 +76,10 @@ export function Topbar({ isSidebarOpen, setIsSidebarOpen }: TopbarProps) {
         return role;
     }
   };
+
+  // Dapatkan nama user dari metadata Supabase
+  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || "User";
+  const userRole = user?.user_metadata?.role || "EMPLOYEE";
 
   return (
     <header className="h-16 border-b border-gray-200 bg-white flex items-center justify-between px-4">
@@ -109,7 +124,7 @@ export function Topbar({ isSidebarOpen, setIsSidebarOpen }: TopbarProps) {
             <Button variant="ghost" className="relative h-10 w-10 rounded-full">
               <Avatar>
                 <AvatarFallback className="bg-primary text-primary-foreground">
-                  {session?.user?.name ? getInitials(session.user.name) : "U"}
+                  {userName ? getInitials(userName) : "U"}
                 </AvatarFallback>
               </Avatar>
             </Button>
@@ -117,9 +132,9 @@ export function Topbar({ isSidebarOpen, setIsSidebarOpen }: TopbarProps) {
           <DropdownMenuContent className="w-56" align="end">
             <DropdownMenuLabel>
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">{session?.user?.name || "Pengguna"}</p>
-                <p className="text-xs text-muted-foreground">{session?.user?.email || ""}</p>
-                <p className="text-xs text-muted-foreground">{session?.user?.role ? formatRole(session.user.role as string) : ""}</p>
+                <p className="text-sm font-medium leading-none">{userName}</p>
+                <p className="text-xs text-muted-foreground">{user?.email || ""}</p>
+                <p className="text-xs text-muted-foreground">{formatRole(userRole)}</p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
