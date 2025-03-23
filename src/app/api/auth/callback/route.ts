@@ -1,22 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { getUser } from "@/queries/user";
+import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
 
-export async function GET(req: NextRequest) {
-  const requestUrl = new URL(req.url);
-  const code = requestUrl.searchParams.get('code');
+export async function GET(request: Request) {
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
+  const encodedRedirectTo = requestUrl.searchParams.get("redirect") || "/dashboard";
+  const redirectTo = decodeURIComponent(encodedRedirectTo);
+
+  const supabase = await createClient();
 
   if (code) {
-    // Buat Supabase client 
-    const supabase = createRouteHandlerClient({ cookies });
-    
-    // Tukar code dengan session
     await supabase.auth.exchangeCodeForSession(code);
+    const userData = await getUser();
     
-    // Redirect ke dashboard setelah login berhasil
-    return NextResponse.redirect(new URL('/dashboard', req.url));
+    if (!userData) {
+      console.error("Gagal mengambil data user setelah autentikasi");
+    }
   }
 
-  // Jika tidak ada kode, tampilkan pesan error
-  return NextResponse.redirect(new URL('/login?error=callback_error', req.url));
+  // Redirect ke halaman yang diminta atau dashboard
+  return NextResponse.redirect(`${requestUrl.origin}${redirectTo}`);
 } 

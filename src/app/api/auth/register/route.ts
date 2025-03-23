@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { syncUserWithDatabase } from '@/lib/user-service';
 
@@ -12,8 +12,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email, password, dan nama diperlukan' }, { status: 400 });
     }
 
-    // Buat Supabase client
-    const supabase = createRouteHandlerClient({ cookies });
+    // Buat Supabase client menggunakan createServerClient
+    const cookieStore = await cookies();
+    
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              );
+            } catch {
+              // The `setAll` method was called from a Server Component.
+              // This can be ignored if you have middleware refreshing
+              // user sessions.
+            }
+          },
+        },
+        auth: {
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: true,
+        },
+      }
+    );
 
     // Daftarkan user di Supabase
     const { data, error } = await supabase.auth.signUp({

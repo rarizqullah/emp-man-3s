@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 
 export default function ForgotPasswordPage() {
+  const supabase = createClient();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -29,9 +30,12 @@ export default function ForgotPasswordPage() {
     setIsLoading(true);
 
     try {
+      console.log('Mengirim email reset password ke:', email);
+      console.log('Redirect URL:', `${window.location.origin}/auth/reset-password`);
+      
       // Kirim email reset password dengan Supabase
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: `${window.location.origin}/auth/reset-password`,
       });
 
       if (resetError) {

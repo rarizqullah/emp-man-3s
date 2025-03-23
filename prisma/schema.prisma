@@ -12,7 +12,7 @@ model User {
     id                  String       @id @default(uuid())
     email               String       @unique
     name                String
-    password            String
+    authId              String       @unique // Supabase auth ID
     role                Role         @default(EMPLOYEE)
     createdAt           DateTime     @default(now())
     updatedAt           DateTime     @updatedAt

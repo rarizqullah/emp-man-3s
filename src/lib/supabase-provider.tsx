@@ -1,49 +1,80 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { SupabaseClient, Session } from '@supabase/supabase-js';
+import { Session, User } from '@supabase/supabase-js';
+import { supabase } from './supabase/client';
 
 type SupabaseContextType = {
-  supabase: SupabaseClient;
+  supabase: typeof supabase;
   session: Session | null;
+  user: User | null;
+  loading: boolean;
 };
 
 const SupabaseContext = createContext<SupabaseContextType | undefined>(undefined);
 
 export const SupabaseProvider = ({ children }: { children: React.ReactNode }) => {
-  const [supabase] = useState(() => createClientComponentClient());
   const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const getSession = async () => {
+    async function getInitialSession() {
       try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        setSession(currentSession);
+        console.log('[SupabaseProvider] Mengambil sesi awal');
+        
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        
+        setSession(initialSession);
+        setUser(initialSession?.user || null);
+        
+        // Log status sesi
+        if (initialSession) {
+          console.log('[SupabaseProvider] Sesi awal ditemukan untuk user:', initialSession.user.email);
+        } else {
+          console.log('[SupabaseProvider] Tidak ada sesi awal');
+        }
       } catch (error) {
-        console.error('Error mengambil sesi Supabase:', error);
+        console.error('[SupabaseProvider] Error mengambil sesi awal:', error);
       } finally {
         setLoading(false);
       }
-    };
+    }
 
-    // Ambil sesi saat komponen dimuat
-    getSession();
+    // Panggil fungsi untuk mendapatkan sesi saat komponen dimuat
+    getInitialSession();
 
-    // Setup listener untuk perubahan auth state
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    // Set up listener untuk perubahan auth state
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      console.log('[SupabaseProvider] Auth state berubah:', event);
       setSession(newSession);
+      setUser(newSession?.user || null);
+      
+      // Detail perubahan untuk debugging
+      if (event === 'SIGNED_IN') {
+        console.log('[SupabaseProvider] User signed in:', newSession?.user.email);
+      } else if (event === 'SIGNED_OUT') {
+        console.log('[SupabaseProvider] User signed out');
+      } else if (event === 'TOKEN_REFRESHED') {
+        console.log('[SupabaseProvider] Token diperbarui untuk user:', newSession?.user.email);
+      }
     });
 
     // Cleanup subscription
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, []);
+
+  const value = {
+    supabase,
+    session,
+    user,
+    loading,
+  };
 
   return (
-    <SupabaseContext.Provider value={{ supabase, session }}>
+    <SupabaseContext.Provider value={value}>
       {!loading && children}
     </SupabaseContext.Provider>
   );
