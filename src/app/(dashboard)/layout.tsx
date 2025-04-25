@@ -6,7 +6,7 @@ import { Topbar } from "@/components/dashboard/Topbar";
 import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Toaster } from "react-hot-toast";
-import { useAuth } from "@/lib/auth-context";
+import { useSupabase } from "@/providers/supabase-provider";
 
 // Buat context untuk mengelola status autentikasi global
 interface SessionContextType {
@@ -86,7 +86,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, isLoading } = useSupabase();
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -120,11 +120,11 @@ export default function DashboardLayout({
     return () => {
       window.removeEventListener("resize", handleResize);
     };
-  }, [loading, user]);
+  }, [isLoading, user]);
 
   const checkAuth = () => {
     try {
-      console.log("[DashboardLayout] Memeriksa autentikasi dengan Supabase, loading:", loading);
+      console.log("[DashboardLayout] Memeriksa autentikasi dengan Supabase, loading:", isLoading);
       
       // Periksa apakah halaman saat ini adalah halaman izin atau cuti
       const isPermissionOrLeavePage = 
@@ -144,7 +144,7 @@ export default function DashboardLayout({
       console.log("[DashboardLayout] __FORCE_STAY_ON_PAGE__ disetel:", stayOnPage);
       
       // Masih loading session
-      if (loading) {
+      if (isLoading) {
         console.log("[DashboardLayout] Session masih loading");
         return;
       }
@@ -174,7 +174,13 @@ export default function DashboardLayout({
         authChecked.current = true;
         
         // Tambahkan parameter redirect_to untuk kembali ke halaman ini setelah login
-        router.push(`/login?redirect_to=${encodeURIComponent(pathname || '/')}`);
+        try {
+          router.push(`/login?redirect_to=${encodeURIComponent(pathname || '/')}`);
+        } catch (routerError) {
+          console.error("[DashboardLayout] Router error:", routerError);
+          // Fallback jika router.push gagal
+          window.location.href = `/login?redirect_to=${encodeURIComponent(pathname || '/')}`;
+        }
         return;
       }
       
@@ -196,7 +202,7 @@ export default function DashboardLayout({
   }, [pathname]);
 
   // Render loading state
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center gap-2">
@@ -208,7 +214,7 @@ export default function DashboardLayout({
   }
 
   // Jika belum autentikasi, kembalikan null
-  if (!isAuthenticated && !loading) {
+  if (!isAuthenticated && !isLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center gap-2">

@@ -6,8 +6,11 @@ import * as faceapi from 'face-api.js';
 
 // Inisialisasi canvas untuk face-api
 const { Canvas, Image, ImageData } = canvas;
+// Menggunakan pendekatan yang aman untuk monkeyPatch
 // @ts-ignore: Property 'Canvas' does not exist on type 'typeof globalThis'
-faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+if (faceapi.env && typeof faceapi.env.monkeyPatch === 'function') {
+  faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+}
 
 // Flag untuk melacak status model
 let modelsLoaded = false;

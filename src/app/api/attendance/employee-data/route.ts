@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { cookies } from 'next/headers';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { prisma } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
-    // Validasi sesi user
-    const session = await getServerSession(authOptions);
+    // Validasi sesi user menggunakan Supabase auth
+    const cookieStore = cookies();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    
+    const { data: { session } } = await supabase.auth.getSession();
+    
     if (!session || !session.user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -14,8 +18,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Dapatkan data user dari database
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, role: true }
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
     // Cek apakah user adalah admin
-    const isAdmin = session.user.role === 'ADMIN';
+    const isAdmin = user.role === 'ADMIN';
     
     // Query parameter
     const { searchParams } = new URL(request.url);
@@ -25,7 +42,7 @@ export async function GET(request: NextRequest) {
     
     if (userId && !isAdmin) {
       // Jika user bukan admin, hanya bisa melihat data dirinya sendiri
-      if (userId !== session.user.id) {
+      if (userId !== user.id) {
         return NextResponse.json(
           { error: 'Tidak memiliki akses untuk melihat data karyawan lain' },
           { status: 403 }
@@ -69,7 +86,7 @@ export async function GET(request: NextRequest) {
     } else {
       // User biasa hanya bisa melihat data dirinya
       employees = await prisma.employee.findMany({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
         include: {
           user: {
             select: {

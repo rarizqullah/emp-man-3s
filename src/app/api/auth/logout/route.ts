@@ -1,24 +1,20 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { removeTokenCookie } from '@/lib/jwt-server';
 
 export async function POST() {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    // Hapus token dari cookie
+    await removeTokenCookie();
     
-    // Lakukan logout pada Supabase
-    await supabase.auth.signOut();
-    
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: "Berhasil logout" 
+      message: 'Berhasil logout',
     });
   } catch (error) {
-    console.error('Error saat logout:', error);
-    
-    return NextResponse.json({ 
-      success: false, 
-      message: 'Gagal melakukan logout' 
-    }, { status: 500 });
+    console.error('Logout API error:', error);
+    return NextResponse.json(
+      { success: false, message: 'Terjadi kesalahan saat logout' },
+      { status: 500 }
+    );
   }
 } 

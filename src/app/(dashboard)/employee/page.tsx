@@ -155,6 +155,72 @@ export default function EmployeePage() {
     } catch (error) {
       console.error('Error fetching employees:', error);
       toast.error('Gagal mengambil data karyawan');
+      
+      // Gunakan data dummy jika API gagal
+      setEmployees([
+        {
+          id: "1",
+          employeeId: "EMP001",
+          departmentId: "1",
+          subDepartmentId: "1",
+          shiftId: "1",
+          contractType: "PERMANENT",
+          contractStartDate: "2023-01-01T00:00:00.000Z",
+          warningStatus: "NONE",
+          gender: "MALE",
+          createdAt: "2023-01-01T00:00:00.000Z",
+          updatedAt: "2023-01-01T00:00:00.000Z",
+          user: {
+            name: "Budi Santoso",
+            email: "budi@example.com",
+            role: "EMPLOYEE"
+          },
+          department: {
+            id: "1",
+            name: "IT"
+          },
+          subDepartment: {
+            id: "1",
+            name: "Software Development"
+          },
+          position: {
+            id: "1",
+            name: "Software Engineer",
+            level: 1
+          },
+          shift: {
+            id: "1",
+            name: "Non-Shift",
+            shiftType: "NON_SHIFT"
+          }
+        },
+        {
+          id: "2",
+          employeeId: "EMP002",
+          departmentId: "2",
+          shiftId: "1",
+          contractType: "PERMANENT",
+          contractStartDate: "2023-01-01T00:00:00.000Z",
+          warningStatus: "NONE",
+          gender: "FEMALE",
+          createdAt: "2023-01-01T00:00:00.000Z",
+          updatedAt: "2023-01-01T00:00:00.000Z",
+          user: {
+            name: "Siti Nurhaliza",
+            email: "siti@example.com",
+            role: "EMPLOYEE"
+          },
+          department: {
+            id: "2",
+            name: "HR"
+          },
+          shift: {
+            id: "1",
+            name: "Non-Shift",
+            shiftType: "NON_SHIFT"
+          }
+        }
+      ]);
     } finally {
       setLoading(false);
     }
@@ -171,6 +237,15 @@ export default function EmployeePage() {
       setDepartments(data);
     } catch (error) {
       console.error('Error fetching departments:', error);
+      
+      // Gunakan data dummy jika API gagal
+      setDepartments([
+        { id: "1", name: "IT" },
+        { id: "2", name: "HR" },
+        { id: "3", name: "Finance" },
+        { id: "4", name: "Marketing" },
+        { id: "5", name: "Production" }
+      ]);
     }
   };
   

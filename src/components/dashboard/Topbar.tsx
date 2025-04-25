@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dispatch, SetStateAction } from "react";
-import { useAuth } from "@/lib/auth-context";
-import { signOut } from "@/lib/supabase";
+import { useSupabase } from "@/providers/supabase-provider";
 import toast from "react-hot-toast";
 
 interface TopbarProps {
@@ -25,7 +24,7 @@ interface TopbarProps {
 
 export function Topbar({ isSidebarOpen, setIsSidebarOpen }: TopbarProps) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, signOut } = useSupabase();
   const [currentTime, setCurrentTime] = useState(new Date());
   
   useEffect(() => {
@@ -40,11 +39,9 @@ export function Topbar({ isSidebarOpen, setIsSidebarOpen }: TopbarProps) {
   const handleLogout = async () => {
     try {
       // Logout dari Supabase
-      const { error } = await signOut();
-      if (error) throw error;
-      
+      await signOut();
       toast.success("Berhasil logout");
-      router.push("/login");
+      // router.push akan ditangani oleh useSupabase.signOut()
     } catch (error) {
       console.error("Error saat logout:", error);
       toast.error("Gagal logout. Silakan coba lagi.");

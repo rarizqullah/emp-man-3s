@@ -1,70 +1,15 @@
-"use client";
+import React from 'react';
 
-import { useState, useEffect, useRef } from "react";
-import { Loader2 } from "lucide-react";
-
-export default function AuthLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [isLoading, setIsLoading] = useState(true);
-  const hasCheckedAuth = useRef(false);
-
-  useEffect(() => {
-    // Hindari pemeriksaan autentikasi berulang
-    if (hasCheckedAuth.current) {
-      setIsLoading(false);
-      return;
-    }
-
-    // Fungsi untuk memeriksa autentikasi
-    const checkAuth = () => {
-      try {
-        // Gunakan try-catch karena localStorage/sessionStorage tidak tersedia di server
-        const token = typeof window !== 'undefined' ? 
-          sessionStorage.getItem("token") || localStorage.getItem("token") : 
-          null;
-        
-        if (token) {
-          // Redirect ke dashboard jika sudah login
-          window.location.href = "/dashboard";
-          return;
-        }
-      } catch (error) {
-        console.error("[AuthLayout] Error checking auth:", error);
-      }
-      
-      // Set loading ke false jika tidak ada token atau terjadi error
-      hasCheckedAuth.current = true;
-      setIsLoading(false);
-    };
-    
-    // Jalankan pengecekan setelah component mount
-    if (typeof window !== 'undefined') {
-      // Pastikan kode hanya dijalankan di client-side
-      checkAuth();
-    } else {
-      // Jika di server-side, langsung set loading ke false
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Render loading state atau children
-  if (isLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Menyiapkan halaman...</p>
-        </div>
-      </div>
-    );
-  }
-
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="h-screen flex items-center justify-center bg-gray-50">
-      {children}
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div className="text-center">
+          <h2 className="text-3xl font-extrabold text-gray-900">Employee Management System</h2>
+          <p className="mt-2 text-sm text-gray-600">Sistem Pengelolaan Karyawan Terintegrasi</p>
+        </div>
+        {children}
+      </div>
     </div>
   );
 } 

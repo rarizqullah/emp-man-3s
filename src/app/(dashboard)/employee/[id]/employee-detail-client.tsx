@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { 
   User, 
@@ -153,25 +153,32 @@ const EmployeeInfo = ({
   // Fungsi untuk mendapatkan inisial nama dengan penanganan nilai null/undefined
   const getInitials = (name?: string) => {
     if (!name) return "?";
-    return name.charAt(0);
+    return name.charAt(0).toUpperCase();
   };
+
+  // Validasi properti penting
+  const userName = data.user?.name || 'Nama tidak tersedia';
+  const userEmail = data.user?.email || '-';
+  const deptName = data.department?.name || 'Dept tidak tersedia';
+  const positionName = data.position?.name || 'Posisi tidak tersedia';
+  const shiftName = data.shift?.name || '-';
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
         <Avatar className="w-28 h-28">
           {data.faceData ? (
-            <AvatarImage src={data.faceData} alt={data.user?.name || 'User'} />
+            <AvatarImage src={data.faceData} alt={userName} />
           ) : (
-            <AvatarFallback className="text-4xl">{getInitials(data.user?.name)}</AvatarFallback>
+            <AvatarFallback className="text-4xl">{getInitials(userName)}</AvatarFallback>
           )}
         </Avatar>
         
         <div className="space-y-1">
-          <h2 className="text-2xl font-bold">{data.user?.name || 'Nama tidak tersedia'}</h2>
-          <p className="text-muted-foreground">{data.position?.name || 'Posisi tidak tersedia'}</p>
+          <h2 className="text-2xl font-bold">{userName}</h2>
+          <p className="text-muted-foreground">{positionName}</p>
           <div className="flex items-center gap-2 mt-2">
-            <Badge variant="outline">{data.department?.name || 'Dept tidak tersedia'} {data.subDepartment ? `- ${data.subDepartment.name}` : ''}</Badge>
+            <Badge variant="outline">{deptName} {data.subDepartment ? `- ${data.subDepartment.name}` : ''}</Badge>
             <Badge variant={data.contractType === "PERMANENT" ? "default" : "secondary"}>
               {data.contractType === "PERMANENT" ? "Permanen" : "Training"}
             </Badge>
@@ -195,7 +202,7 @@ const EmployeeInfo = ({
           <CardContent className="space-y-3">
             <div className="grid grid-cols-3">
               <span className="text-sm text-muted-foreground">Email</span>
-              <span className="text-sm col-span-2">{data.user?.email || '-'}</span>
+              <span className="text-sm col-span-2">{userEmail}</span>
             </div>
             <div className="grid grid-cols-3">
               <span className="text-sm text-muted-foreground">Telepon</span>
@@ -230,11 +237,11 @@ const EmployeeInfo = ({
             </div>
             <div className="grid grid-cols-3">
               <span className="text-sm text-muted-foreground">Departemen</span>
-              <span className="text-sm col-span-2">{data.department?.name || '-'} {data.subDepartment ? `- ${data.subDepartment.name}` : ''}</span>
+              <span className="text-sm col-span-2">{deptName} {data.subDepartment ? `- ${data.subDepartment.name}` : ''}</span>
             </div>
             <div className="grid grid-cols-3">
               <span className="text-sm text-muted-foreground">Jabatan</span>
-              <span className="text-sm col-span-2">{data.position?.name || '-'}</span>
+              <span className="text-sm col-span-2">{positionName}</span>
             </div>
             <div className="grid grid-cols-3">
               <span className="text-sm text-muted-foreground">Tanggal Bergabung</span>
@@ -295,7 +302,7 @@ const EmployeeInfo = ({
           <CardContent className="space-y-3">
             <div className="grid grid-cols-3">
               <span className="text-sm text-muted-foreground">Shift Saat Ini</span>
-              <span className="text-sm col-span-2">{data.shift?.name || '-'}</span>
+              <span className="text-sm col-span-2">{shiftName}</span>
             </div>
             <div className="grid grid-cols-3">
               <span className="text-sm text-muted-foreground">Status SP</span>
@@ -346,67 +353,73 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
   
   // Modal state untuk mengubah kontrak
   const [isContractChangeModalOpen, setIsContractChangeModalOpen] = useState(false);
-  
-  // Fetch employee data
-  useEffect(() => {
-    const fetchEmployeeData = async () => {
-      try {
-        setLoading(true);
-        console.log(`Fetching employee data for ID: ${employeeId}`);
-        
-        const response = await fetch(`/api/employees/${employeeId}`);
-        if (!response.ok) {
-          throw new Error(`Error ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        console.log('Employee data fetched:', data);
-        
-        if (data && data.id) {
-          setEmployee(data);
-        } else {
-          throw new Error('Received invalid employee data');
-        }
-      } catch (error) {
-        console.error('Error fetching employee:', error);
-        setError(`Terjadi kesalahan: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        toast.error('Gagal memuat data karyawan');
-      } finally {
-        setLoading(false);
-      }
-    };
 
-    if (employeeId) {
-      fetchEmployeeData();
-    }
-  }, [employeeId]);
+  // Menggunakan useRef untuk menyimpan employeeId saat ini
+  const employeeIdRef = useRef(employeeId);
   
-  // Fungsi untuk memuat ulang data karyawan
-  const fetchEmployeeData = async () => {
+  // Menyimpan referensi ke state untuk diakses oleh callbacks
+  const stateRef = useRef({
+    employee: null as Employee | null,
+    activeTab: "info" as string,
+  });
+
+  // Update referensi state saat state berubah
+  useEffect(() => {
+    stateRef.current.employee = employee;
+    stateRef.current.activeTab = activeTab;
+  }, [employee, activeTab]);
+  
+  // Fungsi untuk memuat data karyawan
+  const fetchEmployeeData = useCallback(async () => {
+    if (!employeeIdRef.current) return;
+    
     try {
-      console.log(`Fetching employee data for ID: ${employeeId}`);
+      setLoading(true);
+      console.log(`Fetching employee data for ID: ${employeeIdRef.current}`);
       
-      const response = await fetch(`/api/employees/${employeeId}`);
+      const response = await fetch(`/api/employees/${employeeIdRef.current}`);
+      
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Error ${response.status}: ${response.statusText}`, errorText);
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
       console.log('Employee data fetched:', data);
       
-      if (data && data.id) {
-        setEmployee(data);
-      } else {
-        throw new Error('Received invalid employee data');
+      // Validasi data yang diterima
+      if (!data || !data.id || !data.user || !data.user.id) {
+        throw new Error('Received invalid or incomplete employee data');
       }
+      
+      // Data valid, update state
+      setEmployee(data);
     } catch (error) {
       console.error('Error fetching employee:', error);
+      setError(`Terjadi kesalahan: ${error instanceof Error ? error.message : 'Unknown error'}`);
       toast.error('Gagal memuat data karyawan');
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []); // Tidak ada dependensi, state diakses melalui refs
+  
+  // Update employeeIdRef saat employeeId berubah
+  useEffect(() => {
+    employeeIdRef.current = employeeId;
+  }, [employeeId]);
+  
+  // Fetch employee data
+  useEffect(() => {
+    if (employeeId) {
+      fetchEmployeeData();
+    }
+  }, [employeeId, fetchEmployeeData]);
   
   // Tambahkan useEffect untuk contract history
   useEffect(() => {
+    // Gunakan stateRef untuk mengakses state terkini
+    const { activeTab, employee } = stateRef.current;
     if (activeTab === 'contract' && employee?.id) {
       console.log('Active tab is contract and employee data is available, fetching contract history...');
       
@@ -443,10 +456,12 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
           setLoadingHistory((prev) => ({ ...prev, contract: false }));
         });
     }
-  }, [activeTab, employee?.id]);
+  }, [activeTab, employee]); // Tambahkan employee ke dependensi
   
   // Tambahkan useEffect untuk shift history
   useEffect(() => {
+    // Gunakan stateRef untuk mengakses state terkini
+    const { activeTab, employee } = stateRef.current;
     if (activeTab === 'shift' && employee?.id) {
       console.log('Active tab is shift and employee data is available, fetching shift history...');
       
@@ -483,10 +498,12 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
           setLoadingHistory((prev) => ({ ...prev, shift: false }));
         });
     }
-  }, [activeTab, employee?.id]);
+  }, [activeTab, employee]); // Tambahkan employee ke dependensi
   
   // Tambahkan useEffect untuk warning history
   useEffect(() => {
+    // Gunakan stateRef untuk mengakses state terkini
+    const { activeTab, employee } = stateRef.current;
     if (activeTab === 'warning' && employee?.id) {
       console.log('Active tab is warning and employee data is available, fetching warning history...');
       
@@ -523,15 +540,37 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
           setLoadingHistory((prev) => ({ ...prev, warning: false }));
         });
     }
-  }, [activeTab, employee?.id]);
+  }, [activeTab, employee]); // Tambahkan employee ke dependensi
   
   // Refresh history data after adding new entries
-  const handleWarningAdded = () => {
+  const handleWarningAdded = useCallback(() => {
     setWarningHistory([]);
-  };
+    // Kosongkan warning history agar useEffect akan memuat ulang
+    const { activeTab, employee } = stateRef.current;
+    if (activeTab === 'warning' && employee?.id) {
+      setLoadingHistory(prev => ({ ...prev, warning: true }));
+      
+      fetch(`/api/employees/${employee.id}/warning-history`)
+        .then(response => response.json())
+        .then(result => {
+          if (result.success && Array.isArray(result.data)) {
+            setWarningHistory(result.data);
+          }
+        })
+        .catch(error => {
+          console.error('Error refreshing warning history:', error);
+        })
+        .finally(() => {
+          setLoadingHistory(prev => ({ ...prev, warning: false }));
+        });
+    }
+    
+    // Refresh employee data juga
+    fetchEmployeeData();
+  }, []); // Tidak perlu dependensi karena menggunakan refs
 
   // Handler untuk mengubah kontrak
-  const handleContractChange = async (data: ContractChangeFormValues, employeeId: string) => {
+  const handleContractChange = useCallback(async (data: ContractChangeFormValues, employeeId: string) => {
     try {
       console.log(`Updating contract for employee ${employeeId} with data:`, data);
       
@@ -559,10 +598,11 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
       
       toast.success('Kontrak berhasil diubah');
       
-      // Refresh data
+      // Refresh data menggunakan fetchEmployeeData yang sudah didefinisikan
       await fetchEmployeeData();
       
       // Refresh riwayat kontrak
+      const { employee } = stateRef.current;
       if (employee?.id) {
         setLoadingHistory(prev => ({ ...prev, contract: true }));
         
@@ -582,17 +622,12 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
       
       // Tutup modal
       setIsContractChangeModalOpen(false);
-      
-      // Jika pengguna saat ini melihat tab lain, ganti ke tab kontrak
-      if (activeTab !== 'contract') {
-        setActiveTab('contract');
-      }
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Error updating contract:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Gagal mengubah kontrak';
+      const errorMessage = error instanceof Error ? error.message : 'Terjadi kesalahan saat mengubah kontrak';
       toast.error(errorMessage);
     }
-  };
+  }, []); // Tidak perlu dependensi karena menggunakan refs
 
   if (loading) {
     return (

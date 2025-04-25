@@ -1,90 +1,103 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import { syncUserWithDatabase } from '@/lib/user-service';
+import { AuthService } from '@/lib/auth-service';
+import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
-export async function POST(req: NextRequest) {
+const prisma = new PrismaClient();
+
+export async function POST(request: NextRequest) {
   try {
-    const { email, password, name, role = 'EMPLOYEE' } = await req.json();
-
-    // Validasi input
-    if (!email || !password || !name) {
-      return NextResponse.json({ error: 'Email, password, dan nama diperlukan' }, { status: 400 });
-    }
-
-    // Buat Supabase client menggunakan createServerClient
-    const cookieStore = await cookies();
+    const body = await request.json();
+    const { email, password, fullName } = body;
     
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options)
-              );
-            } catch {
-              // The `setAll` method was called from a Server Component.
-              // This can be ignored if you have middleware refreshing
-              // user sessions.
-            }
-          },
-        },
-        auth: {
-          autoRefreshToken: true,
-          persistSession: true,
-          detectSessionInUrl: true,
-        },
-      }
-    );
-
-    // Daftarkan user di Supabase
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          name,
-          role,
-        },
-      },
-    });
-
-    if (error) {
-      console.error('Error registrasi Supabase:', error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    // Validasi input
+    if (!email || !password) {
+      return NextResponse.json(
+        { success: false, message: 'Email dan password diperlukan' },
+        { status: 400 }
+      );
     }
-
-    if (!data.user) {
-      return NextResponse.json({ error: 'Gagal membuat user' }, { status: 500 });
+    
+    // Validasi format email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { success: false, message: 'Format email tidak valid' },
+        { status: 400 }
+      );
     }
-
-    // Sinkronisasi user ke database lokal
+    
+    // Validasi panjang password
+    if (password.length < 6) {
+      return NextResponse.json(
+        { success: false, message: 'Password harus minimal 6 karakter' },
+        { status: 400 }
+      );
+    }
+    
     try {
-      await syncUserWithDatabase(data.user);
-    } catch (syncError) {
-      console.error('Error sinkronisasi user ke database lokal:', syncError);
-      // Tidak perlu mengembalikan error ke client, karena user sudah terdaftar di Supabase
+      // Cek apakah email sudah terdaftar di Prisma
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
+        select: { email: true }
+      });
+      
+      if (existingUser) {
+        return NextResponse.json(
+          { success: false, message: 'Email sudah terdaftar' },
+          { status: 400 }
+        );
+      }
+      
+      // Hash password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      
+      // Simpan user ke Prisma database
+      const newUser = await prisma.user.create({
+        data: {
+          email,
+          name: fullName || email.split('@')[0],
+          password: hashedPassword,
+          role: 'EMPLOYEE',
+        },
+      });
+      
+      // Simpan kredensial ke Supabase untuk autentikasi
+      try {
+        await AuthService.registerUser({
+          email,
+          password: hashedPassword,
+          fullName: fullName || newUser.name,
+        });
+      } catch (supabaseError) {
+        console.error('Error saving to Supabase:', supabaseError);
+        // Tetap lanjutkan karena user sudah terdaftar di Prisma
+      }
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Registrasi berhasil',
+        user: {
+          id: newUser.id,
+          email: newUser.email,
+          name: newUser.name,
+        },
+      });
+    } catch (error) {
+      console.error('Error in registration process:', error);
+      return NextResponse.json(
+        { success: false, message: 'Terjadi kesalahan saat registrasi' },
+        { status: 500 }
+      );
     }
-
-    return NextResponse.json({ 
-      success: true,
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-      },
-      message: 'Pendaftaran berhasil. Silakan cek email Anda untuk verifikasi.' 
-    });
   } catch (error) {
-    console.error('Error registrasi:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Terjadi kesalahan saat mendaftar' 
-    }, { status: 500 });
+    console.error('Registration API error:', error);
+    return NextResponse.json(
+      { success: false, message: 'Terjadi kesalahan internal server' },
+      { status: 500 }
+    );
+  } finally {
+    await prisma.$disconnect();
   }
 } 

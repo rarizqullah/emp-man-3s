@@ -1,89 +1,144 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import { prisma } from '@/lib/db';
-import { hash } from 'bcrypt';
-import { Role } from '@prisma/client';
+import { NextResponse } from 'next/server';
+import { PrismaClient, Role } from '@prisma/client';
+import { supabaseRouteHandler } from '@/lib/supabaseServer';
 
-// Schema validasi untuk membuat user baru
-const userCreateSchema = z.object({
-  name: z.string().min(1, "Nama wajib diisi"),
-  email: z.string().email("Format email tidak valid"),
-  password: z.string().min(6, "Password minimal 6 karakter"),
-  role: z.enum([Role.ADMIN, Role.MANAGER, Role.EMPLOYEE]).default(Role.EMPLOYEE),
-});
+const prismaClient = new PrismaClient();
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const data = await request.json();
+    // Mendapatkan data dari request body
+    const { authId, email, name } = await request.json();
+
+    // Validasi data yang diperlukan
+    if (!authId || !email) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Verifikasi sesi supaya kita yakin pengguna terautentikasi
+    const supabase = await supabaseRouteHandler();
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
-    // Validasi input
-    const validatedData = userCreateSchema.parse(data);
+    if (sessionError) {
+      console.error('Error getting session:', sessionError);
+      return NextResponse.json({ error: 'Error authenticating user' }, { status: 401 });
+    }
     
-    // Cek apakah email sudah terdaftar
-    const existingUser = await prisma.user.findUnique({
-      where: { email: validatedData.email }
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Cek dulu apakah user dengan email tersebut sudah ada
+    const existingUser = await prismaClient.user.findUnique({
+      where: { email }
     });
-    
+
+    let user;
+
     if (existingUser) {
-      return NextResponse.json(
-        { error: 'Email sudah terdaftar' },
-        { status: 400 }
-      );
+      // Update user yang sudah ada
+      user = await prismaClient.user.update({
+        where: { email },
+        data: {
+          name: name || email.split('@')[0],
+          authId,
+          updatedAt: new Date()
+        }
+      });
+    } else {
+      // Buat user baru jika belum ada
+      user = await prismaClient.user.create({
+        data: {
+          email,
+          name: name || email.split('@')[0],
+          authId,
+          role: Role.EMPLOYEE
+        }
+      });
     }
-    
-    // Hash password sebelum disimpan
-    const hashedPassword = await hash(validatedData.password, 10);
-    
-    // Buat user baru
-    const user = await prisma.user.create({
-      data: {
-        name: validatedData.name,
-        email: validatedData.email,
-        password: hashedPassword,
-        role: validatedData.role,
-      },
-    });
-    
-    // Hilangkan password dari response
-    const { password, ...userWithoutPassword } = user;
-    
-    return NextResponse.json(userWithoutPassword, { status: 201 });
+
+    return NextResponse.json({ user }, { status: 200 });
   } catch (error) {
-    console.error('Gagal membuat user baru:', error);
-    
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Validasi gagal', details: error.errors },
-        { status: 400 }
-      );
-    }
-    
-    return NextResponse.json(
-      { error: 'Terjadi kesalahan saat membuat user' },
-      { status: 500 }
-    );
+    console.error('Error handling user data:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } finally {
+    await prismaClient.$disconnect();
   }
 }
 
-export async function GET(request: NextRequest) {
+// Endpoint untuk mendapatkan data user berdasarkan authId
+export async function GET(request: Request) {
   try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      }
-    });
+    const { searchParams } = new URL(request.url);
+    const authId = searchParams.get('authId');
+
+    if (!authId) {
+      return NextResponse.json({ error: 'Missing authId parameter' }, { status: 400 });
+    }
+
+    const supabase = await supabaseRouteHandler();
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
-    return NextResponse.json(users);
+    if (sessionError) {
+      console.error('Error getting session:', sessionError);
+      return NextResponse.json({ error: 'Error authenticating user' }, { status: 401 });
+    }
+    
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Cari user berdasarkan authId
+    const users = await prismaClient.user.findMany({
+      where: {
+        authId: {
+          equals: authId
+        }
+      },
+      take: 1
+    });
+
+    if (!users || users.length === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ user: users[0] }, { status: 200 });
   } catch (error) {
-    console.error('Gagal mengambil data user:', error);
-    return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mengambil data user' },
-      { status: 500 }
-    );
+    console.error('Error fetching user data:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } finally {
+    await prismaClient.$disconnect();
+  }
+}
+
+export async function GETSupabase(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const authId = searchParams.get('authId');
+
+    if (!authId) {
+      return NextResponse.json({ error: 'Missing authId parameter' }, { status: 400 });
+    }
+
+    const supabase = await supabaseRouteHandler();
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const user = await prismaClient.user.findUnique({
+      where: { authId },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ user }, { status: 200 });
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } finally {
+    await prismaClient.$disconnect();
   }
 } 

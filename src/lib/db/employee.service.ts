@@ -49,15 +49,20 @@ export async function getAllEmployees() {
 
 // Get karyawan berdasarkan ID
 export async function getEmployeeById(id: string) {
-  return prisma.employee.findUnique({
-    where: { id },
-    include: {
-      user: true,
-      department: true,
-      subDepartment: true,
-      shift: true,
-    },
-  });
+  try {
+    return await prisma.employee.findUnique({
+      where: { id },
+      include: {
+        user: true,
+        department: true,
+        subDepartment: true,
+        shift: true,
+      },
+    });
+  } catch (error) {
+    console.error("Error di getEmployeeById:", error);
+    throw error;
+  }
 }
 
 // Get karyawan berdasarkan userID

@@ -26,7 +26,7 @@ import {
 import { format } from "date-fns"
 import { id } from "date-fns/locale"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { useAuth } from "@/lib/auth-context"
+import { useSupabase } from "@/providers/supabase-provider"
 
 interface UserData {
   id: string
@@ -95,7 +95,7 @@ interface SummaryData {
 }
 
 export default function DashboardPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading } = useSupabase();
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [searchAttendance, setSearchAttendance] = useState("")

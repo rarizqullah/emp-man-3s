@@ -72,7 +72,12 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const employee = await getEmployeeById(params.id);
+    // Menggunakan await pada params terlebih dahulu
+    const employeeParams = await params;
+    const employeeId = employeeParams.id;
+    
+    // Ambil data karyawan
+    const employee = await getEmployeeById(employeeId);
     
     if (!employee) {
       return NextResponse.json(
@@ -80,8 +85,28 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    // Validasi data karyawan untuk memastikan semua data yang diperlukan ada
+    if (!employee.user || !employee.user.id || !employee.user.name || !employee.user.email) {
+      console.error("Data user karyawan tidak lengkap:", employee.user);
+      return NextResponse.json(
+        { error: 'Data karyawan tidak lengkap atau rusak' },
+        { status: 500 }
+      );
+    }
     
-    return NextResponse.json(employee);
+    // Filter data yang sensitif sebelum mengirimkan ke klien
+    const safeEmployee = {
+      ...employee,
+      user: {
+        id: employee.user.id,
+        name: employee.user.name,
+        email: employee.user.email,
+        role: employee.user.role
+      }
+    };
+    
+    return NextResponse.json(safeEmployee);
   } catch (error) {
     console.error('Gagal mengambil data karyawan:', error);
     return NextResponse.json(
@@ -97,13 +122,17 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Menggunakan await pada params terlebih dahulu
+    const employeeParams = await params;
+    const employeeId = employeeParams.id;
+    
     const data = await request.json();
     
     // Validasi input
     const validatedData = employeeUpdateSchema.parse(data);
     
     // Update karyawan
-    const employee = await updateEmployee(params.id, validatedData);
+    const employee = await updateEmployee(employeeId, validatedData);
     
     return NextResponse.json(employee);
   } catch (error) {
@@ -129,7 +158,11 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await deleteEmployee(params.id);
+    // Menggunakan await pada params terlebih dahulu
+    const employeeParams = await params;
+    const employeeId = employeeParams.id;
+    
+    await deleteEmployee(employeeId);
     
     return NextResponse.json({ message: 'Karyawan berhasil dihapus' });
   } catch (error) {
@@ -147,6 +180,10 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Menggunakan await pada params terlebih dahulu
+    const employeeParams = await params;
+    const employeeId = employeeParams.id;
+    
     const data = await request.json();
     const operation = request.nextUrl.searchParams.get('operation');
     
@@ -155,31 +192,31 @@ export async function PATCH(
       case 'shift':
         // Update shift karyawan
         const shiftData = shiftUpdateSchema.parse(data);
-        const updatedShift = await updateEmployeeShift(params.id, shiftData.shiftId);
+        const updatedShift = await updateEmployeeShift(employeeId, shiftData.shiftId);
         return NextResponse.json(updatedShift);
         
       case 'position':
         // Update jabatan karyawan
         const positionData = positionUpdateSchema.parse(data);
-        const updatedPosition = await updateEmployeePosition(params.id, positionData.positionId);
+        const updatedPosition = await updateEmployeePosition(employeeId, positionData.positionId);
         return NextResponse.json(updatedPosition);
         
       case 'warning':
         // Update status peringatan karyawan
         const warningData = warningStatusUpdateSchema.parse(data);
-        const updatedWarning = await updateEmployeeWarningStatus(params.id, warningData.warningStatus);
+        const updatedWarning = await updateEmployeeWarningStatus(employeeId, warningData.warningStatus);
         return NextResponse.json(updatedWarning);
         
       case 'face':
         // Update data wajah karyawan
         const faceData = faceDataUpdateSchema.parse(data);
-        const updatedFace = await updateEmployeeFaceData(params.id, faceData.faceData);
+        const updatedFace = await updateEmployeeFaceData(employeeId, faceData.faceData);
         return NextResponse.json(updatedFace);
         
       case 'contract':
         // Update kontrak karyawan
         const contractData = contractUpdateSchema.parse(data);
-        const updatedContract = await updateEmployeeContract(params.id, contractData);
+        const updatedContract = await updateEmployeeContract(employeeId, contractData);
         return NextResponse.json(updatedContract);
         
       default:

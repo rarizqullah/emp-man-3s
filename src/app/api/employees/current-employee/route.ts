@@ -1,18 +1,29 @@
 import { NextResponse } from 'next/server';
-import { getEmployeeByEmployeeId } from '@/lib/db/employee.service';
+import { cookies } from 'next/headers';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { getTodayAttendanceByEmployeeId } from '@/lib/db/attendance.service';
+import { getEmployeeByUserId } from '@/lib/db/employee.service';
 
 export async function GET() {
   try {
-    // Simulasi data employee berdasarkan employee ID
-    // Pastikan ID ini benar-benar ada di database
-    const employeeId = "EMP001"; // ID karyawan yang digunakan untuk pengujian
+    // Validasi sesi user menggunakan Supabase auth
+    const cookieStore = cookies();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
 
-    console.log(`Mencoba mendapatkan data karyawan dengan ID: ${employeeId}`);
-    const employee = await getEmployeeByEmployeeId(employeeId);
+    // Dapatkan data employee berdasarkan user ID dari session
+    console.log(`Mencoba mendapatkan data karyawan dengan user ID: ${session.user.id}`);
+    const employee = await getEmployeeByUserId(session.user.id);
 
     if (!employee) {
-      console.error(`Karyawan dengan ID ${employeeId} tidak ditemukan`);
+      console.error(`Karyawan dengan user ID ${session.user.id} tidak ditemukan`);
       return NextResponse.json(
         { success: false, message: 'Data karyawan tidak ditemukan' },
         { status: 404 }

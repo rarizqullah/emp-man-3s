@@ -11,28 +11,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LogOut, Settings, User } from "lucide-react";
-import { useAuth } from "@/lib/auth-context";
+import { useSupabase } from "@/providers/supabase-provider";
 import toast from "react-hot-toast";
 
 export default function ProfileMenu() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, signOut } = useSupabase();
 
   const handleLogout = async () => {
     try {
-      const response = await fetch("/api/auth/logout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Gagal logout");
-      }
-
+      await signOut();
       toast.success("Berhasil logout");
-      router.push("/login");
+      // router.push('/login') tidak diperlukan karena signOut sudah melakukan redirect
     } catch (error) {
       console.error("Error saat logout:", error);
       toast.error("Gagal logout. Silakan coba lagi.");

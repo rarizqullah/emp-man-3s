@@ -1,7 +1,11 @@
 import { EmployeeDetailClient } from './employee-detail-client';
 
-// Server Component yang mengakses params
-export default function EmployeeDetailPage({ params }: { params: { id: string } }) {
+// Server Component yang mengakses params secara asinkronus
+export default async function EmployeeDetailPage({ params }: { params: { id: string } }) {
+  // Menggunakan await pada params untuk mengatasi error
+  const employeeParams = await params;
+  const employeeId = employeeParams.id;
+  
   // Teruskan ID sebagai prop ke Client Component
-  return <EmployeeDetailClient employeeId={params.id} />;
+  return <EmployeeDetailClient employeeId={employeeId} />;
 } 

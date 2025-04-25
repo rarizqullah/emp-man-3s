@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { cookies } from 'next/headers';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { prisma } from '@/lib/db';
 
 export async function GET(
@@ -8,8 +8,11 @@ export async function GET(
   { params }: { params: { employeeId: string } }
 ) {
   try {
-    // Validasi sesi user
-    const session = await getServerSession(authOptions);
+    // Validasi sesi user menggunakan Supabase auth
+    const cookieStore = cookies();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const { data: { session } } = await supabase.auth.getSession();
+    
     if (!session || !session.user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -17,115 +20,79 @@ export async function GET(
       );
     }
 
-    const employeeId = params.employeeId;
-    
-    // Cek apakah user adalah admin atau karyawan yang bersangkutan
-    const isAdmin = session.user.role === 'ADMIN';
-    const isOwnData = session.user.id === employeeId;
-    
-    if (!isAdmin && !isOwnData) {
+    // Dapatkan data user dari database
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, role: true }
+    });
+
+    if (!user) {
       return NextResponse.json(
-        { error: 'Anda tidak memiliki izin untuk mengakses data ini' },
-        { status: 403 }
-      );
-    }
-
-    // Ambil query parameter 'date' jika ada
-    const { searchParams } = new URL(request.url);
-    const dateParam = searchParams.get('date');
-    
-    // Tentukan filter tanggal
-    let dateFilter: any = {};
-    
-    if (dateParam) {
-      // Jika parameter tanggal diberikan, filter berdasarkan tanggal tersebut
-      const dateParts = dateParam.split('-');
-      if (dateParts.length === 3) {
-        const [year, month, day] = dateParts;
-        const specificDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-        
-        const nextDate = new Date(specificDate);
-        nextDate.setDate(nextDate.getDate() + 1);
-        
-        dateFilter = {
-          createdAt: {
-            gte: specificDate,
-            lt: nextDate,
-          },
-        };
-      }
-    } else {
-      // Default: ambil semua data presensi (bisa batasi dengan limit)
-      // Tidak ada filter tanggal
-    }
-
-    // Cari employee berdasarkan user ID jika parameter adalah ID user
-    let employee;
-    if (employeeId.includes('-')) {  // Cek apakah employeeId adalah UUID
-      // Cari berdasarkan user ID
-      employee = await prisma.employee.findUnique({
-        where: { userId: employeeId },
-      });
-    } else {
-      // Cari berdasarkan employeeId (nomor pegawai)
-      employee = await prisma.employee.findUnique({
-        where: { employeeId: employeeId },
-      });
-    }
-
-    if (!employee) {
-      return NextResponse.json(
-        { error: 'Karyawan tidak ditemukan' },
+        { error: 'User tidak ditemukan' },
         { status: 404 }
       );
     }
 
-    // Ambil data presensi
-    const attendance = await prisma.attendance.findFirst({
-      where: {
-        employeeId: employee.id,
-        ...dateFilter,
-      },
+    const { employeeId } = params;
+    
+    // Cek apakah user yang sedang login adalah admin atau employee itu sendiri
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
       include: {
-        employee: {
-          include: {
-            user: {
-              select: {
-                name: true,
-              },
-            },
-            department: true,
-            subDepartment: true,
-            position: true,
-            shift: true,
-          },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+        department: true,
+        position: true,
+        shift: true
+      }
     });
-
-    // Untuk query history presensi (tanpa filter tanggal spesifik)
-    const attendanceHistory = await prisma.attendance.findMany({
-      where: {
-        employeeId: employee.id,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: 10, // Ambil 10 data terbaru
-    });
-
+    
+    if (!employee) {
+      return NextResponse.json(
+        { error: 'Data karyawan tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+    
+    // Hanya admin atau employee itu sendiri yang bisa mengakses data
+    const isAdmin = user.role === 'ADMIN';
+    const isOwnData = employee.user.id === user.id;
+    
+    if (!isAdmin && !isOwnData) {
+      return NextResponse.json(
+        { error: 'Tidak memiliki akses untuk melihat data karyawan lain' },
+        { status: 403 }
+      );
+    }
+    
+    // Format data response
+    const formattedEmployee = {
+      id: employee.id,
+      name: employee.user.name,
+      email: employee.user.email,
+      department: employee.department?.name,
+      position: employee.position?.name,
+      shift: employee.shift,
+      // Tambahkan informasi lain yang diperlukan
+    };
+    
     return NextResponse.json({
       success: true,
-      attendance,
-      history: attendanceHistory,
+      message: 'Data karyawan berhasil diambil',
+      data: formattedEmployee
     });
   } catch (error) {
-    console.error('Error mengambil data presensi:', error);
+    console.error('Error fetching employee data:', error);
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mengambil data presensi' },
+      { 
+        success: false, 
+        error: 'Terjadi kesalahan saat mengambil data karyawan' 
+      }, 
       { status: 500 }
     );
   }
