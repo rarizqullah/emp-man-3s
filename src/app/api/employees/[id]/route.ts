@@ -11,6 +11,7 @@ import {
   updateEmployeeContract
 } from '@/lib/db/employee.service';
 import { ContractType, WarningStatus, Gender } from '@prisma/client';
+import { ensureDatabaseConnection } from "@/lib/db/prisma";
 
 // Schema validasi untuk update employee
 const employeeUpdateSchema = z.object({
@@ -71,99 +72,116 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  // Menggunakan await pada params terlebih dahulu
+  const employeeParams = await params;
+  const employeeId = employeeParams.id;
+  
+  console.log(`GET request untuk karyawan dengan ID: ${employeeId}`);
+  
   try {
-    const employeeId = params.id;
-    
-    console.log(`GET /api/employees/${employeeId} dipanggil`);
-    
-    if (!employeeId) {
-      console.log('ID karyawan tidak diberikan');
+    // Pastikan koneksi database terbentuk
+    const dbConnected = await ensureDatabaseConnection();
+    if (!dbConnected) {
+      console.error(`Koneksi database gagal untuk karyawan ID: ${employeeId}`);
       return NextResponse.json(
-        { success: false, error: 'ID karyawan diperlukan' },
-        { status: 400 }
+        { error: "Gagal terhubung ke database, silakan coba lagi nanti" },
+        { status: 503 }
       );
     }
     
-    // Ambil data karyawan dengan semua relasi yang diperlukan
-    console.log(`Mengambil data untuk karyawan ID: ${employeeId}`);
+    console.log(`Mengambil data karyawan dengan ID: ${employeeId}`);
     const employee = await getEmployeeById(employeeId);
-    console.log('Hasil query employee:', employee ? 'Data ditemukan' : 'Tidak ditemukan');
     
     if (!employee) {
+      console.log(`Karyawan dengan ID ${employeeId} tidak ditemukan`);
       return NextResponse.json(
-        { success: false, error: 'Karyawan tidak ditemukan' },
+        { error: `Karyawan dengan ID ${employeeId} tidak ditemukan` },
         { status: 404 }
       );
     }
-
-    // Buat objek dasar untuk respons
-    const safeEmployee = {
-      id: employee.id,
-      employeeId: employee.employeeId || '',
-      userId: employee.userId || '',
-      departmentId: employee.departmentId || '',
-      positionId: employee.positionId || null,
-      shiftId: employee.shiftId || '',
-      contractType: employee.contractType || 'TRAINING',
-      contractNumber: employee.contractNumber || null,
-      contractStartDate: employee.contractStartDate?.toISOString() || new Date().toISOString(),
-      contractEndDate: employee.contractEndDate?.toISOString() || null,
-      warningStatus: employee.warningStatus || 'NONE',
-      gender: employee.gender || null,
-      address: employee.address || null,
-      faceData: employee.faceData || null,
-      createdAt: employee.createdAt?.toISOString() || new Date().toISOString(),
-      updatedAt: employee.updatedAt?.toISOString() || new Date().toISOString(),
-      
-      // Tambahkan objek terpisah untuk setiap relasi dengan pengecekan null yang ketat
-      user: {
-        id: employee.user?.id || '',
-        name: employee.user?.name || 'Nama tidak tersedia',
-        email: employee.user?.email || '-',
-        role: employee.user?.role || 'user'
-      },
-      
-      department: {
-        id: employee.department?.id || '',
-        name: employee.department?.name || 'Departemen tidak tersedia'
-      },
-      
-      position: employee.position ? {
-        id: employee.position.id,
-        name: employee.position.name,
-        level: employee.position.level || 0
-      } : null,
-      
-      subDepartment: employee.subDepartment ? {
-        id: employee.subDepartment.id,
-        name: employee.subDepartment.name
-      } : null,
-      
-      shift: {
-        id: employee.shift?.id || '',
-        name: employee.shift?.name || 'Shift tidak tersedia',
-        shiftType: employee.shift?.shiftType || 'NORMAL'
-      }
-    };
     
-    console.log('Mengembalikan respons untuk karyawan ID:', employeeId);
-    return NextResponse.json({ 
-      success: true, 
-      data: safeEmployee 
-    });
-  } catch (error) {
-    console.error('Gagal mengambil data karyawan:', error);
-    // Tambahkan detail error untuk debugging
-    const errorMessage = error instanceof Error 
-      ? `${error.message}\n${error.stack}`
-      : String(error);
+    console.log(`Data karyawan ditemukan untuk ID: ${employeeId}`);
+    console.log(`User data tersedia: ${Boolean(employee.user)}`);
+    
+    // Buat objek yang aman untuk respons
+    try {
+      const safeEmployee = {
+        id: employee.id,
+        name: employee.user?.name || 'Nama tidak tersedia',
+        address: employee.address || '',
+        phoneNumber: employee.user?.phoneNumber || '',
+        joinDate: employee.contractStartDate,
+        status: employee.warningStatus,
+        departmentId: employee.departmentId,
+        subDepartmentId: employee.subDepartmentId,
+        positionId: employee.positionId,
+        shiftId: employee.shiftId,
+        userId: employee.userId,
+        
+        // Include related objects
+        department: employee.department ? {
+          id: employee.department.id,
+          name: employee.department.name,
+        } : null,
+        
+        subDepartment: employee.subDepartment ? {
+          id: employee.subDepartment.id,
+          name: employee.subDepartment.name,
+        } : null,
+        
+        position: employee.position ? {
+          id: employee.position.id,
+          name: employee.position.name,
+        } : null,
+        
+        shift: employee.shift ? {
+          id: employee.shift.id,
+          name: employee.shift.name,
+          startTime: employee.shift.mainWorkStart,
+          endTime: employee.shift.mainWorkEnd,
+        } : null,
+        
+        user: employee.user ? {
+          id: employee.user.id,
+          name: employee.user.name || 'Nama tidak tersedia',
+          email: employee.user.email || 'Email tidak tersedia',
+          role: employee.user.role || 'EMPLOYEE',
+        } : {
+          id: '',
+          name: 'Nama tidak tersedia',
+          email: 'Email tidak tersedia',
+          role: 'EMPLOYEE',
+        },
+      };
       
+      console.log(`Mengirim respons untuk karyawan ID: ${employeeId}`);
+      return NextResponse.json(safeEmployee);
+    } catch (formatError) {
+      console.error(`Error saat memformat data karyawan: ${formatError}`);
+      return NextResponse.json(
+        { error: "Terjadi kesalahan saat memformat data karyawan" },
+        { status: 500 }
+      );
+    }
+  } catch (error) {
+    console.error(`Error GET /api/employees/${employeeId}:`, error);
+    
+    // Cek apakah error koneksi database
+    const errorMessage = String(error).toLowerCase();
+    if (
+      errorMessage.includes('connection') && 
+      (errorMessage.includes('reset') || 
+       errorMessage.includes('closed') || 
+       errorMessage.includes('timeout'))
+    ) {
+      return NextResponse.json(
+        { error: "Koneksi ke database gagal, silakan coba lagi nanti" },
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Terjadi kesalahan saat mengambil data karyawan',
-        details: errorMessage
-      },
+      { error: `Terjadi kesalahan: ${error instanceof Error ? error.message : String(error)}` },
       { status: 500 }
     );
   }

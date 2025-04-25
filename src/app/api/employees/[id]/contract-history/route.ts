@@ -12,20 +12,51 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const employeeId = params.id;
     console.log(`Getting contract history for employee: ${employeeId}`);
     
-    const contractHistory = await getContractHistoryByEmployeeId(employeeId);
-    console.log(`Contract history data fetched: ${JSON.stringify(contractHistory)}`);
-    
-    return NextResponse.json({ 
-      success: true, 
-      data: contractHistory || [] 
-    });
-  } catch (error: any) {
+    try {
+      // Pastikan koneksi database
+      const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+      await ensureDatabaseConnection();
+      
+      const contractHistory = await getContractHistoryByEmployeeId(employeeId);
+      console.log(`Contract history data fetched: ${JSON.stringify(contractHistory)}`);
+      
+      return NextResponse.json({ 
+        success: true, 
+        data: contractHistory || [] 
+      });
+    } catch (dbError) {
+      console.error(`Database error in contract history:`, dbError);
+      if (isConnectionError(dbError)) {
+        return NextResponse.json(
+          { success: false, message: 'Terjadi kesalahan koneksi database, silakan coba lagi nanti' },
+          { status: 503 }
+        );
+      }
+      throw dbError;
+    }
+  } catch (error: unknown) {
     console.error(`Error in contract history GET:`, error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, message: `Failed to get contract history: ${error.message}` },
+      { success: false, message: `Failed to get contract history: ${errorMessage}` },
       { status: 500 }
     );
   }
+}
+
+// Fungsi untuk mengecek apakah error adalah error koneksi
+function isConnectionError(error: unknown): boolean {
+  if (!error) return false;
+  
+  const errorMessage = String(error).toLowerCase();
+  return (
+    errorMessage.includes('connection') &&
+    (errorMessage.includes('reset') || 
+     errorMessage.includes('closed') || 
+     errorMessage.includes('terminated') ||
+     errorMessage.includes('timeout') ||
+     errorMessage.includes('could not connect'))
+  );
 }
 
 // POST /api/employees/[id]/contract-history
@@ -63,10 +94,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       success: true, 
       data: contractHistory 
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error in contract history POST:`, error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, message: `Failed to create contract history: ${error.message}` },
+      { success: false, message: `Failed to create contract history: ${errorMessage}` },
       { status: 500 }
     );
   }

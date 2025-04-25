@@ -1,6 +1,7 @@
-import { cookies } from 'next/headers';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { supabaseAdmin } from './admin';
 
 /**
  * Client Supabase untuk komponen Server
@@ -28,7 +29,9 @@ export const createServerSupabaseClient = async () => {
   );
 };
 
-// Alias untuk backward compatibility
+/**
+ * Alias for createServerSupabaseClient for backward compatibility
+ */
 export const supabaseServerComponent = createServerSupabaseClient;
 
 /**
@@ -77,4 +80,8 @@ export const createMiddlewareSupabaseClient = (
       },
     }
   );
-}; 
+};
+
+// Menghapus duplicate supabaseAdmin function, karena sudah diimport dari admin.ts
+// dan mengekspor ulang untuk mempertahankan API
+export { supabaseAdmin }; 

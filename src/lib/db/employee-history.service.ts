@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db';
+import prisma from '@/lib/db/prisma';
 import { ContractType, WarningStatus, Prisma } from '@prisma/client';
 
 // Define tipe data untuk update
@@ -9,6 +9,10 @@ type WarningHistoryUpdateInput = Prisma.WarningHistoryUpdateInput;
 // ==================== CONTRACT HISTORY ====================
 export async function getContractHistoryByEmployeeId(employeeId: string) {
   try {
+    // Pastikan koneksi database
+    const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+    await ensureDatabaseConnection();
+    
     const contractHistory = await prisma.contractHistory.findMany({
       where: {
         employeeId: employeeId
@@ -59,6 +63,10 @@ export async function createContractHistory(data: {
 // ==================== SHIFT HISTORY ====================
 export async function getShiftHistoryByEmployeeId(employeeId: string) {
   try {
+    // Pastikan koneksi database
+    const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+    await ensureDatabaseConnection();
+    
     const shiftHistory = await prisma.shiftHistory.findMany({
       where: {
         employeeId: employeeId
@@ -123,6 +131,10 @@ export async function createShiftHistory(data: {
 // ==================== WARNING HISTORY ====================
 export async function getWarningHistoryByEmployeeId(employeeId: string) {
   try {
+    // Pastikan koneksi database
+    const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+    await ensureDatabaseConnection();
+    
     const warningHistory = await prisma.warningHistory.findMany({
       where: {
         employeeId: employeeId

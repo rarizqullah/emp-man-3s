@@ -1,4 +1,4 @@
-import prisma from './prisma';
+import prisma from '@/lib/db/prisma';
 import { Prisma, ContractType, WarningStatus } from '@prisma/client';
 
 // Tipe data untuk parameter employee baru
@@ -47,6 +47,34 @@ export async function getAllEmployees() {
   });
 }
 
+// Helper function untuk mengambil data user dengan aman 
+// (mengatasi masalah authId null)
+async function getBasicUserData(userId: string) {
+  if (!userId) {
+    return null;
+  }
+  
+  try {
+    // Gunakan prisma.$queryRaw untuk menghindari validasi skema Prisma
+    // Ini akan mengambil data user tanpa menimbulkan error jika authId null
+    const rawUserData = await prisma.$queryRaw`
+      SELECT id, email, name, role 
+      FROM users 
+      WHERE id = ${userId}
+    `;
+    
+    // Ambil row pertama jika ada
+    if (Array.isArray(rawUserData) && rawUserData.length > 0) {
+      return rawUserData[0];
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn(`Error saat mengambil data User (ID: ${userId}):`, error);
+    return null;
+  }
+}
+
 // Get karyawan berdasarkan ID
 export async function getEmployeeById(id: string) {
   try {
@@ -56,21 +84,86 @@ export async function getEmployeeById(id: string) {
       throw new Error('ID karyawan tidak diberikan ke getEmployeeById');
     }
     
-    const result = await prisma.employee.findUnique({
-      where: { id },
-      include: {
-        user: true,
-        department: true,
-        subDepartment: true,
-        position: true,
-        shift: true,
-      },
-    });
-    
-    console.log(`Hasil query getEmployeeById: ${result ? 'Data ditemukan' : 'Data tidak ditemukan'}`);
-    return result;
+    try {
+      console.log(`Menjalankan query untuk karyawan dengan ID: ${id}`);
+      
+      // Memastikan koneksi database sebelum query
+      const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+      await ensureDatabaseConnection();
+      
+      // Modifikasi untuk mengatasi masalah authId null
+      // Langkah 1: Coba ambil data Employee tanpa relasi User
+      const employeeData = await prisma.employee.findUnique({
+        where: { id },
+        include: {
+          department: true,
+          subDepartment: true,
+          position: true,
+          shift: true,
+        },
+      });
+      
+      if (!employeeData) {
+        console.log(`Karyawan dengan ID ${id} tidak ditemukan`);
+        return null;
+      }
+      
+      // Langkah 2: Ambil data User dengan fungsi helper yang aman
+      let userData = await getBasicUserData(employeeData.userId);
+      
+      // Jika userData masih null, buat data dummy
+      if (!userData) {
+        console.log(`Membuat data user dummy untuk userId: ${employeeData.userId}`);
+        userData = {
+          id: employeeData.userId || '',
+          name: 'Nama tidak tersedia',
+          email: 'email-tidak-tersedia@dummy.com',
+          role: 'EMPLOYEE'
+        };
+      }
+      
+      // Langkah 3: Gabungkan data Employee dan User
+      const result = {
+        ...employeeData,
+        user: userData
+      };
+      
+      console.log(`Hasil query getEmployeeById: Data ditemukan`);
+      
+      return result;
+    } catch (dbError) {
+      console.error("Database error in getEmployeeById:", dbError);
+      console.error("Trace:", new Error().stack);
+      
+      // Coba cek apakah ini adalah error koneksi
+      const errorMessage = String(dbError).toLowerCase();
+      if (
+        errorMessage.includes('connection') &&
+        (errorMessage.includes('reset') || 
+         errorMessage.includes('closed') || 
+         errorMessage.includes('timeout'))
+      ) {
+        console.log('Terdeteksi error koneksi database, mencoba menyambungkan kembali...');
+        
+        // Tunggu sebentar dan coba import ulang untuk merefresh koneksi
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Coba refresh koneksi database
+        const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+        const reconnected = await ensureDatabaseConnection();
+        
+        if (reconnected) {
+          console.log("Berhasil menyambungkan kembali ke database, mencoba query ulang");
+          // Coba query ulang setelah koneksi diperbaiki
+          return getEmployeeById(id);
+        }
+      }
+      
+      throw new Error(`Database error: ${dbError instanceof Error ? dbError.message : String(dbError)}`);
+    }
   } catch (error) {
     console.error("Error di getEmployeeById:", error);
+    console.error("Stack trace:", error instanceof Error ? error.stack : "No stack trace available");
     throw error;
   }
 }
