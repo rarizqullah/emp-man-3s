@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient, Role } from '@prisma/client';
-import { supabaseRouteHandler } from '@/lib/supabaseServer';
+import { supabaseRouteHandler } from '@/lib/supabase/server';
 
 const prismaClient = new PrismaClient();
 

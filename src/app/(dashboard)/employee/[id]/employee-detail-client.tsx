@@ -385,19 +385,44 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      console.log('Employee data fetched:', data);
+      const result = await response.json();
+      console.log('Employee data fetched:', result);
+      
+      // Periksa apakah data adalah respons sukses dengan format API standar
+      if (!result.success) {
+        throw new Error(result.error || 'Gagal memuat data karyawan');
+      }
+      
+      // Gunakan data dari properti data di respons API
+      const data = result.data;
       
       // Validasi data yang diterima
-      if (!data || !data.id || !data.user || !data.user.id) {
-        throw new Error('Received invalid or incomplete employee data');
+      if (!data || !data.id) {
+        throw new Error('Data karyawan yang diterima tidak valid atau tidak lengkap');
+      }
+      
+      // Pastikan objek user ada
+      if (!data.user || !data.user.id || !data.user.name) {
+        console.error('Data user tidak lengkap:', data.user);
+        throw new Error('Data user tidak lengkap');
+      }
+      
+      // Pastikan departemen dan shift ada
+      if (!data.department?.name) {
+        console.warn('Data departemen tidak lengkap, menggunakan nilai default');
+      }
+      
+      if (!data.shift?.name) {
+        console.warn('Data shift tidak lengkap, menggunakan nilai default');
       }
       
       // Data valid, update state
       setEmployee(data);
+      setError(null);
     } catch (error) {
-      console.error('Error fetching employee:', error);
-      setError(`Terjadi kesalahan: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error fetching employee:', errorMessage);
+      setError(`Terjadi kesalahan: ${errorMessage}`);
       toast.error('Gagal memuat data karyawan');
     } finally {
       setLoading(false);

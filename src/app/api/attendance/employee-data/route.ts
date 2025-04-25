@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { supabaseRouteHandler } from '@/lib/supabase/server';
 import { prisma } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
     // Validasi sesi user menggunakan Supabase auth
-    const cookieStore = cookies();
-    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    const supabase = await supabaseRouteHandler();
     
     const { data: { session } } = await supabase.auth.getSession();
     

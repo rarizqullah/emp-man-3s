@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { supabaseRouteHandler } from '@/lib/supabase/server';
 import { prisma } from '@/lib/db';
 import { getTodayAttendanceByEmployeeId } from '@/lib/db/attendance.service';
 import { format } from 'date-fns';
@@ -8,9 +7,9 @@ import { id } from 'date-fns/locale';
 
 export async function GET(request: NextRequest) {
   try {
-    // Validasi sesi user menggunakan Supabase auth
-    const cookieStore = cookies();
-    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+    // Inisialisasi client Supabase menggunakan supabaseRouteHandler
+    const supabase = await supabaseRouteHandler();
+
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session || !session.user) {

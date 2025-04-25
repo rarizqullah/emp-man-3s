@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { supabaseRouteHandler } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db/prisma";
 import { PermissionStatus } from "@prisma/client";
 import { z } from "zod";
@@ -20,7 +19,7 @@ export async function PUT(
 ) {
   try {
     // Cek session untuk autentikasi menggunakan Supabase
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await supabaseRouteHandler();
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {

@@ -50,15 +50,25 @@ export async function getAllEmployees() {
 // Get karyawan berdasarkan ID
 export async function getEmployeeById(id: string) {
   try {
-    return await prisma.employee.findUnique({
+    console.log(`getEmployeeById dipanggil untuk ID: ${id}`);
+    
+    if (!id) {
+      throw new Error('ID karyawan tidak diberikan ke getEmployeeById');
+    }
+    
+    const result = await prisma.employee.findUnique({
       where: { id },
       include: {
         user: true,
         department: true,
         subDepartment: true,
+        position: true,
         shift: true,
       },
     });
+    
+    console.log(`Hasil query getEmployeeById: ${result ? 'Data ditemukan' : 'Data tidak ditemukan'}`);
+    return result;
   } catch (error) {
     console.error("Error di getEmployeeById:", error);
     throw error;

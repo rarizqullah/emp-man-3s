@@ -1,5 +1,5 @@
-import { supabase } from './supabase/client';
-import { createServerSupabaseClient } from './supabase/server';
+import { supabaseClient } from '@/lib/supabase/client';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export type UserProfile = {
   id: string;
@@ -49,7 +49,7 @@ export class UserService {
   static async updateUserProfile(userId: string, profile: Partial<UserProfile>): Promise<UserProfile | null> {
     try {
       // Update user_metadata di auth
-      const { error: authError } = await supabase.auth.updateUser({
+      const { error: authError } = await supabaseClient.auth.updateUser({
         data: {
           full_name: profile.full_name,
           avatar_url: profile.avatar_url,
@@ -59,7 +59,7 @@ export class UserService {
       if (authError) throw authError;
       
       // Update data di tabel users
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('users')
         .update({
           full_name: profile.full_name,
@@ -83,7 +83,7 @@ export class UserService {
   // Mendapatkan semua user (admin only)
   static async getAllUsers(): Promise<UserProfile[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('users')
         .select('*')
         .order('created_at', { ascending: false });
@@ -100,7 +100,7 @@ export class UserService {
   // Mendapatkan user berdasarkan ID
   static async getUserById(userId: string): Promise<UserProfile | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('users')
         .select('*')
         .eq('id', userId)

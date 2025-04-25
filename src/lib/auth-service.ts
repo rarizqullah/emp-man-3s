@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabaseClient } from '@/lib/supabase/client';
 import { createToken } from './jwt-client';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
@@ -24,7 +24,7 @@ export class AuthService {
   static async registerUser(userData: UserRegisterData): Promise<{ success: boolean; message?: string; user?: UserData }> {
     try {
       // Cek apakah email sudah terdaftar
-      const { data: existingUser } = await supabase
+      const { data: existingUser } = await supabaseClient
         .from('users')
         .select('email')
         .eq('email', userData.email)
@@ -42,7 +42,7 @@ export class AuthService {
       const hashedPassword = await bcrypt.hash(userData.password, salt);
 
       // Masukkan data user baru ke database
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('users')
         .insert([
           {
@@ -86,7 +86,7 @@ export class AuthService {
   }> {
     try {
       // Cari user berdasarkan email
-      const { data: user, error } = await supabase
+      const { data: user, error } = await supabaseClient
         .from('users')
         .select('*')
         .eq('email', email)
@@ -116,7 +116,7 @@ export class AuthService {
       });
 
       // Update last_login user
-      await supabase
+      await supabaseClient
         .from('users')
         .update({ last_login: new Date().toISOString() })
         .eq('id', user.id);
@@ -160,7 +160,7 @@ export class AuthService {
       }
 
       // Cari kredensial di Supabase untuk verifikasi password
-      const { data: authData, error } = await supabase
+      const { data: authData, error } = await supabaseClient
         .from('users')
         .select('password')
         .eq('email', email)
@@ -218,7 +218,7 @@ export class AuthService {
   // Mendapatkan data user berdasarkan ID
   static async getUserById(userId: string): Promise<UserData | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('users')
         .select('id, email, full_name, role, created_at')
         .eq('id', userId)

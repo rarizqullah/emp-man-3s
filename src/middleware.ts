@@ -1,12 +1,15 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { createMiddlewareSupabaseClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(req: NextRequest) {
+  // Buat response baru untuk dimodifikasi header cookie-nya
   const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req, res });
+  
+  // Buat client Supabase untuk middleware
+  const supabase = createMiddlewareSupabaseClient(req, res);
 
-  // Refresh session jika diperlukan
+  // Refresh session (sesuaikan dengan kebutuhan)
   await supabase.auth.getSession();
 
   return res;

@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
-import supabaseClient from '@/lib/supabaseClient';
+import { supabaseClient } from '@/lib/supabase/client';
 
 type SupabaseContextType = {
   user: User | null;

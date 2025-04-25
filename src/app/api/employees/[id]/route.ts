@@ -72,45 +72,98 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Menggunakan await pada params terlebih dahulu
-    const employeeParams = await params;
-    const employeeId = employeeParams.id;
+    const employeeId = params.id;
     
-    // Ambil data karyawan
+    console.log(`GET /api/employees/${employeeId} dipanggil`);
+    
+    if (!employeeId) {
+      console.log('ID karyawan tidak diberikan');
+      return NextResponse.json(
+        { success: false, error: 'ID karyawan diperlukan' },
+        { status: 400 }
+      );
+    }
+    
+    // Ambil data karyawan dengan semua relasi yang diperlukan
+    console.log(`Mengambil data untuk karyawan ID: ${employeeId}`);
     const employee = await getEmployeeById(employeeId);
+    console.log('Hasil query employee:', employee ? 'Data ditemukan' : 'Tidak ditemukan');
     
     if (!employee) {
       return NextResponse.json(
-        { error: 'Karyawan tidak ditemukan' },
+        { success: false, error: 'Karyawan tidak ditemukan' },
         { status: 404 }
       );
     }
 
-    // Validasi data karyawan untuk memastikan semua data yang diperlukan ada
-    if (!employee.user || !employee.user.id || !employee.user.name || !employee.user.email) {
-      console.error("Data user karyawan tidak lengkap:", employee.user);
-      return NextResponse.json(
-        { error: 'Data karyawan tidak lengkap atau rusak' },
-        { status: 500 }
-      );
-    }
-    
-    // Filter data yang sensitif sebelum mengirimkan ke klien
+    // Buat objek dasar untuk respons
     const safeEmployee = {
-      ...employee,
+      id: employee.id,
+      employeeId: employee.employeeId || '',
+      userId: employee.userId || '',
+      departmentId: employee.departmentId || '',
+      positionId: employee.positionId || null,
+      shiftId: employee.shiftId || '',
+      contractType: employee.contractType || 'TRAINING',
+      contractNumber: employee.contractNumber || null,
+      contractStartDate: employee.contractStartDate?.toISOString() || new Date().toISOString(),
+      contractEndDate: employee.contractEndDate?.toISOString() || null,
+      warningStatus: employee.warningStatus || 'NONE',
+      gender: employee.gender || null,
+      address: employee.address || null,
+      faceData: employee.faceData || null,
+      createdAt: employee.createdAt?.toISOString() || new Date().toISOString(),
+      updatedAt: employee.updatedAt?.toISOString() || new Date().toISOString(),
+      
+      // Tambahkan objek terpisah untuk setiap relasi dengan pengecekan null yang ketat
       user: {
-        id: employee.user.id,
-        name: employee.user.name,
-        email: employee.user.email,
-        role: employee.user.role
+        id: employee.user?.id || '',
+        name: employee.user?.name || 'Nama tidak tersedia',
+        email: employee.user?.email || '-',
+        role: employee.user?.role || 'user'
+      },
+      
+      department: {
+        id: employee.department?.id || '',
+        name: employee.department?.name || 'Departemen tidak tersedia'
+      },
+      
+      position: employee.position ? {
+        id: employee.position.id,
+        name: employee.position.name,
+        level: employee.position.level || 0
+      } : null,
+      
+      subDepartment: employee.subDepartment ? {
+        id: employee.subDepartment.id,
+        name: employee.subDepartment.name
+      } : null,
+      
+      shift: {
+        id: employee.shift?.id || '',
+        name: employee.shift?.name || 'Shift tidak tersedia',
+        shiftType: employee.shift?.shiftType || 'NORMAL'
       }
     };
     
-    return NextResponse.json(safeEmployee);
+    console.log('Mengembalikan respons untuk karyawan ID:', employeeId);
+    return NextResponse.json({ 
+      success: true, 
+      data: safeEmployee 
+    });
   } catch (error) {
     console.error('Gagal mengambil data karyawan:', error);
+    // Tambahkan detail error untuk debugging
+    const errorMessage = error instanceof Error 
+      ? `${error.message}\n${error.stack}`
+      : String(error);
+      
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mengambil data karyawan' },
+      { 
+        success: false, 
+        error: 'Terjadi kesalahan saat mengambil data karyawan',
+        details: errorMessage
+      },
       { status: 500 }
     );
   }
