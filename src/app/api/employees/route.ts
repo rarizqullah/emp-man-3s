@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { 
   getAllEmployees, 
-  createEmployee,
-  searchEmployees
 } from '@/lib/db/employee.service';
 import { ContractType, WarningStatus, Gender } from '@prisma/client';
+import prisma from '@/lib/db/prisma';
 
 // Schema validasi untuk membuat karyawan baru
 const employeeCreateSchema = z.object({
@@ -36,7 +35,31 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     
     if (search) {
-      const employees = await searchEmployees(search);
+      // Implementasikan pencarian langsung di sini untuk menggantikan fungsi searchEmployees
+      const employees = await prisma.employee.findMany({
+        where: {
+          OR: [
+            { employeeId: { contains: search, mode: 'insensitive' } },
+            { user: { name: { contains: search, mode: 'insensitive' } } },
+            { user: { email: { contains: search, mode: 'insensitive' } } },
+            { department: { name: { contains: search, mode: 'insensitive' } } },
+            { subDepartment: { name: { contains: search, mode: 'insensitive' } } },
+          ],
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          department: true,
+          subDepartment: true,
+          shift: true,
+        },
+      });
       return NextResponse.json(employees);
     }
     
@@ -58,8 +81,30 @@ export async function POST(request: NextRequest) {
     // Validasi input
     const validatedData = employeeCreateSchema.parse(data);
     
-    // Buat karyawan baru
-    const employee = await createEmployee(validatedData);
+    // Buat karyawan baru dengan Prisma langsung daripada menggunakan fungsi createEmployee
+    const employee = await prisma.employee.create({
+      data: {
+        user: { connect: { id: validatedData.userId } },
+        employeeId: validatedData.employeeId,
+        department: { connect: { id: validatedData.departmentId } },
+        subDepartment: validatedData.subDepartmentId
+          ? { connect: { id: validatedData.subDepartmentId } }
+          : undefined,
+        shift: { connect: { id: validatedData.shiftId } },
+        contractType: validatedData.contractType,
+        contractNumber: validatedData.contractNumber,
+        contractStartDate: validatedData.contractStartDate,
+        contractEndDate: validatedData.contractEndDate,
+        warningStatus: validatedData.warningStatus || WarningStatus.NONE,
+        faceData: validatedData.faceData,
+      },
+      include: {
+        user: true,
+        department: true,
+        subDepartment: true,
+        shift: true,
+      },
+    });
     
     return NextResponse.json(employee, { status: 201 });
   } catch (error) {

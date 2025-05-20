@@ -106,19 +106,35 @@ export async function GET(
     // Buat objek yang aman untuk respons
     try {
       const safeEmployee = {
+        // Data Identitas Karyawan
         id: employee.id,
+        employeeId: employee.employeeId,
         name: employee.user?.name || 'Nama tidak tersedia',
+        
+        // Data Pribadi
+        gender: employee.gender,
         address: employee.address || '',
-        phoneNumber: employee.user?.phoneNumber || '',
-        joinDate: employee.contractStartDate,
-        status: employee.warningStatus,
+        faceData: employee.faceData || null,
+        
+        // Data Pekerjaan
         departmentId: employee.departmentId,
         subDepartmentId: employee.subDepartmentId,
         positionId: employee.positionId,
         shiftId: employee.shiftId,
         userId: employee.userId,
         
-        // Include related objects
+        // Informasi Kontrak
+        contractType: employee.contractType,
+        contractNumber: employee.contractNumber || '',
+        contractStartDate: employee.contractStartDate,
+        contractEndDate: employee.contractEndDate,
+        
+        // Status Karyawan
+        warningStatus: employee.warningStatus,
+        createdAt: employee.createdAt,
+        updatedAt: employee.updatedAt,
+        
+        // Relasi Objek
         department: employee.department ? {
           id: employee.department.id,
           name: employee.department.name,
@@ -127,20 +143,31 @@ export async function GET(
         subDepartment: employee.subDepartment ? {
           id: employee.subDepartment.id,
           name: employee.subDepartment.name,
+          departmentId: employee.subDepartment.departmentId,
         } : null,
         
         position: employee.position ? {
           id: employee.position.id,
           name: employee.position.name,
+          description: employee.position.description,
+          level: employee.position.level,
         } : null,
         
         shift: employee.shift ? {
           id: employee.shift.id,
           name: employee.shift.name,
-          startTime: employee.shift.mainWorkStart,
-          endTime: employee.shift.mainWorkEnd,
+          shiftType: employee.shift.shiftType,
+          mainWorkStart: employee.shift.mainWorkStart,
+          mainWorkEnd: employee.shift.mainWorkEnd,
+          lunchBreakStart: employee.shift.lunchBreakStart,
+          lunchBreakEnd: employee.shift.lunchBreakEnd,
+          regularOvertimeStart: employee.shift.regularOvertimeStart,
+          regularOvertimeEnd: employee.shift.regularOvertimeEnd,
+          weeklyOvertimeStart: employee.shift.weeklyOvertimeStart,
+          weeklyOvertimeEnd: employee.shift.weeklyOvertimeEnd,
         } : null,
         
+        // Menggunakan data user yang telah diambil melalui relasi Prisma
         user: employee.user ? {
           id: employee.user.id,
           name: employee.user.name || 'Nama tidak tersedia',

@@ -7,9 +7,11 @@ import {
 // GET /api/employees/[id]/contract-history
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    console.log(`[GET] /api/employees/${params.id}/contract-history - Request received`);
+    // Await params terlebih dahulu
+    const { id } = await params;
+    console.log(`[GET] /api/employees/${id}/contract-history - Request received`);
     
-    const employeeId = params.id;
+    const employeeId = id;
     console.log(`Getting contract history for employee: ${employeeId}`);
     
     try {
@@ -62,9 +64,11 @@ function isConnectionError(error: unknown): boolean {
 // POST /api/employees/[id]/contract-history
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    console.log(`[POST] /api/employees/${params.id}/contract-history - Request received`);
+    // Await params terlebih dahulu
+    const { id } = await params;
+    console.log(`[POST] /api/employees/${id}/contract-history - Request received`);
     
-    const employeeId = params.id;
+    const employeeId = id;
     const data = await request.json();
     console.log(`Creating contract history for employee ${employeeId} with data:`, data);
     

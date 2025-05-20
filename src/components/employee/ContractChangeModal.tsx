@@ -105,6 +105,16 @@ export function ContractChangeModal({
     try {
       setIsSubmitting(true);
       
+      // Mempersiapkan data sesuai format yang diharapkan backend
+      const payload = {
+        contractType: data.contractType,
+        contractNumber: data.contractNumber || "",
+        startDate: data.startDate.toISOString(),
+        endDate: data.endDate ? data.endDate.toISOString() : null,
+        status: data.status,
+        notes: data.notes || ""
+      };
+      
       // Jika ada handler onSubmit dari parent
       if (onSubmit) {
         await onSubmit(data, employeeId);
@@ -115,16 +125,20 @@ export function ContractChangeModal({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(data),
+          body: JSON.stringify(payload),
         });
 
-        const result = await response.json();
-        
         if (!response.ok) {
-          throw new Error(result.error || "Gagal mengubah kontrak");
+          const result = await response.json();
+          throw new Error(result.message || "Gagal mengubah kontrak");
         }
         
-        toast.success("Kontrak berhasil diubah");
+        const result = await response.json();
+        if (result.success) {
+          toast.success("Kontrak berhasil diubah dan riwayat disimpan");
+        } else {
+          throw new Error(result.message || "Gagal mengubah kontrak");
+        }
       }
       
       // Reset form dan tutup modal

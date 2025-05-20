@@ -35,44 +35,17 @@ export async function getAllEmployees() {
     include: {
       user: {
         select: {
+          id: true,
           name: true,
           email: true,
           role: true,
-        },
+        }
       },
       department: true,
       subDepartment: true,
       shift: true,
     },
   });
-}
-
-// Helper function untuk mengambil data user dengan aman 
-// (mengatasi masalah authId null)
-async function getBasicUserData(userId: string) {
-  if (!userId) {
-    return null;
-  }
-  
-  try {
-    // Gunakan prisma.$queryRaw untuk menghindari validasi skema Prisma
-    // Ini akan mengambil data user tanpa menimbulkan error jika authId null
-    const rawUserData = await prisma.$queryRaw`
-      SELECT id, email, name, role 
-      FROM users 
-      WHERE id = ${userId}
-    `;
-    
-    // Ambil row pertama jika ada
-    if (Array.isArray(rawUserData) && rawUserData.length > 0) {
-      return rawUserData[0];
-    }
-    
-    return null;
-  } catch (error) {
-    console.warn(`Error saat mengambil data User (ID: ${userId}):`, error);
-    return null;
-  }
 }
 
 // Get karyawan berdasarkan ID
@@ -91,15 +64,49 @@ export async function getEmployeeById(id: string) {
       const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
       await ensureDatabaseConnection();
       
-      // Modifikasi untuk mengatasi masalah authId null
-      // Langkah 1: Coba ambil data Employee tanpa relasi User
+      // Query untuk mendapatkan data karyawan dengan relasi user langsung
       const employeeData = await prisma.employee.findUnique({
         where: { id },
         include: {
           department: true,
           subDepartment: true,
-          position: true,
-          shift: true,
+          position: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              level: true,
+              createdAt: true,
+              updatedAt: true
+            }
+          },
+          shift: {
+            select: {
+              id: true,
+              name: true,
+              shiftType: true,
+              mainWorkStart: true,
+              mainWorkEnd: true,
+              lunchBreakStart: true,
+              lunchBreakEnd: true,
+              regularOvertimeStart: true,
+              regularOvertimeEnd: true,
+              weeklyOvertimeStart: true,
+              weeklyOvertimeEnd: true,
+              subDepartmentId: true,
+              createdAt: true,
+              updatedAt: true
+            }
+          },
+          // Langsung ambil data user dari relasi
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
+          }
         },
       });
       
@@ -108,29 +115,10 @@ export async function getEmployeeById(id: string) {
         return null;
       }
       
-      // Langkah 2: Ambil data User dengan fungsi helper yang aman
-      let userData = await getBasicUserData(employeeData.userId);
-      
-      // Jika userData masih null, buat data dummy
-      if (!userData) {
-        console.log(`Membuat data user dummy untuk userId: ${employeeData.userId}`);
-        userData = {
-          id: employeeData.userId || '',
-          name: 'Nama tidak tersedia',
-          email: 'email-tidak-tersedia@dummy.com',
-          role: 'EMPLOYEE'
-        };
-      }
-      
-      // Langkah 3: Gabungkan data Employee dan User
-      const result = {
-        ...employeeData,
-        user: userData
-      };
-      
+      // Data sudah termasuk informasi user, tidak perlu query tambahan
       console.log(`Hasil query getEmployeeById: Data ditemukan`);
       
-      return result;
+      return employeeData;
     } catch (dbError) {
       console.error("Database error in getEmployeeById:", dbError);
       console.error("Trace:", new Error().stack);
@@ -173,7 +161,14 @@ export async function getEmployeeByUserId(userId: string) {
   return prisma.employee.findFirst({
     where: { userId },
     include: {
-      user: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+        }
+      },
       department: true,
       subDepartment: true,
       shift: true,
@@ -186,7 +181,14 @@ export async function getEmployeeByEmployeeId(employeeId: string) {
   return prisma.employee.findFirst({
     where: { employeeId },
     include: {
-      user: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+        }
+      },
       department: true,
       subDepartment: true,
       shift: true,
@@ -329,6 +331,20 @@ export async function updateEmployeeContract(
   return prisma.employee.update({
     where: { id },
     data,
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+        }
+      },
+      department: true,
+      subDepartment: true,
+      shift: true,
+      position: true
+    },
   });
 }
 
@@ -414,4 +430,4 @@ export async function saveFaceData(id: string, faceData: string) {
       faceData
     }
   });
-} 
+}

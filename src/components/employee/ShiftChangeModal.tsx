@@ -169,33 +169,8 @@ export function ShiftChangeModal({
     try {
       setIsSubmitting(true);
       
-      // Update status shift karyawan
-      const updateShiftResponse = await fetch(`/api/employees/${employeeId}/shift-status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          shiftId: data.shift
-        }),
-      });
-      
-      const updateShiftData = await updateShiftResponse.json();
-      
-      if (!updateShiftResponse.ok) {
-        // Penanganan error yang lebih robust
-        let errorMessage = "Gagal memperbarui shift karyawan";
-        
-        if (updateShiftData && updateShiftData.message) {
-          errorMessage = updateShiftData.message;
-        }
-        
-        throw new Error(errorMessage);
-      }
-      
-      console.log("Shift karyawan berhasil diperbarui, menyimpan riwayat...");
-      
-      // Lanjutkan dengan menyimpan riwayat perubahan shift
+      // Kirim permintaan langsung ke fungsi onSubmit (handleChangeShift)
+      // Ini akan mengirim data ke endpoint shift-history
       await onSubmit(data, employeeId);
       
       form.reset();

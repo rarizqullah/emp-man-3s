@@ -682,13 +682,23 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
     try {
       console.log(`Updating contract for employee ${employeeId} with data:`, data);
       
+      // Format data sesuai yang diharapkan oleh endpoint
+      const payload = {
+        contractType: data.contractType,
+        contractNumber: data.contractNumber || "",
+        startDate: data.startDate.toISOString(),
+        endDate: data.endDate ? data.endDate.toISOString() : null,
+        status: data.status,
+        notes: data.notes || ""
+      };
+      
       // Kirim permintaan ke endpoint contract-status
       const response = await fetch(`/api/employees/${employeeId}/contract-status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
       
       const responseData = await response.json();
@@ -697,14 +707,14 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
       if (!response.ok) {
         let errorMessage = 'Gagal mengubah kontrak';
         
-        if (responseData && responseData.error) {
-          errorMessage = responseData.error;
+        if (responseData && responseData.message) {
+          errorMessage = responseData.message;
         }
         
         throw new Error(errorMessage);
       }
       
-      toast.success('Kontrak berhasil diubah');
+      toast.success('Kontrak berhasil diubah dan riwayat disimpan');
       
       // Refresh data menggunakan fetchEmployeeData yang sudah didefinisikan
       await fetchEmployeeData();

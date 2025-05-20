@@ -363,27 +363,9 @@ export default function EmployeePage() {
     try {
       console.log("Mengubah status SP karyawan:", data);
       
-      // 1. Update status SP pada data karyawan
-      const statusResponse = await fetch(`/api/employees/${employeeId}/warning-status`, {
+      // Kirim data sekaligus (perubahan status dan riwayat)
+      const response = await fetch(`/api/employees/${employeeId}/warning-status`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          warningStatus: data.warningStatus,
-        }),
-      });
-      
-      if (!statusResponse.ok) {
-        const errorData = await statusResponse.json();
-        throw new Error(errorData.message || 'Gagal mengubah status SP');
-      }
-      
-      console.log("Status SP berhasil diubah, sekarang menambahkan ke riwayat");
-      
-      // 2. Tambahkan ke riwayat SP
-      const historyResponse = await fetch(`/api/employees/${employeeId}/warning-history`, {
-        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -395,13 +377,19 @@ export default function EmployeePage() {
         }),
       });
       
-      if (!historyResponse.ok) {
-        const errorData = await historyResponse.json();
-        throw new Error(errorData.message || 'Gagal menambahkan riwayat SP');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Gagal mengubah status SP');
       }
       
-      toast.success('Status SP berhasil diubah');
-      fetchEmployees(); // Refresh data
+      const responseData = await response.json();
+      
+      if (responseData.success) {
+        toast.success('Status SP berhasil diubah dan riwayat disimpan');
+        fetchEmployees(); // Refresh data
+      } else {
+        throw new Error(responseData.message || 'Gagal mengubah status SP');
+      }
     } catch (error: unknown) {
       console.error('Error updating warning status:', error);
       const errorMessage = error instanceof Error ? error.message : 'Gagal mengubah status SP';
@@ -424,30 +412,29 @@ export default function EmployeePage() {
         body: JSON.stringify({
           shiftId: data.shift,
           effectiveDate: data.effectiveDate,
-          notes: data.notes
+          notes: data.notes || ''
         }),
       });
       
-      const responseData = await response.json();
-      
-      // Penanganan error yang lebih robust
       if (!response.ok) {
-        let errorMessage = 'Gagal mengubah shift';
-        
-        if (responseData && responseData.error) {
-          errorMessage = responseData.error;
-        }
-        
-        throw new Error(errorMessage);
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Gagal mengubah shift');
       }
       
-      toast.success('Shift berhasil diubah');
-      fetchEmployees(); // Refresh data
-      setShiftModalOpen(false);
+      const responseData = await response.json();
+      
+      if (responseData.success) {
+        toast.success('Shift berhasil diubah dan riwayat disimpan');
+        fetchEmployees(); // Refresh data
+        setShiftModalOpen(false);
+      } else {
+        throw new Error(responseData.message || 'Gagal mengubah shift');
+      }
     } catch (error: unknown) {
       console.error('Error updating shift:', error);
       const errorMessage = error instanceof Error ? error.message : 'Gagal mengubah shift';
       toast.error(errorMessage);
+      throw error; // Re-throw untuk ditangkap oleh modal
     }
   };
 

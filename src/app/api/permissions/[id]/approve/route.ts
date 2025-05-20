@@ -3,10 +3,8 @@ import { supabaseRouteHandler } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db/prisma";
 import { PermissionStatus } from "@prisma/client";
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     // Cek session untuk autentikasi menggunakan Supabase
     const supabase = await supabaseRouteHandler();

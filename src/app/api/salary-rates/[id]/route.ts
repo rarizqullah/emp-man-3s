@@ -18,10 +18,8 @@ const salaryRateUpdateSchema = z.object({
 });
 
 // GET: Mendapatkan tarif gaji berdasarkan ID
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const salaryRate = await getSalaryRateById(params.id);
     
@@ -43,10 +41,8 @@ export async function GET(
 }
 
 // PUT: Mengupdate tarif gaji berdasarkan ID
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const data = await request.json();
     
@@ -120,10 +116,8 @@ export async function PUT(
 }
 
 // DELETE: Menghapus tarif gaji berdasarkan ID
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     // Periksa apakah tarif gaji ada
     const existingSalaryRate = await getSalaryRateById(params.id);

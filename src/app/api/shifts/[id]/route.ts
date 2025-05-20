@@ -22,10 +22,8 @@ const shiftUpdateSchema = z.object({
 });
 
 // GET: Mendapatkan shift berdasarkan ID
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const shift = await getShiftById(params.id);
     
@@ -47,10 +45,8 @@ export async function GET(
 }
 
 // PUT: Mengupdate shift berdasarkan ID
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id;
     const data = await request.json();
@@ -148,10 +144,8 @@ export async function PUT(
 }
 
 // DELETE: Menghapus shift berdasarkan ID
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     // Periksa apakah shift ada
     const existingShift = await getShiftById(params.id);

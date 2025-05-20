@@ -7,9 +7,11 @@ import {
 // GET /api/employees/[id]/warning-history
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    console.log(`[GET] /api/employees/${params.id}/warning-history - Request received`);
+    // Await params terlebih dahulu
+    const { id } = await params;
+    console.log(`[GET] /api/employees/${id}/warning-history - Request received`);
     
-    const employeeId = params.id;
+    const employeeId = id;
     console.log(`Getting warning history for employee: ${employeeId}`);
     
     try {
@@ -35,8 +37,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       throw dbError;
     }
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`Error in warning history GET:`, error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       { success: false, message: `Failed to get warning history: ${errorMessage}` },
       { status: 500 }
@@ -62,16 +64,18 @@ function isConnectionError(error: unknown): boolean {
 // POST /api/employees/[id]/warning-history
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    console.log(`[POST] /api/employees/${params.id}/warning-history - Request received`);
+    // Await params terlebih dahulu
+    const { id } = await params;
+    console.log(`[POST] /api/employees/${id}/warning-history - Request received`);
     
-    const employeeId = params.id;
+    const employeeId = id;
     const data = await request.json();
     console.log(`Creating warning history for employee ${employeeId} with data:`, data);
     
     // Validasi data dasar
-    if (!data.warningStatus || !data.startDate || !data.reason) {
+    if (!data.warningStatus || !data.startDate) {
       return NextResponse.json(
-        { success: false, message: 'Warning status, start date, and reason are required' },
+        { success: false, message: 'Status SP dan tanggal mulai wajib diisi' },
         { status: 400 }
       );
     }
@@ -83,36 +87,21 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       startDate: new Date(data.startDate),
       endDate: data.endDate ? new Date(data.endDate) : null,
       reason: data.reason,
-      attachmentUrl: data.attachmentUrl
+      attachmentUrl: data.attachmentUrl || null
     };
     
-    try {
-      // Pastikan koneksi database
-      const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
-      await ensureDatabaseConnection();
-      
-      const warningHistory = await createWarningHistory(warningData);
-      console.log(`Warning history created successfully:`, warningHistory);
-      
-      return NextResponse.json({ 
-        success: true, 
-        data: warningHistory 
-      });
-    } catch (dbError) {
-      console.error(`Database error in creating warning history:`, dbError);
-      if (isConnectionError(dbError)) {
-        return NextResponse.json(
-          { success: false, message: 'Terjadi kesalahan koneksi database, silakan coba lagi nanti' },
-          { status: 503 }
-        );
-      }
-      throw dbError;
-    }
+    const warningHistory = await createWarningHistory(warningData);
+    console.log(`Warning history created successfully:`, warningHistory);
+    
+    return NextResponse.json({ 
+      success: true, 
+      data: warningHistory 
+    });
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`Error in warning history POST:`, error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, message: `Failed to create warning history: ${errorMessage}` },
+      { success: false, message: `Gagal menambahkan riwayat SP: ${errorMessage}` },
       { status: 500 }
     );
   }

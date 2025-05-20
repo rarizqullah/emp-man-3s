@@ -1,111 +1,70 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/db/prisma";
+import { NextRequest, NextResponse } from 'next/server';
+import { updateEmployeeContract } from '@/lib/db/employee.service';
+import { ContractType } from '@prisma/client';
 import { revalidatePath } from "next/cache";
+import { createContractHistory } from '@/lib/db/employee-history.service';
 
 // PUT /api/employees/[id]/contract-status
-// Mengubah status kontrak karyawan
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// Mengubah status kontrak karyawan dan menambahkan riwayat
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const employeeId = params.id;
-    console.log(`Mengubah kontrak karyawan dengan ID: ${employeeId}`);
-
-    // Pastikan employeeId ada
-    if (!employeeId) {
-      return NextResponse.json(
-        { success: false, error: "ID karyawan tidak ditemukan" },
-        { status: 400 }
-      );
-    }
-
-    // Parse data dari request body
+    // Await params terlebih dahulu
+    const { id } = await params;
+    console.log(`[PUT] /api/employees/${id}/contract-status - Request received`);
+    
+    const employeeId = id;
     const data = await request.json();
-    console.log("Data kontrak yang diterima:", data);
-
-    // Validasi data
-    if (!data.contractType) {
+    console.log(`Updating contract status for employee ${employeeId} with data:`, data);
+    
+    // Validasi data dasar
+    if (!data.contractType || !data.startDate) {
       return NextResponse.json(
-        { success: false, error: "Tipe kontrak dibutuhkan" },
+        { success: false, message: 'Tipe kontrak dan tanggal mulai wajib diisi' },
         { status: 400 }
       );
     }
-
-    // Dapatkan data karyawan yang ada
-    const existingEmployee = await prisma.employee.findUnique({
-      where: { id: employeeId },
-    });
-
-    if (!existingEmployee) {
-      return NextResponse.json(
-        { success: false, error: "Karyawan tidak ditemukan" },
-        { status: 404 }
-      );
-    }
-
-    // Nonaktifkan kontrak yang sedang aktif (jika ada)
-    // dengan menambahkan endDate ke riwayat kontrak aktif
-    await prisma.contractHistory.updateMany({
-      where: { 
-        employeeId: employeeId,
-        endDate: null,
-        status: "ACTIVE"
-      },
-      data: { 
-        endDate: new Date(),
-        status: "INACTIVE"
-      }
-    });
-
+    
     // 1. Update kontrak karyawan
-    const updatedEmployee = await prisma.employee.update({
-      where: { id: employeeId },
-      data: {
-        contractType: data.contractType,
-        contractNumber: data.contractNumber,
-        contractStartDate: data.startDate ? new Date(data.startDate) : undefined,
-        contractEndDate: data.endDate ? new Date(data.endDate) : null
-      },
-      include: {
-        user: true,
-        department: true,
-        subDepartment: true,
-        position: true,
-        shift: true,
-      },
-    });
-
-    // 2. Catat riwayat kontrak
-    const contractHistory = await prisma.contractHistory.create({
-      data: {
-        employeeId,
-        contractType: data.contractType,
-        contractNumber: data.contractNumber,
-        startDate: data.startDate ? new Date(data.startDate) : new Date(),
-        endDate: data.endDate ? new Date(data.endDate) : null,
-        status: "ACTIVE", // Selalu set sebagai ACTIVE untuk kontrak baru
-        notes: data.notes || `Perubahan kontrak menjadi ${data.contractType === "PERMANENT" ? "Permanen" : "Training"}`
-      }
-    });
-
-    console.log("Kontrak karyawan berhasil diperbarui:", updatedEmployee);
-    console.log("Riwayat kontrak berhasil dicatat:", contractHistory);
-
+    const contractData = {
+      contractType: data.contractType as ContractType,
+      contractNumber: data.contractNumber || null,
+      contractStartDate: new Date(data.startDate),
+      contractEndDate: data.endDate ? new Date(data.endDate) : null
+    };
+    
+    const updatedEmployee = await updateEmployeeContract(employeeId, contractData);
+    console.log(`Employee contract updated successfully:`, updatedEmployee);
+    
+    // 2. Simpan riwayat kontrak
+    const historyData = {
+      employee: { connect: { id: employeeId } },
+      contractType: data.contractType,
+      contractNumber: data.contractNumber || null,
+      startDate: new Date(data.startDate),
+      endDate: data.endDate ? new Date(data.endDate) : null,
+      status: data.status || 'ACTIVE',
+      notes: data.notes || null
+    };
+    
+    const contractHistory = await createContractHistory(historyData);
+    console.log(`Contract history created successfully:`, contractHistory);
+    
     // Revalidasi jalur untuk memperbarui UI
     revalidatePath(`/employee/${employeeId}`);
     revalidatePath('/employee');
-
-    return NextResponse.json({
-      success: true,
-      data: updatedEmployee,
-      history: contractHistory
+    
+    return NextResponse.json({ 
+      success: true, 
+      data: {
+        employee: updatedEmployee,
+        history: contractHistory
+      }
     });
-  } catch (error) {
-    console.error("Error updating employee contract:", error);
-    const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan";
+  } catch (error: unknown) {
+    console.error(`Error in contract status update:`, error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: `Terjadi kesalahan saat memperbarui kontrak karyawan: ${errorMessage}` },
+      { success: false, message: `Gagal memperbarui kontrak: ${errorMessage}` },
       { status: 500 }
     );
   }

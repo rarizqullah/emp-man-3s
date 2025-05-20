@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRouteHandler } from '@/lib/supabase/server';
 import { prisma } from '@/lib/db';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { employeeId: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ employeeId: string }> }) {
+  const params = await props.params;
   try {
     // Validasi sesi user menggunakan Supabase auth
     const supabase = await supabaseRouteHandler();

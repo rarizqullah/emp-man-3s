@@ -15,10 +15,8 @@ const positionUpdateSchema = z.object({
 });
 
 // Mendapatkan jabatan berdasarkan ID
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const position = await getPositionById(params.id);
     
@@ -46,10 +44,8 @@ export async function GET(
 }
 
 // Update jabatan
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const data = await request.json();
     
@@ -78,10 +74,8 @@ export async function PUT(
 }
 
 // Hapus jabatan
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     // Cek apakah jabatan digunakan oleh karyawan
     const employeeCount = await getEmployeeCountByPosition(params.id);

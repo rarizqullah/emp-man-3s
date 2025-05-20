@@ -1,66 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from "@/lib/db/prisma";
+import { getShiftHistoryByEmployeeId, createShiftHistory } from '@/lib/db/employee-history.service';
+import { getShiftById } from '@/lib/db/shift.service';
+import { updateEmployeeShift } from '@/lib/db/employee.service';
 import { revalidatePath } from "next/cache";
 
 // GET /api/employees/[id]/shift-history
 // Mendapatkan riwayat perubahan shift karyawan
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const employeeId = params.id;
-    console.log(`Mengambil riwayat shift karyawan dengan ID: ${employeeId}`);
-
-    // Pastikan employeeId ada
-    if (!employeeId) {
-      return NextResponse.json(
-        { success: false, error: "ID karyawan tidak ditemukan" },
-        { status: 400 }
-      );
-    }
-
+    // Await params terlebih dahulu
+    const { id } = await params;
+    console.log(`[GET] /api/employees/${id}/shift-history - Request received`);
+    
+    const employeeId = id;
+    console.log(`Getting shift history for employee: ${employeeId}`);
+    
     try {
       // Pastikan koneksi database
       const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
       await ensureDatabaseConnection();
       
-      // Ambil riwayat shift
-      const shiftHistory = await prisma.shiftHistory.findMany({
-        where: { employeeId },
-        include: {
-          shift: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        data: shiftHistory
+      const shiftHistory = await getShiftHistoryByEmployeeId(employeeId);
+      console.log(`Shift history data fetched: ${JSON.stringify(shiftHistory)}`);
+      
+      return NextResponse.json({ 
+        success: true, 
+        data: shiftHistory || [] 
       });
     } catch (dbError) {
-      console.error("Database error fetching shift history:", dbError);
+      console.error(`Database error in shift history:`, dbError);
       if (isConnectionError(dbError)) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: "Terjadi kesalahan koneksi database, silakan coba lagi nanti" 
-          },
+          { success: false, message: 'Terjadi kesalahan koneksi database, silakan coba lagi nanti' },
           { status: 503 }
         );
       }
       throw dbError;
     }
   } catch (error: unknown) {
-    console.error("Error fetching employee shift history:", error);
+    console.error(`Error in shift history GET:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { 
-        success: false, 
-        error: `Terjadi kesalahan saat mengambil riwayat shift karyawan: ${errorMessage}` 
-      },
+      { success: false, message: `Failed to get shift history: ${errorMessage}` },
       { status: 500 }
     );
   }
@@ -83,107 +64,64 @@ function isConnectionError(error: unknown): boolean {
 
 // POST /api/employees/[id]/shift-history
 // Menambahkan riwayat perubahan shift karyawan
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const employeeId = params.id;
-    console.log(`Menambahkan riwayat shift karyawan dengan ID: ${employeeId}`);
-
-    // Pastikan employeeId ada
-    if (!employeeId) {
-      return NextResponse.json(
-        { success: false, error: "ID karyawan tidak ditemukan" },
-        { status: 400 }
-      );
-    }
-
-    // Parse data dari request body
+    // Await params terlebih dahulu
+    const { id } = await params;
+    console.log(`[POST] /api/employees/${id}/shift-history - Request received`);
+    
+    const employeeId = id;
     const data = await request.json();
-    console.log("Data riwayat shift yang diterima:", data);
-
-    // Validasi data
-    if (!data.shiftId) {
+    console.log(`Creating shift history for employee ${employeeId} with data:`, data);
+    
+    // Validasi data dasar
+    if (!data.shiftId || !data.effectiveDate) {
       return NextResponse.json(
-        { success: false, error: "Shift ID dibutuhkan" },
+        { success: false, message: 'Shift ID dan tanggal efektif wajib diisi' },
         { status: 400 }
       );
     }
-
-    if (!data.effectiveDate) {
+    
+    // Periksa shift exists
+    const shift = await getShiftById(data.shiftId);
+    if (!shift) {
       return NextResponse.json(
-        { success: false, error: "Tanggal efektif dibutuhkan" },
-        { status: 400 }
+        { success: false, message: 'Shift tidak ditemukan' },
+        { status: 404 }
       );
     }
-
-    try {
-      // Pastikan koneksi database
-      const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
-      await ensureDatabaseConnection();
-      
-      // Dapatkan shift sebelumnya untuk direkam dalam riwayat
-      const employee = await prisma.employee.findUnique({
-        where: { id: employeeId },
-        include: { shift: true },
-      });
-
-      if (!employee) {
-        return NextResponse.json(
-          { success: false, error: "Karyawan tidak ditemukan" },
-          { status: 404 }
-        );
-      }
-
-      // Format data untuk dibuat di database - sesuai dengan skema ShiftHistory
-      const formattedData = {
-        employeeId,
-        shiftId: data.shiftId,
-        startDate: new Date(data.effectiveDate),
-        endDate: null,
-        notes: data.notes || null,
-      };
-
-      // Buat riwayat shift baru
-      const newShiftHistory = await prisma.shiftHistory.create({
-        data: formattedData,
-        include: {
-          shift: true,
-        },
-      });
-
-      console.log("Riwayat shift berhasil ditambahkan:", newShiftHistory);
-
-      // Revalidasi jalur untuk memperbarui UI
-      revalidatePath(`/employee/${employeeId}`);
-      revalidatePath('/employee');
-
-      return NextResponse.json({
-        success: true,
-        data: newShiftHistory
-      });
-    } catch (dbError) {
-      console.error("Database error creating shift history:", dbError);
-      if (isConnectionError(dbError)) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: "Terjadi kesalahan koneksi database, silakan coba lagi nanti" 
-          },
-          { status: 503 }
-        );
-      }
-      throw dbError;
-    }
+    
+    // Format data untuk service
+    const shiftData = {
+      employee: { connect: { id: employeeId } },
+      shift: { connect: { id: data.shiftId } },
+      startDate: new Date(data.effectiveDate),
+      endDate: data.endDate ? new Date(data.endDate) : null,
+      notes: data.notes || null
+    };
+    
+    // 1. Update employee's current shift - selalu update shift saat ini
+    const updatedEmployee = await updateEmployeeShift(employeeId, data.shiftId);
+    console.log(`Employee shift updated successfully:`, updatedEmployee);
+    
+    // 2. Create shift history
+    const shiftHistory = await createShiftHistory(shiftData);
+    console.log(`Shift history created successfully:`, shiftHistory);
+    
+    // Revalidasi jalur untuk memperbarui UI
+    revalidatePath(`/employee/${employeeId}`);
+    revalidatePath('/employee');
+    
+    return NextResponse.json({ 
+      success: true, 
+      data: shiftHistory,
+      employee: updatedEmployee
+    });
   } catch (error: unknown) {
-    console.error("Error creating shift history:", error);
+    console.error(`Error in shift history POST:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { 
-        success: false, 
-        error: `Terjadi kesalahan saat membuat riwayat shift: ${errorMessage}` 
-      },
+      { success: false, message: `Gagal membuat riwayat shift: ${errorMessage}` },
       { status: 500 }
     );
   }

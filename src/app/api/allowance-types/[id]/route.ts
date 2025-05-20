@@ -15,10 +15,8 @@ const allowanceTypeUpdateSchema = z.object({
 });
 
 // GET: Mendapatkan tipe tunjangan berdasarkan ID
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const allowanceType = await getAllowanceTypeById(params.id);
     
@@ -46,10 +44,8 @@ export async function GET(
 }
 
 // PUT: Mengupdate tipe tunjangan berdasarkan ID
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const data = await request.json();
     
@@ -98,10 +94,8 @@ export async function PUT(
 }
 
 // DELETE: Menghapus tipe tunjangan berdasarkan ID
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     // Periksa apakah tipe tunjangan digunakan oleh nilai tunjangan
     const valueCount = await getAllowanceTypeValueCount(params.id);

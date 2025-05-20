@@ -16,10 +16,8 @@ const allowanceValueUpdateSchema = z.object({
 });
 
 // GET: Mendapatkan nilai tunjangan berdasarkan ID
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id;
     const allowanceValue = await allowanceValueService.getAllowanceValueById(id);
@@ -42,10 +40,8 @@ export async function GET(
 }
 
 // PUT: Mengupdate nilai tunjangan berdasarkan ID
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id;
     const body = await request.json();
@@ -121,10 +117,8 @@ export async function PUT(
 }
 
 // DELETE: Menghapus nilai tunjangan berdasarkan ID
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id;
     
