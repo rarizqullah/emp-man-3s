@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt-client';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 
@@ -11,10 +10,49 @@ const attendanceSchema = z.object({
   isManual: z.boolean().optional().default(false),
 });
 
+// Helper function untuk mendapatkan session dari token JWT
+async function getSession(request: NextRequest) {
+  try {
+    const token = getTokenFromRequest(request);
+    if (!token) return null;
+    
+    const payload = await verifyToken(token);
+    if (!payload) return null;
+    
+    // Ambil data user lengkap dari database
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      include: {
+        employee: {
+          include: {
+            department: true,
+            position: true
+          }
+        }
+      }
+    });
+    
+    if (!user) return null;
+    
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        employeeId: user.employee?.id
+      }
+    };
+  } catch (error) {
+    console.error('Error getting session:', error);
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Validasi sesi user
-    const session = await getServerSession(authOptions);
+    const session = await getSession(request);
     if (!session || !session.user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -70,7 +108,7 @@ export async function POST(request: NextRequest) {
     const existingAttendance = await prisma.attendance.findFirst({
       where: {
         employeeId,
-        createdAt: {
+        attendanceDate: {
           gte: today,
           lt: tomorrow,
         },
@@ -82,7 +120,7 @@ export async function POST(request: NextRequest) {
 
     if (mode === 'checkIn') {
       // Jika sudah check in, tolak request
-      if (existingAttendance?.checkIn) {
+      if (existingAttendance?.checkInTime) {
         return NextResponse.json(
           { error: 'Karyawan sudah melakukan check in hari ini' },
           { status: 400 }
@@ -94,8 +132,9 @@ export async function POST(request: NextRequest) {
         const attendance = await prisma.attendance.create({
           data: {
             employeeId,
-            checkIn: now,
-            isManualCheckIn: isManual,
+            attendanceDate: today,
+            checkInTime: now,
+            status: 'PRESENT',
           },
         });
 
@@ -109,8 +148,8 @@ export async function POST(request: NextRequest) {
         const attendance = await prisma.attendance.update({
           where: { id: existingAttendance.id },
           data: {
-            checkIn: now,
-            isManualCheckIn: isManual,
+            checkInTime: now,
+            status: 'PRESENT',
           },
         });
 
@@ -122,7 +161,7 @@ export async function POST(request: NextRequest) {
       }
     } else if (mode === 'checkOut') {
       // Jika belum check in, tolak request
-      if (!existingAttendance?.checkIn) {
+      if (!existingAttendance?.checkInTime) {
         return NextResponse.json(
           { error: 'Karyawan belum check in hari ini' },
           { status: 400 }
@@ -130,7 +169,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Jika sudah check out, tolak request
-      if (existingAttendance.checkOut) {
+      if (existingAttendance.checkOutTime) {
         return NextResponse.json(
           { error: 'Karyawan sudah check out hari ini' },
           { status: 400 }
@@ -141,8 +180,7 @@ export async function POST(request: NextRequest) {
       const attendance = await prisma.attendance.update({
         where: { id: existingAttendance.id },
         data: {
-          checkOut: now,
-          isManualCheckOut: isManual,
+          checkOutTime: now,
         },
       });
 

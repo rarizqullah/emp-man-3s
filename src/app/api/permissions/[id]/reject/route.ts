@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseRouteHandler } from "@/lib/supabase/server";
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt-client';
 import { prisma } from "@/lib/db/prisma";
 import { PermissionStatus } from "@prisma/client";
 import { z } from "zod";
@@ -16,18 +16,21 @@ const rejectSchema = z.object({
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    // Cek session untuk autentikasi menggunakan Supabase
-    const supabase = await supabaseRouteHandler();
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
+    // Cek session untuk autentikasi menggunakan JWT
+    const token = getTokenFromRequest(request);
+    if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    
+    const payload = await verifyToken(token);
+    if (!payload) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    }
 
-    // Ambil data user dari database berdasarkan authId
+    // Ambil data user dari database
     const user = await prisma.user.findUnique({
       where: {
-        authId: session.user.id
+        id: payload.userId
       },
       include: {
         employee: {

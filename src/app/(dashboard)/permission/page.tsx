@@ -192,156 +192,71 @@ function PermissionPageContent() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [subDepartments, setSubDepartments] = useState<SubDepartment[]>([]);
   
-  // Tambahkan state untuk menandai mode sample (tanpa data asli)
-  const [sampleMode, setSampleMode] = useState(false);
-  
-  // Data contoh izin untuk digunakan saat terjadi error
-  const samplePermissionData: Permission[] = [
-    {
-      id: "IP-001",
-      employeeId: "EMP-001",
-      employeeName: "Budi Santoso",
-      department: "IT",
-      position: "Software Developer",
-      permissionType: "VACATION",
-      reason: "Liburan keluarga",
-      startDate: format(new Date(), "yyyy-MM-dd"),
-      endDate: format(new Date(new Date().setDate(new Date().getDate() + 3)), "yyyy-MM-dd"),
-      duration: 3,
-      status: "Menunggu",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "IP-002",
-      employeeId: "EMP-002",
-      employeeName: "Siti Aminah",
-      department: "Marketing",
-      position: "Marketing Manager",
-      permissionType: "SICK",
-      reason: "Demam dan flu",
-      startDate: format(new Date(), "yyyy-MM-dd"),
-      endDate: format(new Date(new Date().setDate(new Date().getDate() + 1)), "yyyy-MM-dd"),
-      duration: 1,
-      status: "Disetujui",
-      approvedBy: "Admin",
-      approvedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "IP-003",
-      employeeId: "EMP-003",
-      employeeName: "Ahmad Hidayat",
-      department: "Keuangan",
-      position: "Akuntan",
-      permissionType: "PERSONAL",
-      reason: "Mengurus administrasi",
-      startDate: format(new Date(), "yyyy-MM-dd"),
-      endDate: format(new Date(), "yyyy-MM-dd"),
-      duration: 1,
-      status: "Ditolak",
-      rejectedReason: "Terlalu banyak tugas mendesak yang harus diselesaikan",
-      createdAt: new Date().toISOString()
-    },
-  ];
-  
-  // Data contoh karyawan
-  const sampleEmployees: Employee[] = [
-    { id: "EMP-001", name: "Budi Santoso", departmentId: "DEPT-001", position: "Software Developer" },
-    { id: "EMP-002", name: "Siti Aminah", departmentId: "DEPT-002", position: "Marketing Manager" },
-    { id: "EMP-003", name: "Ahmad Hidayat", departmentId: "DEPT-003", position: "Akuntan" },
-    { id: "EMP-004", name: "Dewi Lestari", departmentId: "DEPT-001", position: "UI/UX Designer" },
-    { id: "EMP-005", name: "Eko Prasetyo", departmentId: "DEPT-004", position: "HRD Manager" },
-  ];
-  
-  // Data contoh departemen
-  const sampleDepartments: Department[] = [
-    { id: "DEPT-001", name: "IT" },
-    { id: "DEPT-002", name: "Marketing" },
-    { id: "DEPT-003", name: "Keuangan" },
-    { id: "DEPT-004", name: "HRD" },
-  ];
-  
-  // Data contoh sub-departemen
-  const sampleSubDepartments: SubDepartment[] = [
-    { id: "SUBDEPT-001", name: "Development", departmentId: "DEPT-001" },
-    { id: "SUBDEPT-002", name: "Infrastructure", departmentId: "DEPT-001" },
-    { id: "SUBDEPT-003", name: "Digital Marketing", departmentId: "DEPT-002" },
-    { id: "SUBDEPT-004", name: "Accounting", departmentId: "DEPT-003" },
-    { id: "SUBDEPT-005", name: "Recruitment", departmentId: "DEPT-004" },
-  ];
+  // Tambahkan state untuk menandai loading dan error
+  const [error, setError] = useState<string | null>(null);
   
   // Mengambil data izin, karyawan, departemen, dan sub-departemen
   useEffect(() => {
     const fetchPermissions = async () => {
       try {
         setIsLoading(true);
+        setError(null);
         
         console.log("Fetching permissions...");
         
-        // Coba fetch data dari API
-        try {
-          const response = await fetch(`/api/permissions?noRedirect=true`, {
-            cache: "no-store",
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-            }
-          });
-          
-          console.log("Permission response status:", response.status);
-          
-          if (!response.ok) {
-            // Jika terjadi error auth, gunakan data contoh tapi jangan redirect
-            console.log("Menggunakan data contoh karena response tidak OK");
-            setPermissionData(samplePermissionData);
-            setFilteredData(samplePermissionData);
-            setSampleMode(true);
-            return;
+        const response = await fetch(`/api/permissions?noRedirect=true`, {
+          cache: "no-store",
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
           }
-
-          const data = await response.json();
-          console.log("Permissions data:", data);
-          
-          // Transformasi data sesuai kebutuhan
-          const transformedData = data.map((perm: PermissionApiResponse) => ({
-            id: perm.id,
-            employeeId: perm.employee.id,
-            employeeName: perm.employee.user.name,
-            department: perm.employee.department?.name || '-',
-            position: perm.employee.position?.name || '-',
-            permissionType: perm.type,
-            reason: perm.reason,
-            startDate: perm.startDate,
-            endDate: perm.endDate,
-            duration: perm.duration,
-            attachmentUrl: perm.attachment,
-            status: perm.status === 'PENDING' ? 'Menunggu' :
-                    perm.status === 'APPROVED' ? 'Disetujui' : 'Ditolak',
-            approvedBy: perm.approvedBy?.user?.name,
-            approvedAt: perm.approvedAt,
-            rejectionReason: perm.rejectionReason,
-            createdAt: perm.createdAt,
-            otherDetails: perm.otherDetails
-          }));
-          
-          setPermissionData(transformedData);
-          setFilteredData(transformedData);
-          setSampleMode(false);
-        } catch (fetchError) {
-          console.error("Error dalam fetch:", fetchError);
-          // Gunakan data contoh untuk tampilan
-          setPermissionData(samplePermissionData);
-          setFilteredData(samplePermissionData);
-          setSampleMode(true);
-          toast.error("Menampilkan data contoh karena terjadi error komunikasi dengan server");
-        }
-      } catch (error) {
-        console.error("Auth error, but staying on page:", error);
-        toast.error("Gagal mengambil data izin. Menampilkan data contoh.");
+        });
         
-        // Set data contoh
-        setPermissionData(samplePermissionData);
-        setFilteredData(samplePermissionData);
-        setSampleMode(true);
+        console.log("Permission response status:", response.status);
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            setError("Sesi Anda telah berakhir. Silakan login kembali.");
+          } else {
+            setError(`Error ${response.status}: Gagal mengambil data izin`);
+          }
+          setPermissionData([]);
+          setFilteredData([]);
+          return;
+        }
+
+        const data = await response.json();
+        console.log("Permissions data:", data);
+        
+        // Transformasi data sesuai kebutuhan
+        const transformedData = data.map((perm: PermissionApiResponse) => ({
+          id: perm.id,
+          employeeId: perm.employee.id,
+          employeeName: perm.employee.user.name,
+          department: perm.employee.department?.name || '-',
+          position: perm.employee.position?.name || '-',
+          permissionType: perm.type,
+          reason: perm.reason,
+          startDate: perm.startDate,
+          endDate: perm.endDate,
+          duration: perm.duration,
+          attachmentUrl: perm.attachment,
+          status: perm.status === 'PENDING' ? 'Menunggu' :
+                  perm.status === 'APPROVED' ? 'Disetujui' : 'Ditolak',
+          approvedBy: perm.approvedBy?.user?.name,
+          approvedAt: perm.approvedAt,
+          rejectionReason: perm.rejectionReason,
+          createdAt: perm.createdAt,
+          otherDetails: perm.otherDetails
+        }));
+        
+        setPermissionData(transformedData);
+        setFilteredData(transformedData);
+      } catch (fetchError) {
+        console.error("Error dalam fetch:", fetchError);
+        setError("Gagal terhubung ke server. Periksa koneksi internet Anda.");
+        setPermissionData([]);
+        setFilteredData([]);
+        toast.error("Gagal mengambil data izin");
       } finally {
         setIsLoading(false);
       }
@@ -349,21 +264,14 @@ function PermissionPageContent() {
     
     const fetchEmployees = async () => {
       try {
-        // Coba fetch data dari API
-        try {
-          const response = await fetch(`/api/employees?noRedirect=true`, {
-            cache: "no-store",
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-            }
-          });
-          
-          if (!response.ok) {
-            console.log("Menggunakan data karyawan contoh karena response tidak OK");
-            setEmployees(sampleEmployees);
-            return;
+        const response = await fetch(`/api/employees?noRedirect=true`, {
+          cache: "no-store",
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
           }
-          
+        });
+        
+        if (response.ok) {
           const data = await response.json();
           const employeesList = data.map((emp: EmployeeApiResponse) => ({
             id: emp.id,
@@ -374,66 +282,55 @@ function PermissionPageContent() {
           }));
           
           setEmployees(employeesList);
-        } catch (fetchError) {
-          console.error("Error dalam fetch karyawan:", fetchError);
-          setEmployees(sampleEmployees);
+        } else {
+          console.error("Failed to fetch employees");
+          setEmployees([]);
         }
       } catch (error) {
         console.error("Error fetching employees:", error);
-        toast.error("Menampilkan data karyawan contoh.");
-        setEmployees(sampleEmployees);
+        setEmployees([]);
       }
     };
     
     const fetchDepartments = async () => {
       try {
-        // Coba fetch data dari API
-        try {
-          const response = await fetch('/api/departments?noRedirect=true', {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-            }
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            setDepartments(data);
-          } else {
-            setDepartments(sampleDepartments);
+        const response = await fetch('/api/departments?noRedirect=true', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
           }
-        } catch (fetchError) {
-          console.error("Error dalam fetch departemen:", fetchError);
-          setDepartments(sampleDepartments);
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setDepartments(data);
+        } else {
+          console.error("Failed to fetch departments");
+          setDepartments([]);
         }
       } catch (error) {
         console.error("Error fetching departments:", error);
-        setDepartments(sampleDepartments);
+        setDepartments([]);
       }
     };
     
     const fetchSubDepartments = async () => {
       try {
-        // Coba fetch data dari API
-        try {
-          const response = await fetch('/api/sub-departments?noRedirect=true', {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-            }
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            setSubDepartments(data);
-          } else {
-            setSubDepartments(sampleSubDepartments);
+        const response = await fetch('/api/sub-departments?noRedirect=true', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
           }
-        } catch (fetchError) {
-          console.error("Error dalam fetch sub-departemen:", fetchError);
-          setSubDepartments(sampleSubDepartments);
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setSubDepartments(data);
+        } else {
+          console.error("Failed to fetch sub departments");
+          setSubDepartments([]);
         }
       } catch (error) {
         console.error("Error fetching sub departments:", error);
-        setSubDepartments(sampleSubDepartments);
+        setSubDepartments([]);
       }
     };
     
@@ -441,21 +338,6 @@ function PermissionPageContent() {
     fetchEmployees();
     fetchDepartments();
     fetchSubDepartments();
-    
-    // Tambahkan event listener untuk mendeteksi sesi kedaluwarsa
-    const handleSessionExpired = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      if (customEvent.detail?.preventRedirect) {
-        setSampleMode(true);
-        toast.error("Menampilkan data contoh karena sesi telah berakhir");
-      }
-    };
-    
-    window.addEventListener('auth:sessionExpired', handleSessionExpired);
-    
-    return () => {
-      window.removeEventListener('auth:sessionExpired', handleSessionExpired);
-    };
   }, []);
   
   // Filter data izin
@@ -530,46 +412,7 @@ function PermissionPageContent() {
     
     try {
       setIsSubmitting(true);
-      
-      // Jika dalam sample mode, buat pengajuan baru secara lokal
-      if (sampleMode) {
-        // Hitung durasi hari
-        const diffTime = Math.abs(endDateObj.getTime() - startDateObj.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
-        // Buat ID baru
-        const newId = `IP-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-        
-        // Buat data izin baru
-        const newPermission: Permission = {
-          id: newId,
-          employeeId: selectedEmployee,
-          employeeName: employees.find(emp => emp.id === selectedEmployee)?.name || "",
-          department: departments.find(dept => 
-            dept.id === employees.find(emp => emp.id === selectedEmployee)?.departmentId
-          )?.name || "",
-          position: employees.find(emp => emp.id === selectedEmployee)?.position || "",
-          permissionType: permissionType,
-          reason: reason,
-          startDate: startDate,
-          endDate: endDate,
-          duration: diffDays || 1,
-          status: "Menunggu",
-          createdAt: new Date().toISOString(),
-          otherDetails: permissionType === "OTHER" ? otherDetails : undefined
-        };
-        
-        // Tambahkan ke data izin
-        const updatedPermissions = [newPermission, ...permissionData];
-        setPermissionData(updatedPermissions);
-        setFilteredData(updatedPermissions);
-        
-        resetForm();
-        setIsSubmitDialogOpen(false);
-        toast.success("Pengajuan izin berhasil dibuat (Mode Contoh)");
-        return;
-      }
-      
       // Siapkan data izin untuk dikirim ke API
       const permissionRequestData = {
         employeeId: selectedEmployee,
@@ -580,112 +423,63 @@ function PermissionPageContent() {
         otherDetails: permissionType === "OTHER" ? otherDetails : undefined
       };
 
+      const response = await fetch("/api/permissions?noRedirect=true", {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+        body: JSON.stringify(permissionRequestData),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Gagal membuat izin');
+      }
+
+      // Reset form dan tutup dialog
+      resetForm();
+      setIsSubmitDialogOpen(false);
+
+      // Refresh data izin
       try {
-        const response = await fetch("/api/permissions?noRedirect=true", {
-          method: "POST",
+        const fetchResponse = await fetch('/api/permissions?noRedirect=true', {
           headers: {
-            'Content-Type': 'application/json',
             'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-          },
-          body: JSON.stringify(permissionRequestData),
+          }
         });
         
-        if (!response.ok) {
-          // Jika terjadi error, gunakan simulasi data
-          console.log("Menggunakan simulasi untuk pengajuan izin karena response tidak OK");
-          
-          // Hitung durasi hari
-          const diffTime = Math.abs(endDateObj.getTime() - startDateObj.getTime());
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          
-          // Buat ID baru
-          const newId = `IP-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-          
-          // Buat data izin baru
-          const newPermission: Permission = {
-            id: newId,
-            employeeId: selectedEmployee,
-            employeeName: employees.find(emp => emp.id === selectedEmployee)?.name || "",
-            department: departments.find(dept => 
-              dept.id === employees.find(emp => emp.id === selectedEmployee)?.departmentId
-            )?.name || "",
-            position: employees.find(emp => emp.id === selectedEmployee)?.position || "",
-            permissionType: permissionType,
-            reason: reason,
-            startDate: startDate,
-            endDate: endDate,
-            duration: diffDays || 1,
-            status: "Menunggu",
-            createdAt: new Date().toISOString(),
-            otherDetails: permissionType === "OTHER" ? otherDetails : undefined
-          };
-          
-          // Tambahkan ke data izin
-          const updatedPermissions = [newPermission, ...permissionData];
-          setPermissionData(updatedPermissions);
-          setFilteredData(updatedPermissions);
-          
-          resetForm();
-          setIsSubmitDialogOpen(false);
-          setSampleMode(true);
-          toast.success("Pengajuan izin berhasil dibuat (Mode Contoh)");
-          return;
+        if (fetchResponse.ok) {
+          const data = await fetchResponse.json();
+          const transformedData = data.map((perm: PermissionApiResponse) => ({
+            id: perm.id,
+            employeeId: perm.employee.id,
+            employeeName: perm.employee.user.name,
+            department: perm.employee.department?.name || '-',
+            position: perm.employee.position?.name || '-',
+            permissionType: perm.type,
+            reason: perm.reason,
+            startDate: perm.startDate,
+            endDate: perm.endDate,
+            duration: perm.duration,
+            attachmentUrl: perm.attachment,
+            status: perm.status === 'PENDING' ? 'Menunggu' :
+                   perm.status === 'APPROVED' ? 'Disetujui' : 'Ditolak',
+            approvedBy: perm.approvedBy?.user?.name,
+            approvedAt: perm.approvedAt,
+            rejectionReason: perm.rejectionReason,
+            createdAt: perm.createdAt,
+            otherDetails: perm.otherDetails
+          }));
+          setPermissionData(transformedData);
+          setFilteredData(transformedData);
         }
-
-        // Gunakan response jika diperlukan
-        await response.json();
-        
-        // Reset form dan tutup dialog
-        resetForm();
-        setIsSubmitDialogOpen(false);
-
-        // Refresh data izin
-        try {
-          const fetchResponse = await fetch('/api/permissions?noRedirect=true', {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-            }
-          });
-          
-          if (fetchResponse.ok) {
-            const data = await fetchResponse.json();
-            const transformedData = data.map((perm: PermissionApiResponse) => ({
-              id: perm.id,
-              employeeId: perm.employee.id,
-              employeeName: perm.employee.user.name,
-              department: perm.employee.department?.name || '-',
-              position: perm.employee.position?.name || '-',
-              permissionType: perm.type,
-              reason: perm.reason,
-              startDate: perm.startDate,
-              endDate: perm.endDate,
-              duration: perm.duration,
-              attachmentUrl: perm.attachment,
-              status: perm.status === 'PENDING' ? 'Menunggu' :
-                     perm.status === 'APPROVED' ? 'Disetujui' : 'Ditolak',
-              approvedBy: perm.approvedBy?.user?.name,
-              approvedAt: perm.approvedAt,
-              rejectionReason: perm.rejectionReason,
-              createdAt: perm.createdAt,
-              otherDetails: perm.otherDetails
-            }));
-            setPermissionData(transformedData);
-            setFilteredData(transformedData);
-          } else {
-            throw new Error("Gagal refresh data");
-          }
-        } catch (refreshError) {
-          console.error("Error refreshing data:", refreshError);
-          // Refresh dengan data yang baru saja ditambahkan secara lokal
-          toast.error("Menampilkan perubahan secara lokal");
-        }
-
-        toast.success("Pengajuan izin berhasil dikirim");
-      } catch (submitError) {
-        console.error("Error submitting permission:", submitError);
-        toast.error("Gagal mengirim permintaan izin. Mencoba dengan mode contoh.");
-        setSampleMode(true);
+      } catch (refreshError) {
+        console.error("Error refreshing data:", refreshError);
+        toast.error("Izin berhasil dibuat, silakan refresh halaman untuk melihat perubahan");
       }
+
+      toast.success("Pengajuan izin berhasil dikirim");
     } catch (error) {
       console.error("Error submitting permission:", error);
       toast.error("Gagal mengirim permintaan izin. Silakan coba lagi.");
@@ -696,101 +490,46 @@ function PermissionPageContent() {
   
   // Handler untuk menyetujui izin
   const handleApprovePermission = async () => {
+    if (!selectedPermission) {
+      toast.error("Tidak ada izin yang dipilih");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       
-      // Jika dalam sample mode, update data secara lokal
-      if (sampleMode || !selectedPermission) {
-        // Update data di state
-        const updatedData = permissionData.map(perm => {
-          if (perm.id === selectedPermission?.id) {
-            return {
-              ...perm,
-              status: 'Disetujui',
-              approvedBy: 'Admin',
-              approvedAt: new Date().toISOString()
-            };
-          }
-          return perm;
-        });
-        
-        setPermissionData(updatedData);
-        setFilteredData(updatedData);
-        setIsApproveDialogOpen(false);
-        toast.success('Izin berhasil disetujui (Mode Contoh)');
-        return;
-      }
-      
-      try {
-        const response = await fetch(`/api/permissions/${selectedPermission?.id}/approve?noRedirect=true`, {
-          method: "PUT",
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-          }
-        });
+      const response = await fetch(`/api/permissions/${selectedPermission.id}/approve`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
 
-        if (!response.ok) {
-          // Update data secara lokal jika terjadi error
-          const updatedData = permissionData.map(perm => {
-            if (perm.id === selectedPermission?.id) {
-              return {
-                ...perm,
-                status: 'Disetujui',
-                approvedBy: 'Admin',
-                approvedAt: new Date().toISOString()
-              };
-            }
-            return perm;
-          });
-          
-          setPermissionData(updatedData);
-          setFilteredData(updatedData);
-          setIsApproveDialogOpen(false);
-          setSampleMode(true);
-          toast.success('Izin berhasil disetujui (Mode Contoh)');
-          return;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Gagal menyetujui izin');
+      }
+
+      // Update data di state
+      const updatedData = permissionData.map(perm => {
+        if (perm.id === selectedPermission.id) {
+          return {
+            ...perm,
+            status: "Disetujui",
+            approvedBy: "Admin", // Sesuaikan dengan user yang login
+            approvedAt: new Date().toISOString()
+          };
         }
+        return perm;
+      });
 
-        const result = await response.json();
-        
-        // Update data di state
-        const updatedData = permissionData.map(perm => {
-          if (perm.id === selectedPermission?.id) {
-            return {
-              ...perm,
-              status: 'Disetujui',
-              approvedBy: result.data.approvedBy?.user?.name || 'Admin',
-              approvedAt: result.data.approvedAt || new Date().toISOString()
-            };
-          }
-          return perm;
-        });
-        
-        setPermissionData(updatedData);
-        setFilteredData(updatedData);
-        setIsApproveDialogOpen(false);
-        toast.success('Izin berhasil disetujui');
-      } catch (approveError) {
-        console.error("Error dalam approve:", approveError);
-        // Update data secara lokal jika terjadi error
-        const updatedData = permissionData.map(perm => {
-          if (perm.id === selectedPermission?.id) {
-            return {
-              ...perm,
-              status: 'Disetujui',
-              approvedBy: 'Admin',
-              approvedAt: new Date().toISOString()
-            };
-          }
-          return perm;
-        });
-        
-        setPermissionData(updatedData);
-        setFilteredData(updatedData);
-        setIsApproveDialogOpen(false);
-        setSampleMode(true);
-        toast.success('Izin berhasil disetujui (Mode Contoh)');
-      }
+      setPermissionData(updatedData);
+      setFilteredData(updatedData);
+      setIsApproveDialogOpen(false);
+      setSelectedPermission(null);
+      
+      toast.success("Izin berhasil disetujui");
     } catch (error) {
       console.error("Error approving permission:", error);
       toast.error("Gagal menyetujui izin. Silakan coba lagi.");
@@ -801,114 +540,57 @@ function PermissionPageContent() {
   
   // Handler untuk menolak izin
   const handleRejectPermission = async () => {
+    if (!selectedPermission) {
+      toast.error("Tidak ada izin yang dipilih");
+      return;
+    }
+
+    if (!rejectionReason || rejectionReason.trim().length < 5) {
+      toast.error("Alasan penolakan harus diisi minimal 5 karakter");
+      return;
+    }
+
     try {
-      if (!rejectionReason || rejectionReason.trim().length < 3) {
-        toast.error('Alasan penolakan minimal 3 karakter');
-        return;
-      }
-      
       setIsSubmitting(true);
       
-      // Jika dalam sample mode, update data secara lokal
-      if (sampleMode || !selectedPermission) {
-        // Update data di state
-        const updatedData = permissionData.map(perm => {
-          if (perm.id === selectedPermission?.id) {
-            return {
-              ...perm,
-              status: 'Ditolak',
-              rejectionReason: rejectionReason
-            };
-          }
-          return perm;
-        });
-        
-        setPermissionData(updatedData);
-        setFilteredData(updatedData);
-        setIsRejectDialogOpen(false);
-        setRejectionReason('');
-        toast.success('Izin berhasil ditolak (Mode Contoh)');
-        return;
-      }
-      
-      try {
-        const response = await fetch(`/api/permissions/${selectedPermission?.id}/reject?noRedirect=true`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-          },
-          body: JSON.stringify({
-            rejectionReason: rejectionReason
-          })
-        });
+      const response = await fetch(`/api/permissions/${selectedPermission.id}/reject`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+        body: JSON.stringify({
+          rejectionReason: rejectionReason
+        }),
+      });
 
-        if (!response.ok) {
-          // Update data secara lokal jika terjadi error
-          const updatedData = permissionData.map(perm => {
-            if (perm.id === selectedPermission?.id) {
-              return {
-                ...perm,
-                status: 'Ditolak',
-                rejectionReason: rejectionReason
-              };
-            }
-            return perm;
-          });
-          
-          setPermissionData(updatedData);
-          setFilteredData(updatedData);
-          setIsRejectDialogOpen(false);
-          setRejectionReason('');
-          setSampleMode(true);
-          toast.success('Izin berhasil ditolak (Mode Contoh)');
-          return;
-        }
-        
-        // Gunakan result jika diperlukan di masa depan
-        await response.json();
-        
-        // Update data di state
-        const updatedData = permissionData.map(perm => {
-          if (perm.id === selectedPermission?.id) {
-            return {
-              ...perm,
-              status: 'Ditolak',
-              rejectionReason: rejectionReason
-            };
-          }
-          return perm;
-        });
-        
-        setPermissionData(updatedData);
-        setFilteredData(updatedData);
-        setIsRejectDialogOpen(false);
-        setRejectionReason('');
-        toast.success('Izin berhasil ditolak');
-      } catch (rejectError) {
-        console.error("Error dalam reject:", rejectError);
-        // Update data secara lokal jika terjadi error
-        const updatedData = permissionData.map(perm => {
-          if (perm.id === selectedPermission?.id) {
-            return {
-              ...perm,
-              status: 'Ditolak',
-              rejectionReason: rejectionReason
-            };
-          }
-          return perm;
-        });
-        
-        setPermissionData(updatedData);
-        setFilteredData(updatedData);
-        setIsRejectDialogOpen(false);
-        setRejectionReason('');
-        setSampleMode(true);
-        toast.success('Izin berhasil ditolak (Mode Contoh)');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Gagal menolak izin');
       }
+
+      // Update data di state
+      const updatedData = permissionData.map(perm => {
+        if (perm.id === selectedPermission.id) {
+          return {
+            ...perm,
+            status: "Ditolak",
+            rejectedReason: rejectionReason
+          };
+        }
+        return perm;
+      });
+
+      setPermissionData(updatedData);
+      setFilteredData(updatedData);
+      setIsRejectDialogOpen(false);
+      setSelectedPermission(null);
+      setRejectionReason("");
+      
+      toast.success("Izin berhasil ditolak");
     } catch (error) {
       console.error("Error rejecting permission:", error);
-      toast.error(`Gagal menolak izin: ${error instanceof Error ? error.message : 'Terjadi kesalahan'}`);
+      toast.error("Gagal menolak izin. Silakan coba lagi.");
     } finally {
       setIsSubmitting(false);
     }
@@ -1020,31 +702,63 @@ function PermissionPageContent() {
             </CardHeader>
             
             <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID/Nama</TableHead>
-                      <TableHead>Departemen</TableHead>
-                      <TableHead>Jenis Izin</TableHead>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Durasi</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {isLoading ? (
+              {/* Loading State */}
+              {isLoading && (
+                <div className="flex justify-center items-center py-8">
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
+                    <span className="text-muted-foreground">Memuat data izin...</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Error State */}
+              {error && !isLoading && (
+                <div className="bg-red-50 border-l-4 border-red-400 p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-red-700">
+                        <strong>Error:</strong> {error}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Empty State */}
+              {!isLoading && !error && filteredData.length === 0 && (
+                <div className="text-center py-8">
+                  <div className="text-muted-foreground">
+                    {permissionData.length === 0 
+                      ? "Belum ada data izin. Buat izin pertama dengan klik tombol 'Ajukan Izin'."
+                      : "Tidak ada data yang sesuai dengan filter pencarian."
+                    }
+                  </div>
+                </div>
+              )}
+
+              {/* Data Table */}
+              {!isLoading && !error && filteredData.length > 0 && (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center h-24">
-                          <div className="flex justify-center items-center space-x-2">
-                            <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
-                            <span>Memuat data...</span>
-                          </div>
-                        </TableCell>
+                        <TableHead>ID/Nama</TableHead>
+                        <TableHead>Departemen</TableHead>
+                        <TableHead>Jenis Izin</TableHead>
+                        <TableHead>Tanggal</TableHead>
+                        <TableHead>Durasi</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Aksi</TableHead>
                       </TableRow>
-                    ) : filteredData.length > 0 ? (
-                      filteredData.map((permission) => (
+                    </TableHeader>
+                    <TableBody>
+                      {filteredData.map((permission) => (
                         <TableRow key={permission.id}>
                           <TableCell>
                             <div>
@@ -1083,17 +797,11 @@ function PermissionPageContent() {
                             </Button>
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center h-24">
-                          Tidak ada data izin yang ditemukan
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1589,24 +1297,6 @@ function PermissionPageContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
-      {/* Tambahkan banner peringatan jika dalam mode sample */}
-      {sampleMode && (
-        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-blue-700">
-                <strong>Mode Data Contoh:</strong> Halaman ini menampilkan data contoh karena koneksi ke server tidak tersedia. Anda masih dapat melihat, menambah, menyetujui, dan menolak izin, namun perubahan hanya disimpan secara lokal.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

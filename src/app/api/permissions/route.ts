@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt-client';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { PermissionStatus, PermissionType, Prisma } from '@prisma/client';
@@ -36,6 +35,45 @@ const permissionCreateSchema = z.object({
   path: ["endDate"]
 });
 
+// Helper function untuk mendapatkan session dari token JWT
+async function getSession(request: NextRequest) {
+  try {
+    const token = getTokenFromRequest(request);
+    if (!token) return null;
+    
+    const payload = await verifyToken(token);
+    if (!payload) return null;
+    
+    // Ambil data user lengkap dari database
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      include: {
+        employee: {
+          include: {
+            department: true,
+            position: true
+          }
+        }
+      }
+    });
+    
+    if (!user) return null;
+    
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        employeeId: user.employee?.id
+      }
+    };
+  } catch (error) {
+    console.error('Error getting session:', error);
+    return null;
+  }
+}
+
 // GET /api/permissions
 export async function GET(request: NextRequest) {
   try {
@@ -43,7 +81,7 @@ export async function GET(request: NextRequest) {
     console.log('[API Permissions] Request headers:', Object.fromEntries(request.headers.entries()));
     
     // Cek session untuk autentikasi
-    const session = await getServerSession(authOptions);
+    const session = await getSession(request);
     console.log('[API Permissions] Session data:', session ? {
       userId: session.user.id,
       name: session.user.name,
@@ -200,7 +238,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Cek session untuk autentikasi
-    const session = await getServerSession(authOptions);
+    const session = await getSession(request);
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
