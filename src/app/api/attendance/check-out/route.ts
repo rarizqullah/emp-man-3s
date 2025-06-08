@@ -1,81 +1,124 @@
-import { NextResponse } from 'next/server';
-import { updateAttendance, getTodayAttendanceByEmployeeId } from '@/lib/db/attendance.service';
-import { getEmployeeById } from '@/lib/db/employee.service';
-import { calculateWorkHours } from '@/lib/utils/attendance-calculator';
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/db';
 
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json();
+    console.log('=== Check-Out API Called ===');
+    
+    const body = await request.json();
     const { employeeId } = body;
-
+    
     if (!employeeId) {
-      return NextResponse.json(
-        { success: false, message: 'ID karyawan diperlukan' },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        success: false,
+        error: 'Employee ID is required'
+      }, { status: 400 });
     }
-
-    // Verifikasi apakah karyawan ada
-    const employee = await getEmployeeById(employeeId);
+    
+    // Verify employee exists
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: {
+        user: {
+          select: {
+            name: true
+          }
+        },
+        department: {
+          select: {
+            name: true
+          }
+        },
+        shift: {
+          select: {
+            name: true
+          }
+        }
+      }
+    });
+    
     if (!employee) {
-      return NextResponse.json(
-        { success: false, message: 'Karyawan tidak ditemukan' },
-        { status: 404 }
-      );
+      return NextResponse.json({
+        success: false,
+        error: 'Employee not found'
+      }, { status: 404 });
     }
-
-    // Dapatkan presensi hari ini yang belum memiliki checkout
-    const todayAttendance = await getTodayAttendanceByEmployeeId(employeeId);
+    
+    // Find today's attendance record
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    
+    const todayAttendance = await prisma.attendance.findFirst({
+      where: {
+        employeeId: employeeId,
+        attendanceDate: {
+          gte: startOfDay,
+          lt: endOfDay
+        }
+      }
+    });
     
     if (!todayAttendance) {
-      return NextResponse.json(
-        { success: false, message: 'Tidak ada presensi masuk hari ini untuk karyawan ini' },
-        { status: 404 }
-      );
+      return NextResponse.json({
+        success: false,
+        error: 'Tidak ada record check-in untuk hari ini'
+      }, { status: 400 });
     }
-
+    
     if (todayAttendance.checkOutTime) {
-      return NextResponse.json(
-        { success: false, message: 'Karyawan sudah melakukan presensi keluar hari ini' },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        success: false,
+        error: 'Karyawan sudah melakukan check-out hari ini',
+        data: {
+          existingCheckOut: todayAttendance.checkOutTime,
+          attendanceId: todayAttendance.id
+        }
+      }, { status: 400 });
     }
-
-    // Hitung jam kerja berdasarkan check-in dan check-out
+    
+    // Update attendance record with check-out time
     const checkOutTime = new Date();
-    const { mainWorkHours, regularOvertimeHours, weeklyOvertimeHours } = calculateWorkHours(
-      employee.shift,
-      todayAttendance.checkInTime,
-      checkOutTime
-    );
-
-    // Update presensi dengan waktu checkout dan jam kerja
-    const updatedAttendance = await updateAttendance(todayAttendance.id, {
-      checkOutTime: checkOutTime,
-      mainWorkHours,
-      regularOvertimeHours,
-      weeklyOvertimeHours,
+    
+    // Calculate work hours
+    const checkInTime = new Date(todayAttendance.checkInTime);
+    const workMilliseconds = checkOutTime.getTime() - checkInTime.getTime();
+    const workHours = workMilliseconds / (1000 * 60 * 60); // Convert to hours
+    
+    const updatedAttendance = await prisma.attendance.update({
+      where: { id: todayAttendance.id },
+      data: {
+        checkOutTime: checkOutTime,
+        mainWorkHours: Math.round(workHours * 100) / 100 // Round to 2 decimal places
+      }
     });
-
+    
+    console.log(`✅ Check-out successful for employee ${employee.user.name} at ${checkOutTime.toISOString()}`);
+    console.log(`Work duration: ${workHours.toFixed(2)} hours`);
+    
     return NextResponse.json({
       success: true,
-      message: 'Presensi keluar berhasil dicatat',
+      message: `Check-out berhasil untuk ${employee.user.name}`,
       data: {
-        id: updatedAttendance.id,
-        employeeId: updatedAttendance.employeeId,
+        attendanceId: updatedAttendance.id,
+        employeeId: employee.id,
+        employeeName: employee.user.name,
+        employeeCode: employee.employeeId,
+        department: employee.department?.name,
+        shift: employee.shift?.name,
         checkInTime: updatedAttendance.checkInTime,
         checkOutTime: updatedAttendance.checkOutTime,
         mainWorkHours: updatedAttendance.mainWorkHours,
-        regularOvertimeHours: updatedAttendance.regularOvertimeHours,
-        weeklyOvertimeHours: updatedAttendance.weeklyOvertimeHours,
-        status: updatedAttendance.status,
-      },
+        status: updatedAttendance.status
+      }
     });
+    
   } catch (error) {
-    console.error('Error processing check-out:', error);
-    return NextResponse.json(
-      { success: false, message: 'Terjadi kesalahan saat memproses presensi keluar' },
-      { status: 500 }
-    );
+    console.error('Error in check-out:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Terjadi kesalahan saat check-out',
+      debug: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 } 

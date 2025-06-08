@@ -378,7 +378,7 @@ export function AddEmployeeModal({
         email: data.personalInfo.email,
         phone: data.personalInfo.phone,
         idNumber: data.personalInfo.idNumber,
-        positionId: data.departmentInfo.positionId || data.personalInfo.positionId, // Ambil dari salah satu yang tersedia
+        positionId: data.personalInfo.positionId, // Ambil dari personalInfo
         gender: data.personalInfo.gender,
         address: data.personalInfo.address,
         

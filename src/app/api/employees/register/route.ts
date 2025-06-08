@@ -4,7 +4,6 @@ import prisma from '@/lib/db/prisma'; // Menggunakan import default
 import { Role, ContractType, WarningStatus, Gender } from '@prisma/client';
 import { ensureDatabaseConnection } from '@/lib/db/prisma'; // Tambahkan import ini
 import crypto from 'crypto';
-import { hash } from 'bcrypt';
 
 // Schema validasi untuk membuat karyawan dan user secara bersamaan
 const employeeRegisterSchema = z.object({
@@ -80,17 +79,13 @@ export async function POST(request: NextRequest) {
     try {
       const result = await prisma.$transaction(async (tx) => {
         // 1. Buat user baru
-        const password = `${validatedData.idNumber}@ems`; // Default password
-        const hashedPassword = await hash(password, 10);
-        
         const user = await tx.user.create({
           data: {
             name: validatedData.name,
             email: validatedData.email,
             authId: crypto.randomUUID(),
             role: Role.EMPLOYEE,
-            password: hashedPassword,
-          } as any, // Gunakan 'as any' untuk menghindari TypeScript error
+          },
         });
         
         console.log("User berhasil dibuat dengan ID:", user.id);

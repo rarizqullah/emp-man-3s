@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { supabaseRouteHandler } from '@/lib/supabase/server';
 import { prisma } from '@/lib/db';
 import { getTodayAttendanceByEmployeeId } from '@/lib/db/attendance.service';
-import { format } from 'date-fns';
+import { format, startOfDay, endOfDay } from 'date-fns';
 import { id } from 'date-fns/locale';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Inisialisasi client Supabase menggunakan supabaseRouteHandler
     const supabase = await supabaseRouteHandler();
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     // Dapatkan data user dari database
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { authId: session.user.id },
       select: { id: true, role: true }
     });
 
@@ -32,20 +32,65 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Ambil employeeId dari URL query parameter
-    const { searchParams } = new URL(request.url);
-    const employeeId = searchParams.get('employeeId');
+    const today = new Date();
+    const startDate = startOfDay(today);
+    const endDate = endOfDay(today);
 
-    if (!employeeId) {
-      return NextResponse.json(
-        { error: 'Parameter employeeId diperlukan' },
-        { status: 400 }
-      );
+    // Jika user adalah admin, ambil semua attendance hari ini
+    if (user.role === 'ADMIN') {
+      const attendances = await prisma.attendance.findMany({
+        where: {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        include: {
+          employee: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              },
+              department: true,
+              position: true,
+              shift: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      // Format data untuk response
+      const formattedAttendances = attendances.map(attendance => ({
+        id: attendance.id,
+        employeeId: attendance.employee.id,
+        employeeName: attendance.employee.user.name,
+        department: attendance.employee.department?.name || '-',
+        shift: attendance.employee.shift?.name || '-',
+        checkInTime: attendance.checkInTime,
+        checkOutTime: attendance.checkOutTime,
+        mainWorkHours: attendance.mainWorkHours,
+        overtimeHours: attendance.regularOvertimeHours,
+        weeklyOvertimeHours: attendance.weeklyOvertimeHours,
+        status: attendance.checkOutTime ? 'Completed' : 'InProgress'
+      }));
+
+      return NextResponse.json({
+        success: true,
+        message: 'Data presensi hari ini berhasil diambil',
+        attendances: formattedAttendances
+      });
     }
 
-    // Cek apakah user adalah admin atau karyawan itu sendiri
-    const employee = await prisma.employee.findUnique({
-      where: { id: employeeId },
+    // Jika user bukan admin, cari data employee berdasarkan userId
+    const employee = await prisma.employee.findFirst({
+      where: { userId: user.id },
       include: {
         user: {
           select: {
@@ -61,26 +106,21 @@ export async function GET(request: NextRequest) {
     });
 
     if (!employee) {
-      return NextResponse.json(
-        { error: 'Data karyawan tidak ditemukan' },
-        { status: 404 }
-      );
+      // Jika user belum terdaftar sebagai employee, return response kosong
+      return NextResponse.json({
+        success: true,
+        message: 'User belum terdaftar sebagai karyawan',
+        attendances: [],
+        data: {
+          employee: null,
+          today: format(today, 'EEEE, d MMMM yyyy', { locale: id }),
+          attendance: null
+        }
+      });
     }
 
-    // Hanya admin atau employee itu sendiri yang bisa mengakses data
-    const isAdmin = user.role === 'ADMIN';
-    const isOwnData = employee.user.id === user.id;
-    
-    if (!isAdmin && !isOwnData) {
-      return NextResponse.json(
-        { error: 'Tidak memiliki akses untuk melihat data presensi karyawan lain' },
-        { status: 403 }
-      );
-    }
-
-    // Ambil data presensi hari ini
-    const todayAttendance = await getTodayAttendanceByEmployeeId(employeeId);
-    const today = new Date();
+    // Ambil data presensi hari ini untuk employee
+    const todayAttendance = await getTodayAttendanceByEmployeeId(employee.id);
     const formattedDate = format(today, 'EEEE, d MMMM yyyy', { locale: id });
 
     // Format data response
@@ -97,7 +137,20 @@ export async function GET(request: NextRequest) {
         },
         today: formattedDate,
         attendance: todayAttendance || null
-      }
+      },
+      attendances: todayAttendance ? [{
+        id: todayAttendance.id,
+        employeeId: employee.id,
+        employeeName: employee.user.name,
+        department: employee.department?.name || '-',
+        shift: employee.shift?.name || '-',
+        checkInTime: todayAttendance.checkInTime,
+        checkOutTime: todayAttendance.checkOutTime,
+        mainWorkHours: todayAttendance.mainWorkHours,
+        overtimeHours: todayAttendance.regularOvertimeHours,
+        weeklyOvertimeHours: todayAttendance.weeklyOvertimeHours,
+        status: todayAttendance.checkOutTime ? 'Completed' : 'InProgress'
+      }] : []
     };
 
     return NextResponse.json(response);

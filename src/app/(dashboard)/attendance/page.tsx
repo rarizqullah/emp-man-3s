@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
-import FaceRecognition from '@/components/attendance/FaceRecognition';
+import AttendanceFaceRecognition from '@/components/attendance/AttendanceFaceRecognition';
 import { useSupabase } from "@/providers/supabase-provider";
 import { 
   Dialog,
@@ -47,11 +47,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import AttendanceHistory from "@/components/attendance/AttendanceHistory";
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Skeleton } from '@/components/ui/skeleton';
 
 // Interface untuk data presensi
 interface AttendanceRecord {
@@ -98,34 +94,30 @@ interface Shift {
   id: string;
   name: string;
   departmentId?: string;
-  subDepartmentId: string | null;
+  subDepartmentId?: string;
+}
+
+interface EmployeeInfo {
+  id: string;
+  name: string;
+  department: string;
+  shift: string;
 }
 
 export default function AttendancePage() {
   const router = useRouter();
-  const { user, isLoading: authLoading } = useSupabase();
+  const { user } = useSupabase();
   const [date] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('attendance');
   const [currentTime, setCurrentTime] = useState<string>(format(new Date(), 'HH:mm:ss'));
-  const [employeeInfo, setEmployeeInfo] = useState<{
-    id: string;
-    name: string;
-    department: string;
-    shift: string;
-  } | null>(null);
+  const [employeeInfo, setEmployeeInfo] = useState<EmployeeInfo | null>(null);
   const [isCheckedIn, setIsCheckedIn] = useState<boolean>(false);
-  const [isFaceRecognitionOpen, setIsFaceRecognitionOpen] = useState<boolean>(false);
   const [mode, setMode] = useState<'checkIn' | 'checkOut'>('checkIn');
   const [manualEmployeeId, setManualEmployeeId] = useState<string>("");
   const [isManualDialogOpen, setIsManualDialogOpen] = useState<boolean>(false);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [subDepartments, setSubDepartments] = useState<SubDepartment[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [dataLoaded, setDataLoaded] = useState<boolean>(false);
 
   // Format time untuk tampilan
   const formatTime = (timeString: string | null): string => {
@@ -137,14 +129,22 @@ export default function AttendancePage() {
   const fetchTodayAttendance = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/attendance/today');
+      const response = await fetch('/api/attendance/today-public');
 
       if (!response.ok) {
         throw new Error('Gagal mendapatkan data presensi');
       }
 
       const data = await response.json();
-      setAttendanceData(data.attendances || []);
+      
+      if (data.success) {
+        setAttendanceData(data.attendances || []);
+        if (data.testing) {
+          toast.success(data.note || 'Data testing berhasil dimuat');
+        }
+      } else {
+        throw new Error(data.error || 'Gagal mendapatkan data presensi');
+      }
     } catch (error) {
       console.error('Error fetching attendance data:', error);
       toast.error('Gagal memuat data presensi. Silakan coba lagi.');
@@ -184,25 +184,49 @@ export default function AttendancePage() {
 
   // Fetch data karyawan saat ini
   const fetchCurrentEmployeeInfo = async () => {
-    if (!user?.id) {
-      console.error("User ID not available");
-      toast.error("Tidak dapat mengidentifikasi pengguna. Silakan login kembali.");
-      return;
-    }
-    
     try {
       setIsLoading(true);
-      // Gunakan endpoint baru untuk mendapatkan data karyawan
-      const response = await fetch(`/api/attendance/employee-data?userId=${user.id}`);
+      console.log("Fetching employee data...");
+      
+      // Gunakan fetch biasa untuk testing
+      const response = await fetch('/api/attendance/employee-data');
       
       if (!response.ok) {
-        throw new Error("Gagal mengambil data karyawan");
+        // Jika tidak ada session, buat data dummy untuk testing
+        console.log("No session found, using dummy employee data");
+        setEmployeeInfo({
+          id: "demo-employee-001",
+          name: "Demo Employee",
+          department: "Testing Department",
+          shift: "Demo Shift"
+        });
+        await fetchTodayAttendance();
+        toast.success("Mode demo: Menggunakan data testing untuk pengenalan wajah");
+        return;
       }
       
       const result = await response.json();
       
-      if (!result.success || !result.data || result.data.length === 0) {
-        throw new Error("Data karyawan tidak tersedia");
+      console.log("API Response:", result);
+      
+      if (!result.success) {
+        throw new Error(result.error || "Gagal mengambil data karyawan");
+      }
+      
+      // Jika tidak ada data employee (user belum terdaftar sebagai karyawan)
+      if (!result.data || result.data.length === 0) {
+        console.log("User belum terdaftar sebagai karyawan");
+        toast.success("Anda belum terdaftar sebagai karyawan. Hubungi admin untuk didaftarkan.");
+        
+        // Set employee info dengan values default
+        setEmployeeInfo({
+          id: "temp",
+          name: "User Demo",
+          department: "Belum terdaftar",
+          shift: "Belum terdaftar"
+        });
+        await fetchTodayAttendance();
+        return;
       }
       
       // Ambil data karyawan pertama (seharusnya hanya satu)
@@ -217,127 +241,37 @@ export default function AttendancePage() {
       
       console.log("Employee data loaded:", employeeData);
       
+      // Display success message
+      if (result.testing) {
+        toast.success(`Mode testing: Ditemukan ${result.data.length} karyawan terdaftar`);
+      } else {
+        toast.success("Data karyawan berhasil dimuat");
+      }
+      
       // Jika karyawan belum memiliki data wajah, tampilkan peringatan
       if (!employeeData.hasFaceData) {
-        toast.warning("Anda belum memiliki data wajah. Tambahkan data wajah di profil Anda untuk menggunakan fitur pengenalan wajah.");
+        toast.success("Anda belum memiliki data wajah. Tambahkan data wajah di profil Anda untuk menggunakan fitur pengenalan wajah.");
       }
       
       // Setelah mendapatkan data karyawan, fetch juga data presensi hari ini
       await fetchTodayAttendance();
+      
+      // Fetch attendance untuk user ini
+      await fetchAttendance();
     } catch (error) {
       console.error("Error fetching current employee info:", error);
-      toast.error("Gagal memuat data karyawan");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Fungsi untuk menangani presensi masuk
-  const handleCheckIn = async (employeeId: string) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('/api/attendance/check-in', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ employeeId })
+      // Fallback ke dummy data
+      setEmployeeInfo({
+        id: "demo-employee-001",
+        name: "Demo Employee",
+        department: "Testing Department", 
+        shift: "Demo Shift"
       });
-
-      const result: ApiResponse = await response.json();
-
-      if (result.success) {
-        toast.success('Presensi masuk berhasil dicatat!');
-        setIsCheckedIn(true);
-        fetchTodayAttendance(); // Refresh data
-      } else {
-        toast.error(result.message || 'Gagal melakukan presensi masuk');
-      }
-    } catch (error) {
-      console.error('Error during check-in:', error);
-      toast.error('Terjadi kesalahan saat mencatat presensi masuk');
-
-      // Simulasi keberhasilan untuk testing
-      toast.success('Presensi masuk berhasil dicatat! (Mode simulasi)');
-      setIsCheckedIn(true);
-
-      // Tambahkan data dummy
-      setAttendanceData(prev => [
-        ...prev,
-        {
-          id: Math.random().toString(),
-          employeeId: employeeInfo?.id || "EMP001",
-          employeeName: employeeInfo?.name || "Budi Santoso",
-          department: employeeInfo?.department || "IT",
-          shift: employeeInfo?.shift || "Shift A",
-          checkInTime: new Date().toISOString(),
-          checkOutTime: null,
-          mainWorkHours: null,
-          overtimeHours: null,
-          weeklyOvertimeHours: null,
-          status: "InProgress"
-        }
-      ]);
+      await fetchTodayAttendance();
+      toast.success("Mode demo: Menggunakan data testing");
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Fungsi untuk menangani presensi pulang
-  const handleCheckOut = async (employeeId: string) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('/api/attendance/check-out', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ employeeId })
-      });
-
-      const result: ApiResponse = await response.json();
-
-      if (result.success) {
-        toast.success('Presensi pulang berhasil dicatat!');
-        setIsCheckedIn(false);
-        fetchTodayAttendance(); // Refresh data
-      } else {
-        toast.error(result.message || 'Gagal melakukan presensi pulang');
-      }
-    } catch (error) {
-      console.error('Error during check-out:', error);
-      toast.error('Terjadi kesalahan saat mencatat presensi pulang');
-
-      // Simulasi keberhasilan untuk testing
-      toast.success('Presensi pulang berhasil dicatat! (Mode simulasi)');
-      setIsCheckedIn(false);
-
-      // Update data dummy
-      setAttendanceData(prev => prev.map(att =>
-        att.employeeId === (employeeInfo?.id || "EMP001")
-          ? {
-            ...att,
-            checkOutTime: new Date().toISOString(),
-            mainWorkHours: 8,
-            overtimeHours: calculateOvertimeHours(att.checkInTime),
-            weeklyOvertimeHours: 0,
-            status: "Completed"
-          }
-          : att
-      ));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Hitung jam lembur berdasarkan jam masuk (dummy calculation)
-  const calculateOvertimeHours = (checkInTimeString: string): number => {
-    const checkInTime = new Date(checkInTimeString);
-    const currentTime = new Date();
-    const hours = (currentTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
-
-    // Jam kerja normal adalah 8 jam
-    return Math.max(0, Math.round((hours - 8) * 10) / 10);
   };
 
   // Fungsi untuk memperbarui jam saat ini
@@ -371,140 +305,30 @@ export default function AttendancePage() {
     // Logika export ke Excel akan diimplementasikan di sini
   };
 
-  // Fetch data karyawan saat komponen dimuat
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        // Fetch attendance data untuk pengguna saat ini
-        if (user?.id) {
-          await fetchAttendance();
-        }
-        
-        // Fetch data master yang diperlukan
-        await Promise.all([
-          fetchDepartments(),
-          fetchSubDepartments(),
-          fetchPositions(),
-          fetchShifts()
-        ]);
-        
-        setDataLoaded(true);
-      } catch (error) {
-        console.error("Error fetching initial data:", error);
-        toast.error("Gagal memuat data awal");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [user?.id]);
-
   // Fetch data presensi untuk hari ini
   const fetchAttendance = async () => {
     try {
+      // Gunakan format tanggal saat ini
       const today = format(new Date(), 'yyyy-MM-dd');
-      const response = await fetch(`/api/attendance/employee/${user?.id}?date=${today}`);
       
-      if (!response.ok) {
-        throw new Error("Gagal mengambil data presensi");
-      }
-      
-      const data = await response.json();
-      setAttendanceData(data.attendance || []);
-      
-      // Tentukan mode berdasarkan data yang ada
-      if (data.attendance && data.attendance.checkIn && !data.attendance.checkOut) {
-        setMode('checkOut');
-      } else {
+      // Jika tidak ada employee info, skip
+      if (!employeeInfo || employeeInfo.id === "temp" || employeeInfo.id.startsWith("demo-")) {
+        console.log("Skipping attendance fetch - no valid employee");
         setMode('checkIn');
+        setIsCheckedIn(false);
+        return;
       }
+      
+      // Untuk saat ini, asumsi mode check-in karena ini system demo
+      setMode('checkIn');
+      setIsCheckedIn(false);
+      
+      console.log(`Attendance mode set to checkIn for ${employeeInfo.name}`);
     } catch (error) {
       console.error("Error fetching attendance:", error);
-    }
-  };
-
-  // Fetch semua departemen
-  const fetchDepartments = async () => {
-    try {
-      const response = await fetch('/api/departments');
-      if (!response.ok) {
-        throw new Error('Gagal mengambil data departemen');
-      }
-      const data = await response.json();
-      setDepartments(data);
-    } catch (error) {
-      console.error("Error fetching departments:", error);
-      // Gunakan data dummy jika API gagal
-      setDepartments([
-        { id: "1", name: "IT" },
-        { id: "2", name: "HR" },
-        { id: "3", name: "Finance" },
-        { id: "4", name: "Marketing" },
-        { id: "5", name: "Production" }
-      ]);
-    }
-  };
-
-  // Fetch semua sub departemen
-  const fetchSubDepartments = async () => {
-    try {
-      const response = await fetch('/api/sub-departments');
-      if (!response.ok) {
-        throw new Error('Gagal mengambil data sub departemen');
-      }
-      const data = await response.json();
-      setSubDepartments(data);
-    } catch (error) {
-      console.error("Error fetching sub-departments:", error);
-      // Gunakan data dummy jika API gagal
-      setSubDepartments([
-        { id: "1", name: "Software Development", departmentId: "1" },
-        { id: "2", name: "IT Support", departmentId: "1" },
-        { id: "3", name: "Recruitment", departmentId: "2" },
-        { id: "4", name: "Accounting", departmentId: "3" }
-      ]);
-    }
-  };
-
-  // Fetch semua posisi/jabatan
-  const fetchPositions = async () => {
-    try {
-      const response = await fetch('/api/positions');
-      if (!response.ok) {
-        throw new Error('Gagal mengambil data posisi');
-      }
-      const data = await response.json();
-      setPositions(data);
-    } catch (error) {
-      console.error("Error fetching positions:", error);
-      // Gunakan data dummy jika API gagal
-      setPositions([
-        { id: "1", name: "Software Engineer", departmentId: "1", subDepartmentId: "1" },
-        { id: "2", name: "HR Manager", departmentId: "2", subDepartmentId: null },
-        { id: "3", name: "Finance Staff", departmentId: "3", subDepartmentId: null }
-      ]);
-    }
-  };
-
-  // Fetch semua shift
-  const fetchShifts = async () => {
-    try {
-      const response = await fetch('/api/shifts');
-      if (!response.ok) {
-        throw new Error('Gagal mengambil data shift');
-      }
-      const data = await response.json();
-      setShifts(data);
-    } catch (error) {
-      console.error("Error fetching shifts:", error);
-      // Gunakan data dummy jika API gagal
-      setShifts([
-        { id: "1", name: "Shift A (Pagi)", departmentId: null, subDepartmentId: null },
-        { id: "2", name: "Shift B (Siang)", departmentId: null, subDepartmentId: null },
-        { id: "3", name: "Non-Shift", departmentId: null, subDepartmentId: null }
-      ]);
+      // Default ke check-in mode
+      setMode('checkIn');
+      setIsCheckedIn(false);
     }
   };
 
@@ -512,35 +336,87 @@ export default function AttendancePage() {
   const handleSuccessfulRecognition = async (employeeId: string) => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/attendance', {
+      // Check current attendance status untuk menentukan mode
+      const currentMode = await determineAttendanceMode(employeeId);
+      
+      // Tentukan endpoint berdasarkan mode
+      const endpoint = currentMode === 'checkIn' ? '/api/attendance/check-in' : '/api/attendance/check-out';
+      
+      console.log(`Processing ${currentMode} for employee ${employeeId}`);
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          employeeId,
-          mode,
-        }),
+        body: JSON.stringify({ employeeId }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Terjadi kesalahan saat mencatat presensi');
-      }
+      const result = await response.json();
 
-      const data = await response.json();
-      toast.success(mode === 'checkIn' ? 'Berhasil check in!' : 'Berhasil check out!');
-      
-      // Tutup dialog face recognition
-      setIsFaceRecognitionOpen(false);
-      
-      // Refresh data presensi
-      await fetchAttendance();
-    } catch (error: any) {
-      console.error("Error recording attendance:", error);
-      toast.error(error.message || 'Gagal mencatat presensi');
+      if (result.success) {
+        toast.success(result.message);
+        
+        // Update data attendance dan mode
+        await fetchTodayAttendance();
+        
+        // Update mode untuk employee recognition selanjutnya
+        const newMode = currentMode === 'checkIn' ? 'checkOut' : 'checkIn';
+        setMode(newMode);
+        
+        // Update status berdasarkan action yang baru dilakukan
+        if (currentMode === 'checkIn') {
+          setIsCheckedIn(true);
+          toast.success(`✅ Check-in berhasil! Mode beralih ke Check-out untuk kunjungan berikutnya.`);
+        } else {
+          setIsCheckedIn(false);
+          toast.success(`✅ Check-out berhasil! Mode beralih ke Check-in untuk kunjungan berikutnya.`);
+        }
+        
+        // Update employee info
+        setEmployeeInfo({
+          id: employeeId,
+          name: result.data?.employeeName || '',
+          department: result.data?.department || '',
+          shift: result.data?.shift || ''
+        });
+      } else {
+        toast.error(result.error || result.message || `Gagal melakukan ${currentMode}`);
+      }
+    } catch (error) {
+      console.error(`Error during attendance:`, error);
+      toast.error(`Terjadi kesalahan saat melakukan presensi`);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Determine attendance mode based on current status
+  const determineAttendanceMode = async (employeeId: string): Promise<'checkIn' | 'checkOut'> => {
+    try {
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+      
+      const response = await fetch(`/api/attendance/check-status?employeeId=${employeeId}&date=${today}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+          // If already checked in but not checked out, next action is check-out
+          if (result.data.checkInTime && !result.data.checkOutTime) {
+            console.log(`Employee ${employeeId} already checked in, next action: check-out`);
+            return 'checkOut';
+          }
+        }
+      }
+      
+      // Default to check-in (first visit of the day)
+      console.log(`Employee ${employeeId} not checked in yet, next action: check-in`);
+      return 'checkIn';
+    } catch (error) {
+      console.error('Error determining attendance mode:', error);
+      // Default to check-in on error
+      return 'checkIn';
     }
   };
 
@@ -570,7 +446,7 @@ export default function AttendancePage() {
         throw new Error(errorData.message || 'Terjadi kesalahan saat mencatat presensi manual');
       }
 
-      const data = await response.json();
+      await response.json();
       toast.success(`Berhasil mencatat ${mode === 'checkIn' ? 'check in' : 'check out'} manual!`);
       
       setManualEmployeeId("");
@@ -578,9 +454,10 @@ export default function AttendancePage() {
       
       // Refresh data presensi jika karyawan yang di-input adalah user saat ini
       await fetchAttendance();
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error recording manual attendance:", error);
-      toast.error(error.message || 'Gagal mencatat presensi manual');
+      const errorMessage = error instanceof Error ? error.message : 'Gagal mencatat presensi manual';
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -692,8 +569,8 @@ export default function AttendancePage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <FaceRecognition
-                  onSuccessfulRecognition={handleSuccessfulRecognition}
+                <AttendanceFaceRecognition
+                  onSuccessfulRecognition={(employeeId, employeeName) => handleSuccessfulRecognition(employeeId)}
                   mode={mode}
                 />
               </CardContent>

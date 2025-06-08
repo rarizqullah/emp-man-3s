@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRouteHandler } from '@/lib/supabase/server';
 import { prisma } from '@/lib/db';
+import { startOfDay, endOfDay } from 'date-fns';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ employeeId: string }> }) {
   const params = await props.params;
@@ -16,9 +17,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ emplo
       );
     }
 
-    // Dapatkan data user dari database
+    // Dapatkan data user dari database menggunakan authId
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { authId: session.user.id }, // Gunakan authId bukan id
       select: { id: true, role: true }
     });
 
@@ -29,11 +30,14 @@ export async function GET(request: NextRequest, props: { params: Promise<{ emplo
       );
     }
 
+    // Ambil parameter dari URL
     const { employeeId } = params;
-    
-    // Cek apakah user yang sedang login adalah admin atau employee itu sendiri
-    const employee = await prisma.employee.findUnique({
-      where: { id: employeeId },
+    const { searchParams } = new URL(request.url);
+    const date = searchParams.get('date');
+
+    // Cari employee berdasarkan userId (parameter employeeId sebenarnya adalah userId)
+    const employee = await prisma.employee.findFirst({
+      where: { userId: employeeId },
       include: {
         user: {
           select: {
@@ -65,8 +69,43 @@ export async function GET(request: NextRequest, props: { params: Promise<{ emplo
         { status: 403 }
       );
     }
+
+    // Jika ada parameter date, ambil attendance untuk tanggal tersebut
+    if (date) {
+      const targetDate = new Date(date);
+      const startDate = startOfDay(targetDate);
+      const endDate = endOfDay(targetDate);
+
+      const attendance = await prisma.attendance.findFirst({
+        where: {
+          employeeId: employee.id,
+          attendanceDate: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Data attendance berhasil diambil',
+        attendance: attendance ? {
+          id: attendance.id,
+          employeeId: employee.id,
+          checkIn: attendance.checkInTime,
+          checkOut: attendance.checkOutTime,
+          mainWorkHours: attendance.mainWorkHours,
+          overtimeHours: attendance.regularOvertimeHours,
+          weeklyOvertimeHours: attendance.weeklyOvertimeHours,
+          status: attendance.checkOutTime ? 'Completed' : 'InProgress'
+        } : null
+      });
+    }
     
-    // Format data response
+    // Format data response untuk informasi employee
     const formattedEmployee = {
       id: employee.id,
       name: employee.user.name,
@@ -83,12 +122,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ emplo
       data: formattedEmployee
     });
   } catch (error) {
-    console.error('Error fetching employee data:', error);
+    console.error('Error fetching attendance data:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Terjadi kesalahan saat mengambil data karyawan' 
-      }, 
+      { error: 'Terjadi kesalahan saat mengambil data' },
       { status: 500 }
     );
   }

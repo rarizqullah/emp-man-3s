@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search');
+    const withFaceData = searchParams.get('withFaceData');
     
     if (search) {
       // Implementasikan pencarian langsung di sini untuk menggantikan fungsi searchEmployees
@@ -61,6 +62,36 @@ export async function GET(request: NextRequest) {
         },
       });
       return NextResponse.json(employees);
+    }
+    
+    if (withFaceData === 'true') {
+      // Ambil karyawan yang memiliki data wajah
+      const employees = await prisma.employee.findMany({
+        where: {
+          faceData: {
+            not: null
+          }
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          department: true,
+          subDepartment: true,
+          shift: true,
+        },
+      });
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Data karyawan dengan wajah berhasil diambil',
+        employees: employees
+      });
     }
     
     const employees = await getAllEmployees();
