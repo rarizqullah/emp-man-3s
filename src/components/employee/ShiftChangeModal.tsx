@@ -54,12 +54,14 @@ interface Shift {
   subDepartmentId: string | null;
   mainWorkStart?: string | null;
   mainWorkEnd?: string | null;
+  lunchBreakStart?: string | null;
+  lunchBreakEnd?: string | null;
   regularOvertimeStart?: string | null;
   regularOvertimeEnd?: string | null;
   weeklyOvertimeStart?: string | null;
   weeklyOvertimeEnd?: string | null;
   workingDays?: string[] | null;
-  // Properti tambahan untuk tampilan detail
+  // Properti tambahan untuk tampilan detail (untuk backward compatibility)
   startTime?: string | null;
   endTime?: string | null;
   breakStartTime?: string | null;
@@ -320,7 +322,14 @@ export function ShiftChangeModal({
                   </div>
                   <div>
                     <p className="text-sm font-medium">Jam Istirahat</p>
-                    <p className="text-sm">{formatTimeOnly(selectedShift.breakStartTime)} - {formatTimeOnly(selectedShift.breakEndTime)}</p>
+                    <p className="text-sm">
+                      {(selectedShift.lunchBreakStart && selectedShift.lunchBreakEnd) ? 
+                        `${formatTimeOnly(selectedShift.lunchBreakStart)} - ${formatTimeOnly(selectedShift.lunchBreakEnd)}` :
+                        (selectedShift.breakStartTime && selectedShift.breakEndTime) ?
+                          `${formatTimeOnly(selectedShift.breakStartTime)} - ${formatTimeOnly(selectedShift.breakEndTime)}` :
+                          '—'
+                      }
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium">Hari Kerja</p>

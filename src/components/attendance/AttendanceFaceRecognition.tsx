@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, UserCheck, AlertCircle, CheckCircle, Scan } from 'lucide-react';
+import { Camera, AlertCircle, CheckCircle, Scan } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 // Face API types
@@ -16,8 +16,16 @@ interface FaceAPI {
   euclideanDistance: (a: Float32Array, b: Float32Array) => number;
 }
 
-// Global face API instance
+// TensorFlow types
+interface TensorFlow {
+  ready: () => Promise<void>;
+  setBackend: (backend: string) => Promise<boolean>;
+  getBackend: () => string;
+}
+
+// Global instances
 let faceapi: FaceAPI | null = null;
+let tf: TensorFlow | null = null;
 
 interface Employee {
   id: string;
@@ -58,7 +66,7 @@ const AttendanceFaceRecognition: React.FC<AttendanceFaceRecognitionProps> = ({
   const MATCH_THRESHOLD = 0.6;
   const DETECTION_INTERVAL = 100; // 100ms untuk smooth tracking
 
-  // Load face-api.js dynamically
+  // Load TensorFlow.js and face-api.js dynamically
   const loadFaceApi = async (): Promise<boolean> => {
     try {
       if (typeof window === 'undefined') {
@@ -66,6 +74,41 @@ const AttendanceFaceRecognition: React.FC<AttendanceFaceRecognitionProps> = ({
         return false;
       }
       
+      // Load TensorFlow.js first
+      if (!tf) {
+        console.log('🔄 Loading TensorFlow.js...');
+        try {
+          const tfModule = await import('@tensorflow/tfjs');
+          tf = tfModule as unknown as TensorFlow;
+          console.log('✅ TensorFlow.js loaded successfully');
+        } catch (error) {
+          console.error('❌ Failed to load TensorFlow.js:', error);
+          return false;
+        }
+      }
+
+      // Initialize TensorFlow backend
+      console.log('🔄 Initializing TensorFlow backend...');
+      try {
+        // Set backend to webgl first, fallback to cpu
+        try {
+          await tf.setBackend('webgl');
+          console.log('✅ WebGL backend set successfully');
+        } catch {
+          console.log('⚠️ WebGL not available, falling back to CPU backend');
+          await tf.setBackend('cpu');
+          console.log('✅ CPU backend set successfully');
+        }
+        
+        // Wait for TensorFlow to be ready
+        await tf.ready();
+        console.log('✅ TensorFlow backend ready:', tf.getBackend());
+      } catch (error) {
+        console.error('❌ Failed to initialize TensorFlow backend:', error);
+        return false;
+      }
+      
+      // Load face-api.js after TensorFlow is ready
       if (!faceapi) {
         console.log('🔄 Loading face-api.js...');
         try {
@@ -83,6 +126,7 @@ const AttendanceFaceRecognition: React.FC<AttendanceFaceRecognitionProps> = ({
           }
         }
       }
+      
       return true;
     } catch (error) {
       console.error('❌ Error in loadFaceApi:', error);
@@ -100,24 +144,46 @@ const AttendanceFaceRecognition: React.FC<AttendanceFaceRecognitionProps> = ({
         throw new Error('Gagal memuat library face-api.js');
       }
       
+      // Wait a bit for TensorFlow to fully initialize
+      setMessage('Menunggu TensorFlow siap...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       setMessage('Memuat model AI...');
       console.log('🔄 Loading face recognition models from /models...');
       
       const MODEL_URL = '/models';
       
-      // Load required models
-      await faceapi!.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-      await faceapi!.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-      await faceapi!.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+      // Load models sequentially with error handling
+      try {
+        setMessage('Memuat tiny face detector...');
+        await faceapi!.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        console.log('✅ Tiny face detector loaded');
+        
+        setMessage('Memuat face landmark model...');
+        await faceapi!.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        console.log('✅ Face landmark model loaded');
+        
+        setMessage('Memuat face recognition model...');
+        await faceapi!.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        console.log('✅ Face recognition model loaded');
+        
+      } catch (modelError) {
+        console.error('❌ Error loading specific model:', modelError);
+        throw new Error(`Gagal memuat model: ${modelError}`);
+      }
+      
+      // Verify models are loaded
+      console.log('🔍 Verifying models are ready...');
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       console.log('✅ All face-api.js models loaded successfully');
       setModelsLoaded(true);
-      setMessage('Model AI berhasil dimuat');
+      setMessage('Model AI berhasil dimuat - Kamera siap');
       
     } catch (error) {
       console.error('❌ Error loading face-api.js models:', error);
-      setMessage('Gagal memuat model AI');
-      toast.error('Gagal memuat model AI. Periksa koneksi internet.');
+      setMessage('Gagal memuat model AI - Refresh halaman');
+      toast.error(`Gagal memuat model AI: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 

@@ -6,14 +6,17 @@ interface WorkHoursResult {
   weeklyOvertimeHours: number;
 }
 
-// Interface untuk shift dengan overtime properties
+// Interface untuk shift dengan overtime properties yang sudah diperbaiki
 interface ExtendedShift extends Shift {
-  overtimeStart?: Date | null;
-  overtimeEnd?: Date | null;
+  regularOvertimeStart: Date | null;
+  regularOvertimeEnd: Date | null;
+  weeklyOvertimeStart: Date | null;
+  weeklyOvertimeEnd: Date | null;
 }
 
 /**
  * Menghitung jam kerja berdasarkan shift dan waktu presensi
+ * Mengikuti spesifikasi di instructions.md
  * 
  * @param shift - Data shift karyawan
  * @param checkInTime - Waktu presensi masuk
@@ -25,142 +28,123 @@ export function calculateWorkHours(
   checkInTime: Date,
   checkOutTime: Date
 ): WorkHoursResult {
-  // Mengkonversi waktu shift untuk hari ini
+  // Konversi waktu shift untuk hari ini
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const mainWorkStart = new Date(today);
-  mainWorkStart.setHours(
-    shift.mainWorkStart.getHours(),
-    shift.mainWorkStart.getMinutes(),
-    0, 0
-  );
-
-  const mainWorkEnd = new Date(today);
-  mainWorkEnd.setHours(
-    shift.mainWorkEnd.getHours(),
-    shift.mainWorkEnd.getMinutes(),
-    0, 0
-  );
-
+  // Buat waktu shift berdasarkan konfigurasi
+  const mainWorkStart = createTimeFromShift(today, shift.mainWorkStart);
+  const mainWorkEnd = createTimeFromShift(today, shift.mainWorkEnd);
+  
   let lunchBreakStart: Date | null = null;
   let lunchBreakEnd: Date | null = null;
-
+  
   if (shift.lunchBreakStart && shift.lunchBreakEnd) {
-    lunchBreakStart = new Date(today);
-    lunchBreakStart.setHours(
-      shift.lunchBreakStart.getHours(),
-      shift.lunchBreakStart.getMinutes(),
-      0, 0
-    );
-
-    lunchBreakEnd = new Date(today);
-    lunchBreakEnd.setHours(
-      shift.lunchBreakEnd.getHours(),
-      shift.lunchBreakEnd.getMinutes(),
-      0, 0
-    );
+    lunchBreakStart = createTimeFromShift(today, shift.lunchBreakStart);
+    lunchBreakEnd = createTimeFromShift(today, shift.lunchBreakEnd);
   }
 
-  let overtimeStart: Date | null = null;
-  let overtimeEnd: Date | null = null;
-
-  // Tipe shift mungkin berbeda, jadi kita gunakan pendekatan defensive
-  if (shift.overtimeStart && shift.overtimeEnd) {
-    overtimeStart = new Date(today);
-    overtimeStart.setHours(
-      shift.overtimeStart.getHours(),
-      shift.overtimeStart.getMinutes(),
-      0, 0
-    );
-
-    overtimeEnd = new Date(today);
-    overtimeEnd.setHours(
-      shift.overtimeEnd.getHours(),
-      shift.overtimeEnd.getMinutes(),
-      0, 0
-    );
-
-    // Jika jam lembur berakhir sebelum jam mulai, berarti lembur berlanjut ke hari berikutnya
-    if (overtimeEnd <= overtimeStart) {
-      overtimeEnd.setDate(overtimeEnd.getDate() + 1);
-    }
+  let regularOvertimeStart: Date | null = null;
+  let regularOvertimeEnd: Date | null = null;
+  
+  if (shift.regularOvertimeStart && shift.regularOvertimeEnd) {
+    regularOvertimeStart = createTimeFromShift(today, shift.regularOvertimeStart);
+    regularOvertimeEnd = createTimeFromShift(today, shift.regularOvertimeEnd);
   }
 
-  // Jika jam akhir kerja sebelum jam mulai, berarti shift berlanjut ke hari berikutnya
+  // Handle shift yang melewati hari berikutnya
   if (mainWorkEnd <= mainWorkStart) {
     mainWorkEnd.setDate(mainWorkEnd.getDate() + 1);
   }
-
-  // Menangani kasus check-in lebih awal
-  let actualCheckInTime = new Date(checkInTime);
-
-  // Jika check-in lebih dari 15 menit sebelum jadwal, tetap gunakan jadwal
-  if (actualCheckInTime < mainWorkStart) {
-    actualCheckInTime = new Date(mainWorkStart);
+  
+  if (regularOvertimeStart && regularOvertimeEnd && regularOvertimeEnd <= regularOvertimeStart) {
+    regularOvertimeEnd.setDate(regularOvertimeEnd.getDate() + 1);
   }
 
-  // Jika check-in terlambat, bulatkan ke 15 menit berikutnya
-  if (actualCheckInTime > mainWorkStart) {
-    const minutesLate = Math.ceil((actualCheckInTime.getTime() - mainWorkStart.getTime()) / (15 * 60 * 1000)) * 15;
-    actualCheckInTime = new Date(mainWorkStart);
-    actualCheckInTime.setMinutes(actualCheckInTime.getMinutes() + minutesLate);
+  // Tentukan waktu check-in yang efektif berdasarkan spesifikasi
+  let effectiveCheckInTime = new Date(checkInTime);
+  
+  // Jika karyawan datang lebih awal, waktu kerja dimulai sesuai jadwal
+  if (checkInTime < mainWorkStart) {
+    effectiveCheckInTime = new Date(mainWorkStart);
+  }
+  
+  // Jika karyawan terlambat, bulatkan ke 15 menit berikutnya
+  if (checkInTime > mainWorkStart) {
+    const minutesLate = Math.ceil((checkInTime.getTime() - mainWorkStart.getTime()) / (15 * 60 * 1000)) * 15;
+    effectiveCheckInTime = new Date(mainWorkStart);
+    effectiveCheckInTime.setMinutes(effectiveCheckInTime.getMinutes() + minutesLate);
   }
 
   // Hitung jam kerja utama
   let mainWorkHours = 0;
+  
+  // Pastikan check-out tidak lebih awal dari check-in
+  const effectiveCheckOutTime = checkOutTime > effectiveCheckInTime ? checkOutTime : effectiveCheckInTime;
+  
+  // Tentukan akhir jam kerja utama yang efektif
+  const effectiveMainWorkEnd = effectiveCheckOutTime < mainWorkEnd ? effectiveCheckOutTime : mainWorkEnd;
+  
+  if (effectiveMainWorkEnd > effectiveCheckInTime) {
+    const workDuration = effectiveMainWorkEnd.getTime() - effectiveCheckInTime.getTime();
+    mainWorkHours = workDuration / (1000 * 60 * 60); // Convert to hours
+    
+    // Kurangi waktu istirahat makan siang jika ada
+    if (lunchBreakStart && lunchBreakEnd && 
+        effectiveCheckInTime <= lunchBreakEnd && 
+        effectiveMainWorkEnd >= lunchBreakStart) {
+      
+      const lunchStart = Math.max(lunchBreakStart.getTime(), effectiveCheckInTime.getTime());
+      const lunchEnd = Math.min(lunchBreakEnd.getTime(), effectiveMainWorkEnd.getTime());
+      
+      if (lunchEnd > lunchStart) {
+        const lunchDuration = (lunchEnd - lunchStart) / (1000 * 60 * 60);
+        mainWorkHours -= lunchDuration;
+      }
+    }
+  }
+
+  // Hitung jam lembur reguler
   let regularOvertimeHours = 0;
-  let weeklyOvertimeHours = 0;
-
-  // Durasi jam kerja utama (dalam milidetik)
-  let mainWorkDuration = 0;
-
-  // Jika check-out sebelum akhir jam kerja utama
-  if (checkOutTime <= mainWorkEnd) {
-    mainWorkDuration = checkOutTime.getTime() - actualCheckInTime.getTime();
-  } else {
-    mainWorkDuration = mainWorkEnd.getTime() - actualCheckInTime.getTime();
-  }
-
-  // Kurangi waktu istirahat jika ada
-  if (lunchBreakStart && lunchBreakEnd &&
-    actualCheckInTime <= lunchBreakEnd &&
-    checkOutTime >= lunchBreakStart) {
-
-    const lunchStart = Math.max(lunchBreakStart.getTime(), actualCheckInTime.getTime());
-    const lunchEnd = Math.min(lunchBreakEnd.getTime(), checkOutTime.getTime());
-
-    if (lunchEnd > lunchStart) {
-      mainWorkDuration -= (lunchEnd - lunchStart);
+  
+  if (regularOvertimeStart && regularOvertimeEnd && 
+      checkOutTime > regularOvertimeStart) {
+    
+    const overtimeStartTime = Math.max(regularOvertimeStart.getTime(), effectiveCheckInTime.getTime());
+    const overtimeEndTime = Math.min(regularOvertimeEnd.getTime(), checkOutTime.getTime());
+    
+    if (overtimeEndTime > overtimeStartTime) {
+      regularOvertimeHours = (overtimeEndTime - overtimeStartTime) / (1000 * 60 * 60);
     }
   }
 
-  // Konversi ke jam
-  mainWorkHours = Math.max(0, mainWorkDuration / (1000 * 60 * 60));
+  // Pastikan tidak ada nilai negatif
+  mainWorkHours = Math.max(0, mainWorkHours);
+  regularOvertimeHours = Math.max(0, regularOvertimeHours);
 
-  // Hitung jam lembur reguler jika ada
-  if (overtimeStart && overtimeEnd && checkOutTime > overtimeStart) {
-    const otStart = Math.max(overtimeStart.getTime(), actualCheckInTime.getTime());
-    const otEnd = Math.min(overtimeEnd.getTime(), checkOutTime.getTime());
-
-    if (otEnd > otStart) {
-      regularOvertimeHours = (otEnd - otStart) / (1000 * 60 * 60);
-    }
-  }
-
-  // Bulatkan ke 1 desimal
-  mainWorkHours = Math.round(mainWorkHours * 10) / 10;
-  regularOvertimeHours = Math.round(regularOvertimeHours * 10) / 10;
-
-  // Hitung lembur mingguan (ini akan dihitung terpisah berdasarkan data mingguan)
-  // Untuk contoh ini, kita atur ke 0
-  weeklyOvertimeHours = 0;
+  // Bulatkan ke 2 desimal
+  mainWorkHours = Math.round(mainWorkHours * 100) / 100;
+  regularOvertimeHours = Math.round(regularOvertimeHours * 100) / 100;
 
   return {
     mainWorkHours,
     regularOvertimeHours,
-    weeklyOvertimeHours
+    weeklyOvertimeHours: 0 // Akan dihitung terpisah secara mingguan
   };
+}
+
+/**
+ * Membuat waktu dari konfigurasi shift
+ */
+function createTimeFromShift(baseDate: Date, shiftTime: Date): Date {
+  const result = new Date(baseDate);
+  result.setHours(
+    shiftTime.getHours(),
+    shiftTime.getMinutes(),
+    shiftTime.getSeconds(),
+    shiftTime.getMilliseconds()
+  );
+  return result;
 }
 
 /**
@@ -171,25 +155,13 @@ export function calculateWorkHours(
  * @returns boolean - true jika waktu saat ini dalam shift
  */
 export function isWithinShiftTime(shift: Shift, currentTime: Date): boolean {
-  // Mengkonversi waktu shift untuk hari ini
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const mainWorkStart = new Date(today);
-  mainWorkStart.setHours(
-    shift.mainWorkStart.getHours(),
-    shift.mainWorkStart.getMinutes(),
-    0, 0
-  );
+  const mainWorkStart = createTimeFromShift(today, shift.mainWorkStart);
+  const mainWorkEnd = createTimeFromShift(today, shift.mainWorkEnd);
 
-  const mainWorkEnd = new Date(today);
-  mainWorkEnd.setHours(
-    shift.mainWorkEnd.getHours(),
-    shift.mainWorkEnd.getMinutes(),
-    0, 0
-  );
-
-  // Jika jam akhir kerja sebelum jam mulai, berarti shift berlanjut ke hari berikutnya
+  // Handle shift yang melewati hari berikutnya
   if (mainWorkEnd <= mainWorkStart) {
     mainWorkEnd.setDate(mainWorkEnd.getDate() + 1);
   }
@@ -198,23 +170,91 @@ export function isWithinShiftTime(shift: Shift, currentTime: Date): boolean {
   const bufferStart = new Date(mainWorkStart);
   bufferStart.setHours(bufferStart.getHours() - 2);
 
-  // Memeriksa apakah waktu saat ini dalam rentang shift atau dalam buffer
   return currentTime >= bufferStart && currentTime <= mainWorkEnd;
 }
 
 /**
- * Menghitung total lembur mingguan berdasarkan data presensi mingguan
+ * Menghitung jam lembur mingguan berdasarkan data attendance dalam seminggu
  * 
- * @param weeklyHours - Total jam kerja dalam seminggu
- * @returns number - Jam lembur mingguan
+ * @param weeklyAttendances - Data attendance dalam seminggu
+ * @param maxWeeklyHours - Maksimal jam kerja normal per minggu (default 40 jam)
+ * @returns Jam lembur mingguan
  */
-export function calculateWeeklyOvertime(weeklyHours: number): number {
-  // Standar 40 jam per minggu
-  const standardWeeklyHours = 40;
+export function calculateWeeklyOvertimeHours(
+  weeklyAttendances: Array<{
+    mainWorkHours: number;
+    regularOvertimeHours: number;
+  }>,
+  maxWeeklyHours: number = 40
+): number {
+  // Hitung total jam kerja dalam seminggu
+  const totalMainWorkHours = weeklyAttendances.reduce((total, att) => total + att.mainWorkHours, 0);
+  const totalRegularOvertimeHours = weeklyAttendances.reduce((total, att) => total + att.regularOvertimeHours, 0);
+  
+  const totalWeeklyHours = totalMainWorkHours + totalRegularOvertimeHours;
+  
+  // Jika total jam kerja melebihi batas normal, sisanya adalah lembur mingguan
+  const weeklyOvertimeHours = Math.max(0, totalWeeklyHours - maxWeeklyHours);
+  
+  return Math.round(weeklyOvertimeHours * 100) / 100;
+}
 
-  // Jika total jam kerja melebihi standar, sisanya adalah lembur mingguan
-  const weeklyOvertime = Math.max(0, weeklyHours - standardWeeklyHours);
+/**
+ * Validasi apakah check-in/check-out sesuai dengan aturan shift
+ */
+export function validateAttendanceTime(
+  shift: ExtendedShift,
+  checkInTime: Date,
+  checkOutTime?: Date
+): {
+  isValid: boolean;
+  message: string;
+} {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  // Bulatkan ke 1 desimal
-  return Math.round(weeklyOvertime * 10) / 10;
+  const mainWorkStart = createTimeFromShift(today, shift.mainWorkStart);
+  const mainWorkEnd = createTimeFromShift(today, shift.mainWorkEnd);
+
+  // Handle shift yang melewati hari berikutnya
+  if (mainWorkEnd <= mainWorkStart) {
+    mainWorkEnd.setDate(mainWorkEnd.getDate() + 1);
+  }
+
+  // Validasi check-in tidak terlalu awal (maksimal 3 jam sebelum shift)
+  const maxEarlyCheckIn = new Date(mainWorkStart);
+  maxEarlyCheckIn.setHours(maxEarlyCheckIn.getHours() - 3);
+
+  if (checkInTime < maxEarlyCheckIn) {
+    return {
+      isValid: false,
+      message: `Check-in terlalu awal. Maksimal 3 jam sebelum shift dimulai (${mainWorkStart.toLocaleTimeString()})`
+    };
+  }
+
+  // Validasi check-out jika ada
+  if (checkOutTime) {
+    if (checkOutTime <= checkInTime) {
+      return {
+        isValid: false,
+        message: 'Waktu check-out harus setelah check-in'
+      };
+    }
+
+    // Maksimal 2 jam setelah shift berakhir
+    const maxLateCheckOut = new Date(mainWorkEnd);
+    maxLateCheckOut.setHours(maxLateCheckOut.getHours() + 2);
+
+    if (checkOutTime > maxLateCheckOut) {
+      return {
+        isValid: false,
+        message: `Check-out terlalu lambat. Maksimal 2 jam setelah shift berakhir (${mainWorkEnd.toLocaleTimeString()})`
+      };
+    }
+  }
+
+  return {
+    isValid: true,
+    message: 'Waktu presensi valid'
+  };
 } 

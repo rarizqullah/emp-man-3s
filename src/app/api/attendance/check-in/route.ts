@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { AttendanceStatus } from '@prisma/client';
+import { validateAttendanceTime, isWithinShiftTime } from '@/lib/utils/attendance-calculator';
+import { startOfDay, endOfDay } from 'date-fns';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('=== Check-In API Called ===');
+    console.log('=== Check-in API Called ===');
     
-    const body = await request.json();
-    const { employeeId } = body;
+    const { employeeId } = await request.json();
     
     if (!employeeId) {
       return NextResponse.json({
@@ -16,13 +16,14 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    // Verify employee exists
+    // Find employee with shift information
     const employee = await prisma.employee.findUnique({
       where: { id: employeeId },
       include: {
         user: {
           select: {
-            name: true
+            name: true,
+            email: true
           }
         },
         department: {
@@ -30,11 +31,7 @@ export async function POST(request: NextRequest) {
             name: true
           }
         },
-        shift: {
-          select: {
-            name: true
-          }
-        }
+        shift: true
       }
     });
     
@@ -45,22 +42,49 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
     
-    // Check if already checked in today
-    const today = new Date();
-    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    if (!employee.shift) {
+      return NextResponse.json({
+        success: false,
+        error: 'Employee shift configuration not found'
+      }, { status: 400 });
+    }
     
+    const checkInTime = new Date();
+    
+    // Validate if check-in is within acceptable shift time
+    if (!isWithinShiftTime(employee.shift, checkInTime)) {
+      return NextResponse.json({
+        success: false,
+        error: 'Check-in dilakukan di luar jam shift yang diizinkan'
+      }, { status: 400 });
+    }
+    
+    // Validate attendance time
+    const validation = validateAttendanceTime(employee.shift, checkInTime);
+    
+    if (!validation.isValid) {
+      return NextResponse.json({
+        success: false,
+        error: validation.message
+      }, { status: 400 });
+    }
+    
+    const today = new Date();
+    const startDate = startOfDay(today);
+    const endDate = endOfDay(today);
+    
+    // Check if already checked in today
     const existingAttendance = await prisma.attendance.findFirst({
       where: {
-        employeeId: employeeId,
+        employeeId,
         attendanceDate: {
-          gte: startOfDay,
-          lt: endOfDay
+          gte: startDate,
+          lte: endDate
         }
       }
     });
     
-    if (existingAttendance) {
+    if (existingAttendance?.checkInTime) {
       return NextResponse.json({
         success: false,
         error: 'Karyawan sudah melakukan check-in hari ini',
@@ -71,16 +95,29 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    // Create new attendance record
-    const checkInTime = new Date();
-    const attendance = await prisma.attendance.create({
-      data: {
-        employeeId: employeeId,
-        attendanceDate: checkInTime,
-        checkInTime: checkInTime,
-        status: AttendanceStatus.PRESENT
-      }
-    });
+    // Create or update attendance record
+    let attendance;
+    
+    if (existingAttendance) {
+      // Update existing record
+      attendance = await prisma.attendance.update({
+        where: { id: existingAttendance.id },
+        data: {
+          checkInTime: checkInTime,
+          status: 'PRESENT'
+        }
+      });
+    } else {
+      // Create new attendance record
+      attendance = await prisma.attendance.create({
+        data: {
+          employeeId,
+          attendanceDate: startDate,
+          checkInTime: checkInTime,
+          status: 'PRESENT'
+        }
+      });
+    }
     
     console.log(`✅ Check-in successful for employee ${employee.user.name} at ${checkInTime.toISOString()}`);
     
@@ -95,12 +132,14 @@ export async function POST(request: NextRequest) {
         department: employee.department?.name,
         shift: employee.shift?.name,
         checkInTime: attendance.checkInTime,
-        status: attendance.status
+        checkOutTime: attendance.checkOutTime,
+        status: attendance.status,
+        validationMessage: validation.message
       }
     });
     
   } catch (error) {
-    console.error('Error in check-in:', error);
+    console.error('Error during check-in:', error);
     return NextResponse.json({
       success: false,
       error: 'Terjadi kesalahan saat check-in',

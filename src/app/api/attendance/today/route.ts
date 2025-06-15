@@ -47,7 +47,9 @@ export async function GET() {
         },
         include: {
           employee: {
-            include: {
+            select: {
+              id: true,
+              employeeId: true,
               user: {
                 select: {
                   id: true,
@@ -69,7 +71,7 @@ export async function GET() {
       // Format data untuk response
       const formattedAttendances = attendances.map(attendance => ({
         id: attendance.id,
-        employeeId: attendance.employee.id,
+        employeeId: attendance.employee.employeeId,
         employeeName: attendance.employee.user.name,
         department: attendance.employee.department?.name || '-',
         shift: attendance.employee.shift?.name || '-',
@@ -91,7 +93,9 @@ export async function GET() {
     // Jika user bukan admin, cari data employee berdasarkan userId
     const employee = await prisma.employee.findFirst({
       where: { userId: user.id },
-      include: {
+      select: {
+        id: true,
+        employeeId: true,
         user: {
           select: {
             id: true,
@@ -140,7 +144,7 @@ export async function GET() {
       },
       attendances: todayAttendance ? [{
         id: todayAttendance.id,
-        employeeId: employee.id,
+        employeeId: employee.employeeId,
         employeeName: employee.user.name,
         department: employee.department?.name || '-',
         shift: employee.shift?.name || '-',

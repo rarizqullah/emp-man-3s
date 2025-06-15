@@ -41,10 +41,6 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { format, parseISO } from "date-fns";
-import { id } from "date-fns/locale";
-import { Employee, Department, Shift, SubDepartment } from "@/lib/types";
-import { usePathname, useSearchParams } from "next/navigation";
 
 // Import modals
 import { AddEmployeeModal } from "@/components/employee/AddEmployeeModal";
@@ -330,18 +326,39 @@ export default function EmployeePage() {
       
       if (!response.ok) {
         let errorMessage = 'Gagal menambahkan karyawan';
+        
+        // Coba parse response sebagai JSON
         try {
-          const errorData = await response.json();
-          console.error('Error response:', errorData);
-          if (errorData.error) {
-            errorMessage = errorData.error;
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            console.log('Error response data:', errorData);
+            
+            if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+            
+            if (errorData.details) {
+              console.error('Validation errors:', errorData.details);
+              // Tampilkan detail validasi jika ada
+              if (Array.isArray(errorData.details) && errorData.details.length > 0) {
+                const firstError = errorData.details[0];
+                if (firstError.message) {
+                  errorMessage = firstError.message;
+                }
+              }
+            }
+          } else {
+            // Jika response bukan JSON, baca sebagai text
+            const errorText = await response.text();
+            console.log('Error response text:', errorText);
+            errorMessage = errorText || `HTTP Error ${response.status}`;
           }
-          if (errorData.details) {
-            console.error('Validation errors:', errorData.details);
-          }
-        } catch (e) {
-          console.error('Error parsing error response:', e);
+        } catch (parseError) {
+          console.error('Error parsing error response:', parseError);
+          errorMessage = `Gagal menambahkan karyawan (HTTP ${response.status})`;
         }
+        
         throw new Error(errorMessage);
       }
       

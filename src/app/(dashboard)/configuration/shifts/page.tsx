@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Search, Trash2, Clock } from 'lucide-react'
 import {
   Form,
   FormControl,
@@ -417,6 +417,37 @@ export default function ShiftsPage() {
     }
   }
   
+  // Fungsi untuk memperbarui jam istirahat shift yang kosong
+  const handleUpdateBreakTimes = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/shifts/update-break-times', {
+        method: 'POST',
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Gagal memperbarui jam istirahat')
+      }
+      
+      const result = await response.json()
+      
+      // Refresh data shift
+      await fetchShifts()
+      
+      toast.success(`Berhasil memperbarui ${result.updates?.length || 0} shift dengan jam istirahat`)
+    } catch (error: unknown) {
+      console.error('Error:', error)
+      if (error instanceof Error) {
+        toast.error(error.message || 'Gagal memperbarui jam istirahat')
+      } else {
+        toast.error('Gagal memperbarui jam istirahat')
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+  
   return (
     <div className="space-y-4">
       <Card>
@@ -427,10 +458,20 @@ export default function ShiftsPage() {
               Kelola pengaturan shift untuk berbagai sub-departemen
             </CardDescription>
           </div>
-          <Button onClick={() => setIsAddDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Tambah Shift
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={handleUpdateBreakTimes}
+              disabled={isLoading}
+            >
+              <Clock className="mr-2 h-4 w-4" />
+              Perbaiki Jam Istirahat
+            </Button>
+            <Button onClick={() => setIsAddDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Tambah Shift
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center space-x-2 mb-4">

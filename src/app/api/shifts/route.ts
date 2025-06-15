@@ -25,27 +25,51 @@ const shiftCreateSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('API /api/shifts dipanggil');
+    
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search');
     const subDepartmentId = searchParams.get('subDepartmentId');
     
+    console.log('Search params:', { search, subDepartmentId });
+    
+    let shifts;
+    
     // Jika ada parameter pencarian
     if (search) {
-      const shifts = await searchShifts(search);
-      return NextResponse.json(shifts);
+      console.log('Mencari shift dengan query:', search);
+      shifts = await searchShifts(search);
     }
-    
     // Jika ada parameter subDepartmentId, filter berdasarkan sub departemen
-    if (subDepartmentId) {
-      const shifts = await getShiftsBySubDepartment(subDepartmentId);
-      return NextResponse.json(shifts);
+    else if (subDepartmentId) {
+      console.log('Mengambil shift untuk subDepartmentId:', subDepartmentId);
+      shifts = await getShiftsBySubDepartment(subDepartmentId);
+    }
+    // Jika tidak ada parameter, ambil semua shift
+    else {
+      console.log('Mengambil semua shift');
+      shifts = await getAllShifts();
     }
     
-    // Jika tidak ada parameter, ambil semua shift
-    const shifts = await getAllShifts();
+    console.log(`Berhasil mengambil ${shifts.length} shift`);
     return NextResponse.json(shifts);
   } catch (error) {
     console.error('Gagal mengambil data shift:', error);
+    
+    // Cek apakah error karena koneksi database
+    const errorMessage = String(error).toLowerCase();
+    if (errorMessage.includes('can\'t reach database server') ||
+        errorMessage.includes('connection') ||
+        errorMessage.includes('timeout')) {
+      return NextResponse.json(
+        { 
+          error: 'Tidak dapat terhubung ke database. Silakan coba lagi dalam beberapa saat.',
+          isConnectionError: true
+        },
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
       { error: 'Terjadi kesalahan saat mengambil data shift' },
       { status: 500 }

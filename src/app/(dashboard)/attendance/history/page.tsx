@@ -6,7 +6,8 @@ import { id } from "date-fns/locale";
 import {
   Search,
   FileDown,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,129 +37,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { toast } from "react-hot-toast";
 
 // Tipe data untuk riwayat kehadiran
 interface AttendanceRecord {
   id: string;
   employeeId: string;
   employeeName: string;
-  department: string;
-  shift: string;
+  departmentName: string;
+  shiftName: string;
   checkInTime: string;
   checkOutTime: string | null;
-  workingHours: number;
-  overtimeHours: number;
+  mainWorkHours: number | null;
+  regularOvertimeHours: number | null;
+  weeklyOvertimeHours: number | null;
   status: string;
-  date: string;
+  attendanceDate: string;
 }
-
-// Contoh data riwayat kehadiran untuk tampilan
-const ATTENDANCE_HISTORY: AttendanceRecord[] = [
-  {
-    id: "ATT001",
-    employeeId: "EMP001",
-    employeeName: "Ahmad Fauzi",
-    department: "IT",
-    shift: "Non-Shift",
-    checkInTime: "2024-02-01T08:05:23",
-    checkOutTime: "2024-02-01T17:10:45",
-    workingHours: 9.08,
-    overtimeHours: 1.08,
-    status: "Hadir",
-    date: "2024-02-01",
-  },
-  {
-    id: "ATT002",
-    employeeId: "EMP002",
-    employeeName: "Siti Rahayu",
-    department: "HR",
-    shift: "Shift A",
-    checkInTime: "2024-02-01T07:58:12",
-    checkOutTime: "2024-02-01T16:05:43",
-    workingHours: 8.12,
-    overtimeHours: 0.12,
-    status: "Hadir",
-    date: "2024-02-01",
-  },
-  {
-    id: "ATT003",
-    employeeId: "EMP001",
-    employeeName: "Ahmad Fauzi",
-    department: "IT",
-    shift: "Non-Shift",
-    checkInTime: "2024-02-02T08:10:05",
-    checkOutTime: "2024-02-02T17:05:30",
-    workingHours: 8.92,
-    overtimeHours: 0.92,
-    status: "Hadir",
-    date: "2024-02-02",
-  },
-  {
-    id: "ATT004",
-    employeeId: "EMP002",
-    employeeName: "Siti Rahayu",
-    department: "HR",
-    shift: "Shift A",
-    checkInTime: "2024-02-02T08:00:10",
-    checkOutTime: null,
-    workingHours: 0,
-    overtimeHours: 0,
-    status: "Tidak Lengkap",
-    date: "2024-02-02",
-  },
-  {
-    id: "ATT005",
-    employeeId: "EMP003",
-    employeeName: "Budi Santoso",
-    department: "Finance",
-    shift: "Non-Shift",
-    checkInTime: "2024-02-03T08:30:15",
-    checkOutTime: "2024-02-03T17:00:20",
-    workingHours: 8.5,
-    overtimeHours: 0.5,
-    status: "Terlambat",
-    date: "2024-02-03",
-  },
-  {
-    id: "ATT006",
-    employeeId: "EMP001",
-    employeeName: "Ahmad Fauzi",
-    department: "IT",
-    shift: "Non-Shift",
-    checkInTime: "2024-02-03T09:15:40",
-    checkOutTime: "2024-02-03T17:20:10",
-    workingHours: 8.08,
-    overtimeHours: 0.33,
-    status: "Terlambat",
-    date: "2024-02-03",
-  },
-  {
-    id: "ATT007",
-    employeeId: "EMP004",
-    employeeName: "Dewi Anggraini",
-    department: "Marketing",
-    shift: "Shift B",
-    checkInTime: "2024-02-04T14:02:30",
-    checkOutTime: "2024-02-04T22:05:10",
-    workingHours: 8.04,
-    overtimeHours: 0.08,
-    status: "Hadir",
-    date: "2024-02-04",
-  },
-  {
-    id: "ATT008",
-    employeeId: "EMP005",
-    employeeName: "Eko Prasetyo",
-    department: "Production",
-    shift: "Shift A",
-    checkInTime: "2024-02-04T07:55:20",
-    checkOutTime: "2024-02-04T16:10:45",
-    workingHours: 8.25,
-    overtimeHours: 0.18,
-    status: "Hadir",
-    date: "2024-02-04",
-  },
-];
 
 // Format waktu
 const formatTime = (timeString: string | null) => {
@@ -176,29 +71,88 @@ export default function AttendanceHistoryPage() {
   const [filterDepartment, setFilterDepartment] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [date, setDate] = useState<Date>(new Date());
-  const [filteredData, setFilteredData] = useState<AttendanceRecord[]>(ATTENDANCE_HISTORY);
+  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
+  const [filteredData, setFilteredData] = useState<AttendanceRecord[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [departments, setDepartments] = useState<string[]>([]);
+
+  // Fungsi untuk fetch data department
+  const fetchDepartments = async () => {
+    try {
+      const response = await fetch('/api/departments');
+      if (response.ok) {
+        const departments = await response.json();
+        // API mengembalikan array departments langsung, bukan dalam format { success: true, departments: [...] }
+        if (Array.isArray(departments)) {
+          const departmentNames = departments.map((dept: { name: string }) => dept.name);
+          setDepartments(departmentNames);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching departments:', error);
+    }
+  };
+
+  // Fungsi untuk fetch data attendance
+  const fetchAttendanceData = async () => {
+    setIsLoading(true);
+    try {
+      const monthStart = startOfMonth(date);
+      const monthEnd = endOfMonth(date);
+      
+      const startDate = format(monthStart, 'yyyy-MM-dd');
+      const endDate = format(monthEnd, 'yyyy-MM-dd');
+      
+      console.log(`Fetching attendance data dari ${startDate} sampai ${endDate}`);
+      
+      const response = await fetch(`/api/attendance/list?startDate=${startDate}&endDate=${endDate}&limit=100`);
+      
+      if (!response.ok) {
+        throw new Error('Gagal mengambil data riwayat kehadiran');
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setAttendanceData(data.attendances || []);
+        console.log(`Berhasil memuat ${data.attendances?.length || 0} data riwayat kehadiran`);
+      } else {
+        throw new Error(data.message || 'Gagal mengambil data riwayat kehadiran');
+      }
+    } catch (error) {
+      console.error('Error fetching attendance data:', error);
+      toast.error('Gagal memuat data riwayat kehadiran. Silakan coba lagi.');
+      setAttendanceData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Filter data berdasarkan parameter pencarian dan filter
   useEffect(() => {
-    const monthStart = startOfMonth(date);
-    const monthEnd = endOfMonth(date);
-
-    const filtered = ATTENDANCE_HISTORY.filter(record => {
-      const recordDate = new Date(record.date);
-      const matchesMonth = recordDate >= monthStart && recordDate <= monthEnd;
-
+    const filtered = attendanceData.filter(record => {
       const matchesSearch =
         record.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         record.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesDepartment = filterDepartment === "" || record.department === filterDepartment;
+      const matchesDepartment = filterDepartment === "" || record.departmentName === filterDepartment;
       const matchesStatus = filterStatus === "" || record.status === filterStatus;
 
-      return matchesMonth && matchesSearch && matchesDepartment && matchesStatus;
+      return matchesSearch && matchesDepartment && matchesStatus;
     });
 
     setFilteredData(filtered);
-  }, [searchTerm, filterDepartment, filterStatus, date]);
+  }, [searchTerm, filterDepartment, filterStatus, attendanceData]);
+
+  // Fetch data saat komponen dimuat atau tanggal berubah
+  useEffect(() => {
+    fetchAttendanceData();
+  }, [date]);
+
+  // Fetch departments saat komponen dimuat
+  useEffect(() => {
+    fetchDepartments();
+  }, []);
 
   // Handler untuk pergantian bulan pada kalender
   const handleMonthChange = (newDate: Date) => {
@@ -208,21 +162,44 @@ export default function AttendanceHistoryPage() {
   // Handler untuk ekspor data kehadiran
   const handleExportData = () => {
     console.log("Mengekspor data kehadiran:", filteredData);
-    alert("Fungsi ekspor data akan diimplementasikan di sini");
+    toast.success("Fitur ekspor akan segera tersedia");
     // TODO: Implementasi ekspor data ke Excel/CSV
+  };
+
+  // Fungsi untuk refresh data
+  const handleRefreshData = () => {
+    fetchAttendanceData();
+  };
+
+  // Fungsi untuk menentukan status badge
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'PRESENT':
+        return { variant: "default" as const, label: "Hadir" };
+      case 'LATE':
+        return { variant: "secondary" as const, label: "Terlambat" };
+      case 'ABSENT':
+        return { variant: "destructive" as const, label: "Tidak Hadir" };
+      default:
+        return { variant: "outline" as const, label: status };
+    }
   };
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Riwayat Kehadiran</h1>
+        <Button variant="outline" onClick={handleRefreshData} disabled={isLoading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh Data
+        </Button>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Daftar Riwayat Kehadiran</CardTitle>
           <CardDescription>
-            Lihat dan kelola riwayat kehadiran karyawan
+            Lihat dan kelola riwayat kehadiran karyawan untuk bulan {format(date, "MMMM yyyy", { locale: id })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -235,12 +212,13 @@ export default function AttendanceHistoryPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-8"
+                  disabled={isLoading}
                 />
               </div>
 
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-10 gap-1">
+                  <Button variant="outline" size="sm" className="h-10 gap-1" disabled={isLoading}>
                     <CalendarIcon className="h-4 w-4" />
                     {format(date, "MMMM yyyy", { locale: id })}
                   </Button>
@@ -263,15 +241,12 @@ export default function AttendanceHistoryPage() {
                   placeholder="Pilih departemen"
                   items={[
                     { value: "", label: "Semua" },
-                    { value: "IT", label: "IT" },
-                    { value: "HR", label: "HR" },
-                    { value: "Finance", label: "Finance" },
-                    { value: "Marketing", label: "Marketing" },
-                    { value: "Production", label: "Production" },
+                    ...departments.map(dept => ({ value: dept, label: dept }))
                   ]}
                   value={filterDepartment}
                   onChange={setFilterDepartment}
                   className="w-full sm:w-[140px]"
+                  disabled={isLoading}
                 />
 
                 <DropdownFilter
@@ -279,18 +254,19 @@ export default function AttendanceHistoryPage() {
                   placeholder="Pilih status"
                   items={[
                     { value: "", label: "Semua" },
-                    { value: "Hadir", label: "Hadir" },
-                    { value: "Terlambat", label: "Terlambat" },
-                    { value: "Tidak Lengkap", label: "Tidak Lengkap" },
+                    { value: "PRESENT", label: "Hadir" },
+                    { value: "LATE", label: "Terlambat" },
+                    { value: "ABSENT", label: "Tidak Hadir" },
                   ]}
                   value={filterStatus}
                   onChange={setFilterStatus}
                   className="w-full sm:w-[140px]"
+                  disabled={isLoading}
                 />
               </div>
             </div>
 
-            <Button variant="outline" onClick={handleExportData}>
+            <Button variant="outline" onClick={handleExportData} disabled={isLoading}>
               <FileDown className="mr-2 h-4 w-4" />
               Export Data
             </Button>
@@ -313,24 +289,30 @@ export default function AttendanceHistoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredData.length > 0 ? (
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center h-24">
+                      <div className="flex justify-center items-center">
+                        <RefreshCw className="h-6 w-6 animate-spin mr-2" />
+                        Memuat data riwayat kehadiran...
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : filteredData.length > 0 ? (
                   filteredData.map((record) => (
                     <TableRow key={record.id}>
-                      <TableCell>{formatDate(record.date)}</TableCell>
+                      <TableCell>{formatDate(record.attendanceDate)}</TableCell>
                       <TableCell>{record.employeeId}</TableCell>
                       <TableCell className="font-medium">{record.employeeName}</TableCell>
-                      <TableCell>{record.department}</TableCell>
-                      <TableCell>{record.shift}</TableCell>
+                      <TableCell>{record.departmentName}</TableCell>
+                      <TableCell>{record.shiftName}</TableCell>
                       <TableCell>{formatTime(record.checkInTime)}</TableCell>
                       <TableCell>{formatTime(record.checkOutTime)}</TableCell>
-                      <TableCell>{record.workingHours.toFixed(2)}</TableCell>
-                      <TableCell>{record.overtimeHours.toFixed(2)}</TableCell>
+                      <TableCell>{record.mainWorkHours?.toFixed(2) || "-"}</TableCell>
+                      <TableCell>{record.regularOvertimeHours?.toFixed(2) || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant={
-                          record.status === "Hadir" ? "default" :
-                            record.status === "Terlambat" ? "secondary" : "destructive"
-                        }>
-                          {record.status}
+                        <Badge variant={getStatusBadge(record.status).variant}>
+                          {getStatusBadge(record.status).label}
                         </Badge>
                       </TableCell>
                     </TableRow>
@@ -338,13 +320,21 @@ export default function AttendanceHistoryPage() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={10} className="text-center h-24">
-                      Tidak ada data kehadiran ditemukan
+                      {attendanceData.length === 0 
+                        ? "Tidak ada data kehadiran untuk bulan ini" 
+                        : "Tidak ada data yang sesuai dengan filter pencarian"}
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
           </div>
+          
+          {!isLoading && filteredData.length > 0 && (
+            <div className="mt-4 text-sm text-muted-foreground">
+              Menampilkan {filteredData.length} dari {attendanceData.length} data kehadiran
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -359,6 +349,7 @@ interface DropdownFilterProps {
   value: string;
   onChange: (value: string) => void;
   className: string;
+  disabled: boolean;
 }
 
 function DropdownFilter({
@@ -368,11 +359,12 @@ function DropdownFilter({
   value,
   onChange,
   className,
+  disabled,
 }: DropdownFilterProps) {
   return (
     <div className={className}>
       <Label className="mb-2 block text-sm font-semibold">{label}</Label>
-      <Select value={value} onValueChange={onChange}>
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
         <SelectTrigger>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>

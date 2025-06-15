@@ -40,7 +40,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import AttendanceFaceRecognition from '@/components/attendance/AttendanceFaceRecognition';
-import { useSupabase } from "@/providers/supabase-provider";
+
 import { 
   Dialog,
   DialogContent,
@@ -64,39 +64,6 @@ interface AttendanceRecord {
   status: 'InProgress' | 'Completed';
 }
 
-// Interface untuk response API
-interface ApiResponse {
-  success: boolean;
-  message: string;
-  data?: Record<string, unknown>;
-}
-
-// Definisikan interface yang diperlukan
-interface Department {
-  id: string;
-  name: string;
-}
-
-interface SubDepartment {
-  id: string;
-  name: string;
-  departmentId: string;
-}
-
-interface Position {
-  id: string;
-  name: string;
-  departmentId: string;
-  subDepartmentId: string | null;
-}
-
-interface Shift {
-  id: string;
-  name: string;
-  departmentId?: string;
-  subDepartmentId?: string;
-}
-
 interface EmployeeInfo {
   id: string;
   name: string;
@@ -106,7 +73,6 @@ interface EmployeeInfo {
 
 export default function AttendancePage() {
   const router = useRouter();
-  const { user } = useSupabase();
   const [date] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
@@ -139,44 +105,15 @@ export default function AttendancePage() {
       
       if (data.success) {
         setAttendanceData(data.attendances || []);
-        if (data.testing) {
-          toast.success(data.note || 'Data testing berhasil dimuat');
-        }
+        console.log(`Berhasil memuat ${data.attendances?.length || 0} data presensi hari ini`);
       } else {
         throw new Error(data.error || 'Gagal mendapatkan data presensi');
       }
     } catch (error) {
       console.error('Error fetching attendance data:', error);
       toast.error('Gagal memuat data presensi. Silakan coba lagi.');
-      // Gunakan data dummy jika api belum tersedia
-      setAttendanceData([
-        {
-          id: "1",
-          employeeId: "EMP001",
-          employeeName: "Budi Santoso",
-          department: "IT",
-          shift: "Shift A",
-          checkInTime: new Date().toISOString(),
-          checkOutTime: null,
-          mainWorkHours: null,
-          overtimeHours: null,
-          weeklyOvertimeHours: null,
-          status: "InProgress"
-        },
-        {
-          id: "2",
-          employeeId: "EMP002",
-          employeeName: "Siti Nurhaliza",
-          department: "HR",
-          shift: "Non-Shift",
-          checkInTime: new Date(new Date().setHours(8, 0, 0)).toISOString(),
-          checkOutTime: new Date(new Date().setHours(17, 0, 0)).toISOString(),
-          mainWorkHours: 8,
-          overtimeHours: 1,
-          weeklyOvertimeHours: 0,
-          status: "Completed"
-        }
-      ]);
+      // Set empty array instead of dummy data
+      setAttendanceData([]);
     } finally {
       setIsLoading(false);
     }
@@ -188,20 +125,12 @@ export default function AttendancePage() {
       setIsLoading(true);
       console.log("Fetching employee data...");
       
-      // Gunakan fetch biasa untuk testing
       const response = await fetch('/api/attendance/employee-data');
       
       if (!response.ok) {
-        // Jika tidak ada session, buat data dummy untuk testing
-        console.log("No session found, using dummy employee data");
-        setEmployeeInfo({
-          id: "demo-employee-001",
-          name: "Demo Employee",
-          department: "Testing Department",
-          shift: "Demo Shift"
-        });
+        console.log("No session found or unauthorized");
+        setEmployeeInfo(null);
         await fetchTodayAttendance();
-        toast.success("Mode demo: Menggunakan data testing untuk pengenalan wajah");
         return;
       }
       
@@ -216,15 +145,8 @@ export default function AttendancePage() {
       // Jika tidak ada data employee (user belum terdaftar sebagai karyawan)
       if (!result.data || result.data.length === 0) {
         console.log("User belum terdaftar sebagai karyawan");
-        toast.success("Anda belum terdaftar sebagai karyawan. Hubungi admin untuk didaftarkan.");
-        
-        // Set employee info dengan values default
-        setEmployeeInfo({
-          id: "temp",
-          name: "User Demo",
-          department: "Belum terdaftar",
-          shift: "Belum terdaftar"
-        });
+        toast.error("Anda belum terdaftar sebagai karyawan. Hubungi admin untuk didaftarkan.");
+        setEmployeeInfo(null);
         await fetchTodayAttendance();
         return;
       }
@@ -233,7 +155,7 @@ export default function AttendancePage() {
       const employeeData = result.data[0];
       
       setEmployeeInfo({
-        id: employeeData.id,
+        id: employeeData.employeeId,
         name: employeeData.name,
         department: employeeData.departmentName || "-",
         shift: employeeData.shiftName || "-"
@@ -241,16 +163,9 @@ export default function AttendancePage() {
       
       console.log("Employee data loaded:", employeeData);
       
-      // Display success message
-      if (result.testing) {
-        toast.success(`Mode testing: Ditemukan ${result.data.length} karyawan terdaftar`);
-      } else {
-        toast.success("Data karyawan berhasil dimuat");
-      }
-      
       // Jika karyawan belum memiliki data wajah, tampilkan peringatan
       if (!employeeData.hasFaceData) {
-        toast.success("Anda belum memiliki data wajah. Tambahkan data wajah di profil Anda untuk menggunakan fitur pengenalan wajah.");
+        toast.error("Anda belum memiliki data wajah. Tambahkan data wajah di profil Anda untuk menggunakan fitur pengenalan wajah.");
       }
       
       // Setelah mendapatkan data karyawan, fetch juga data presensi hari ini
@@ -260,15 +175,9 @@ export default function AttendancePage() {
       await fetchAttendance();
     } catch (error) {
       console.error("Error fetching current employee info:", error);
-      // Fallback ke dummy data
-      setEmployeeInfo({
-        id: "demo-employee-001",
-        name: "Demo Employee",
-        department: "Testing Department", 
-        shift: "Demo Shift"
-      });
+      toast.error("Gagal memuat data karyawan. Pastikan Anda sudah login.");
+      setEmployeeInfo(null);
       await fetchTodayAttendance();
-      toast.success("Mode demo: Menggunakan data testing");
     } finally {
       setIsLoading(false);
     }
@@ -289,13 +198,16 @@ export default function AttendancePage() {
     fetchCurrentEmployeeInfo();
   }, []);
 
-  // Filter data presensi berdasarkan pencarian
+  // Filtering data attendance berdasarkan pencarian
   const filteredAttendance = attendanceData.filter(attendance => {
+    if (!searchTerm) return true;
+    
     const searchLower = searchTerm.toLowerCase();
     return (
       attendance.employeeName.toLowerCase().includes(searchLower) ||
       attendance.employeeId.toLowerCase().includes(searchLower) ||
-      attendance.department.toLowerCase().includes(searchLower)
+      attendance.department.toLowerCase().includes(searchLower) ||
+      attendance.shift.toLowerCase().includes(searchLower)
     );
   });
   
@@ -308,22 +220,20 @@ export default function AttendancePage() {
   // Fetch data presensi untuk hari ini
   const fetchAttendance = async () => {
     try {
-      // Gunakan format tanggal saat ini
-      const today = format(new Date(), 'yyyy-MM-dd');
-      
       // Jika tidak ada employee info, skip
-      if (!employeeInfo || employeeInfo.id === "temp" || employeeInfo.id.startsWith("demo-")) {
+      if (!employeeInfo || !employeeInfo.id) {
         console.log("Skipping attendance fetch - no valid employee");
         setMode('checkIn');
         setIsCheckedIn(false);
         return;
       }
       
-      // Untuk saat ini, asumsi mode check-in karena ini system demo
-      setMode('checkIn');
-      setIsCheckedIn(false);
+      // Determine mode berdasarkan status attendance saat ini
+      const currentMode = await determineAttendanceMode(employeeInfo.id);
+      setMode(currentMode);
+      setIsCheckedIn(currentMode === 'checkOut');
       
-      console.log(`Attendance mode set to checkIn for ${employeeInfo.name}`);
+      console.log(`Attendance mode set to ${currentMode} for ${employeeInfo.name}`);
     } catch (error) {
       console.error("Error fetching attendance:", error);
       // Default ke check-in mode
@@ -570,7 +480,7 @@ export default function AttendancePage() {
               </CardHeader>
               <CardContent>
                 <AttendanceFaceRecognition
-                  onSuccessfulRecognition={(employeeId, employeeName) => handleSuccessfulRecognition(employeeId)}
+                  onSuccessfulRecognition={(employeeId) => handleSuccessfulRecognition(employeeId)}
                   mode={mode}
                 />
               </CardContent>
