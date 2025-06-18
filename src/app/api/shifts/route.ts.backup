@@ -11,9 +11,10 @@ import {
 const shiftCreateSchema = z.object({
   name: z.string().min(1, "Nama shift wajib diisi"),
   shiftType: z.enum(['NON_SHIFT', 'SHIFT_A', 'SHIFT_B']),
+  // Hapus sementara
   subDepartmentId: z.string().uuid().optional().nullable(),
-  mainWorkStart: z.string().or(z.date()).optional().nullable(),
-  mainWorkEnd: z.string().or(z.date()).optional().nullable(),
+  mainWorkStart: z.string().or(z.date()),
+  mainWorkEnd: z.string().or(z.date()),
   lunchBreakStart: z.string().or(z.date()).optional().nullable(),
   lunchBreakEnd: z.string().or(z.date()).optional().nullable(),
   workingDays: z.array(z.string()).optional().default([]),
@@ -21,21 +22,6 @@ const shiftCreateSchema = z.object({
   regularOvertimeEnd: z.string().or(z.date()).optional().nullable(),
   weeklyOvertimeStart: z.string().or(z.date()).optional().nullable(),
   weeklyOvertimeEnd: z.string().or(z.date()).optional().nullable(),
-}).refine((data) => {
-  // Untuk NON_SHIFT, semua field waktu adalah opsional
-  if (data.shiftType === 'NON_SHIFT') {
-    return true;
-  }
-  
-  // Untuk SHIFT_A dan SHIFT_B, mainWorkStart dan mainWorkEnd wajib
-  if (data.shiftType === 'SHIFT_A' || data.shiftType === 'SHIFT_B') {
-    return data.mainWorkStart && data.mainWorkEnd;
-  }
-  
-  return true;
-}, {
-  message: "Jam kerja utama wajib diisi untuk SHIFT_A dan SHIFT_B",
-  path: ["mainWorkStart", "mainWorkEnd"]
 });
 
 export async function GET(request: NextRequest) {
@@ -106,8 +92,8 @@ export async function POST(request: NextRequest) {
     const processedData = {
       ...validatedData,
       subDepartmentId: validatedData.subDepartmentId || null,
-      mainWorkStart: validatedData.mainWorkStart ? new Date(validatedData.mainWorkStart) : null,
-      mainWorkEnd: validatedData.mainWorkEnd ? new Date(validatedData.mainWorkEnd) : null,
+      mainWorkStart: new Date(validatedData.mainWorkStart),
+      mainWorkEnd: new Date(validatedData.mainWorkEnd),
       lunchBreakStart: validatedData.lunchBreakStart ? new Date(validatedData.lunchBreakStart) : null,
       lunchBreakEnd: validatedData.lunchBreakEnd ? new Date(validatedData.lunchBreakEnd) : null,
       workingDays: validatedData.workingDays || [],

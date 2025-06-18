@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     console.log('=== Check-in API Called ===');
     
-    const { employeeId } = await request.json();
+    const { employeeId, isValidated = true } = await request.json(); // Default true untuk face recognition
     
     if (!employeeId) {
       return NextResponse.json({

@@ -699,7 +699,7 @@ export default function EmployeePage() {
           employeeName={selectedEmployee.user?.name}
           employeeId={selectedEmployee.id}
           currentShift={selectedEmployee.shift?.name}
-          subDepartmentId={selectedEmployee.subDepartmentId || ""}
+          subDepartmentId={selectedEmployee.subDepartmentId}
           onSubmit={handleChangeShift}
         />
       )}

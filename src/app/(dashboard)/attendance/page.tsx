@@ -61,7 +61,18 @@ interface AttendanceRecord {
   mainWorkHours: number | null;
   overtimeHours: number | null;
   weeklyOvertimeHours: number | null;
-  status: 'InProgress' | 'Completed';
+  status: string; // Updated to support new status types
+  // Kolom jam istirahat dan lembur
+  breakStartTime?: string | null;
+  breakEndTime?: string | null;
+  overtimeStartTime?: string | null;
+  overtimeEndTime?: string | null;
+  // Info shift
+  shiftEndTime?: string | null;
+  lunchBreakStart?: string | null;
+  lunchBreakEnd?: string | null;
+  regularOvertimeStart?: string | null;
+  regularOvertimeEnd?: string | null;
 }
 
 interface EmployeeInfo {
@@ -86,7 +97,7 @@ export default function AttendancePage() {
   const [isManualDialogOpen, setIsManualDialogOpen] = useState<boolean>(false);
 
   // Format time untuk tampilan
-  const formatTime = (timeString: string | null): string => {
+  const formatTime = (timeString: string | null | undefined): string => {
     if (!timeString) return "-";
     return format(new Date(timeString), "HH:mm:ss");
   };
@@ -529,21 +540,25 @@ export default function AttendancePage() {
                       ? "Tidak ada data presensi untuk hari ini"
                       : `Total ${filteredAttendance.length} data presensi`}
                 </TableCaption>
-                  <TableHeader>
-                    <TableRow>
+                                  <TableHeader>
+                  <TableRow>
                     <TableHead>ID Karyawan</TableHead>
-                      <TableHead>Nama</TableHead>
-                      <TableHead>Departemen</TableHead>
-                      <TableHead>Shift</TableHead>
+                    <TableHead>Nama</TableHead>
+                    <TableHead>Departemen</TableHead>
+                    <TableHead>Shift</TableHead>
                     <TableHead>Jam Masuk</TableHead>
                     <TableHead>Jam Keluar</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
+                    <TableHead>Istirahat Mulai</TableHead>
+                    <TableHead>Istirahat Selesai</TableHead>
+                    <TableHead>Lembur Mulai</TableHead>
+                    <TableHead>Lembur Selesai</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
                   <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center">
+                      <TableCell colSpan={11} className="text-center">
                         <div className="flex justify-center py-4">
                           <RefreshCw className="h-6 w-6 animate-spin" />
                         </div>
@@ -558,16 +573,31 @@ export default function AttendancePage() {
                           <TableCell>{attendance.shift}</TableCell>
                           <TableCell>{formatTime(attendance.checkInTime)}</TableCell>
                           <TableCell>{formatTime(attendance.checkOutTime)}</TableCell>
+                          <TableCell>{formatTime(attendance.breakStartTime)}</TableCell>
+                          <TableCell>{formatTime(attendance.breakEndTime)}</TableCell>
+                          <TableCell>{formatTime(attendance.overtimeStartTime)}</TableCell>
+                          <TableCell>{formatTime(attendance.overtimeEndTime)}</TableCell>
                           <TableCell>
-                            <Badge variant={attendance.status === "Completed" ? "default" : "secondary"}>
-                            {attendance.status === "Completed" ? "Selesai" : "Sedang Berlangsung"}
+                            <Badge 
+                              variant={
+                                attendance.status === "Divalidasi" ? "default" : 
+                                attendance.status === "Sedang Berlangsung" ? "secondary" : 
+                                "destructive"
+                              }
+                              className={
+                                attendance.status === "Divalidasi" ? "bg-green-100 text-green-800" :
+                                attendance.status === "Sedang Berlangsung" ? "bg-blue-100 text-blue-800" :
+                                "bg-red-100 text-red-800"
+                              }
+                            >
+                              {attendance.status}
                             </Badge>
                           </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
-                      <TableCell colSpan={7} className="text-center py-4">
+                      <TableCell colSpan={11} className="text-center py-4">
                         Tidak ada data presensi yang sesuai dengan pencarian
                         </TableCell>
                       </TableRow>

@@ -15,6 +15,7 @@ const shiftUpdateSchema = z.object({
   mainWorkEnd: z.string().or(z.date()).optional(),
   lunchBreakStart: z.string().or(z.date()).optional().nullable(),
   lunchBreakEnd: z.string().or(z.date()).optional().nullable(),
+  workingDays: z.array(z.string()).optional(),
   regularOvertimeStart: z.string().or(z.date()).optional().nullable(),
   regularOvertimeEnd: z.string().or(z.date()).optional().nullable(),
   weeklyOvertimeStart: z.string().or(z.date()).optional().nullable(),
@@ -66,6 +67,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
       mainWorkEnd?: Date;
       lunchBreakStart?: Date | null;
       lunchBreakEnd?: Date | null;
+      workingDays?: string[];
       regularOvertimeStart?: Date | null;
       regularOvertimeEnd?: Date | null;
       weeklyOvertimeStart?: Date | null;
@@ -74,6 +76,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
       name: validatedData.name,
       shiftType: validatedData.shiftType,
       subDepartmentId: validatedData.subDepartmentId === "" ? null : validatedData.subDepartmentId,
+      workingDays: validatedData.workingDays,
     };
     
     if (validatedData.mainWorkStart) {

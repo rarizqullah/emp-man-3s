@@ -6,10 +6,11 @@ export interface ShiftCreateInput {
   name: string;
   shiftType: ShiftType;
   subDepartmentId?: string | null;
-  mainWorkStart: Date;
-  mainWorkEnd: Date;
+  mainWorkStart?: Date | null;
+  mainWorkEnd?: Date | null;
   lunchBreakStart?: Date | null;
   lunchBreakEnd?: Date | null;
+  workingDays?: string[];
   regularOvertimeStart?: Date | null;
   regularOvertimeEnd?: Date | null;
   weeklyOvertimeStart?: Date | null;
@@ -25,6 +26,7 @@ export interface ShiftUpdateInput {
   mainWorkEnd?: Date;
   lunchBreakStart?: Date | null;
   lunchBreakEnd?: Date | null;
+  workingDays?: string[];
   regularOvertimeStart?: Date | null;
   regularOvertimeEnd?: Date | null;
   weeklyOvertimeStart?: Date | null;

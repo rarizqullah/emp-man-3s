@@ -60,7 +60,7 @@ interface Shift {
   regularOvertimeEnd?: string | null;
   weeklyOvertimeStart?: string | null;
   weeklyOvertimeEnd?: string | null;
-  workingDays?: string[] | null;
+  workingDays?: string[];
   // Properti tambahan untuk tampilan detail (untuk backward compatibility)
   startTime?: string | null;
   endTime?: string | null;
@@ -333,7 +333,11 @@ export function ShiftChangeModal({
                   </div>
                   <div>
                     <p className="text-sm font-medium">Hari Kerja</p>
-                    <p className="text-sm">{selectedShift.workingDays ? selectedShift.workingDays.join(', ') : '—'}</p>
+                    <p className="text-sm">
+                      {selectedShift.workingDays && selectedShift.workingDays.length > 0 ? 
+                        selectedShift.workingDays.join(', ') : 
+                        'Senin - Jumat'}
+                    </p>
                   </div>
                 </div>
               )}
