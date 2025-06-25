@@ -88,7 +88,6 @@ export default function AttendanceHistoryPage() {
   const [filterDepartment, setFilterDepartment] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterLateness, setFilterLateness] = useState("");
-  const [filterAutoCutOff, setFilterAutoCutOff] = useState("");
   const [date, setDate] = useState<Date>(new Date());
   const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
   const [filteredData, setFilteredData] = useState<AttendanceRecord[]>([]);
@@ -156,20 +155,16 @@ export default function AttendanceHistoryPage() {
 
       const matchesDepartment = filterDepartment === "" || record.departmentName === filterDepartment;
       const matchesStatus = filterStatus === "" || record.status === filterStatus;
-      
+
       const matchesLateness = filterLateness === "" || 
         (filterLateness === "late" && record.isLate) ||
         (filterLateness === "ontime" && !record.isLate);
-      
-      const matchesAutoCutOff = filterAutoCutOff === "" ||
-        (filterAutoCutOff === "auto" && record.isAutoCutOff) ||
-        (filterAutoCutOff === "manual" && !record.isAutoCutOff);
 
-      return matchesSearch && matchesDepartment && matchesStatus && matchesLateness && matchesAutoCutOff;
+      return matchesSearch && matchesDepartment && matchesStatus && matchesLateness;
     });
 
     setFilteredData(filtered);
-  }, [searchTerm, filterDepartment, filterStatus, filterLateness, filterAutoCutOff, attendanceData]);
+  }, [searchTerm, filterDepartment, filterStatus, filterLateness, attendanceData]);
 
   // Fetch data saat komponen dimuat atau tanggal berubah
   useEffect(() => {
@@ -304,20 +299,6 @@ export default function AttendanceHistoryPage() {
                   className="w-full sm:w-[140px]"
                   disabled={isLoading}
                 />
-
-                <DropdownFilter
-                  label="Auto Cut-off"
-                  placeholder="Pilih mode"
-                  items={[
-                    { value: "", label: "Semua" },
-                    { value: "auto", label: "Auto" },
-                    { value: "manual", label: "Manual" },
-                  ]}
-                  value={filterAutoCutOff}
-                  onChange={setFilterAutoCutOff}
-                  className="w-full sm:w-[140px]"
-                  disabled={isLoading}
-                />
               </div>
             </div>
 
@@ -346,14 +327,13 @@ export default function AttendanceHistoryPage() {
                   <TableHead className="min-w-[90px]">Lembur Reg</TableHead>
                   <TableHead className="min-w-[90px]">Lembur Mingguan</TableHead>
                   <TableHead className="min-w-[100px]">Keterlambatan</TableHead>
-                  <TableHead className="min-w-[80px]">Auto Cut</TableHead>
                   <TableHead className="min-w-[100px]">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={17} className="text-center h-24">
+                    <TableCell colSpan={16} className="text-center h-24">
                       <div className="flex justify-center items-center">
                         <RefreshCw className="h-6 w-6 animate-spin mr-2" />
                         Memuat data riwayat kehadiran...
@@ -405,24 +385,18 @@ export default function AttendanceHistoryPage() {
                       </TableCell>
                       <TableCell>
                         {record.isLate ? (
-                          <span className="text-xs text-red-600 font-medium">
-                            Terlambat {record.roundedMinutesLate || record.minutesLate}m
-                          </span>
+                          <div className="flex flex-col">
+                            <Badge variant="destructive" className="text-xs mb-1">
+                              Terlambat {record.roundedMinutesLate || record.minutesLate}m
+                            </Badge>
+                            {record.latenessMessage && (
+                              <span className="text-xs text-muted-foreground">
+                                {record.latenessMessage}
+                              </span>
+                            )}
+                          </div>
                         ) : (
-                          <span className="text-xs text-muted-foreground">
-                            ✓ Tepat waktu
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {record.isAutoCutOff ? (
-                          <span className="text-xs text-blue-600 font-medium">
-                            Auto
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            Manual
-                          </span>
+                          <span className="text-xs text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -434,7 +408,7 @@ export default function AttendanceHistoryPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={17} className="text-center h-24">
+                    <TableCell colSpan={16} className="text-center h-24">
                       {attendanceData.length === 0 
                         ? "Tidak ada data kehadiran untuk bulan ini" 
                         : "Tidak ada data yang sesuai dengan filter pencarian"}
@@ -448,46 +422,40 @@ export default function AttendanceHistoryPage() {
           {!isLoading && filteredData.length > 0 && (
             <div className="mt-4 space-y-3">
               <div className="text-sm text-muted-foreground">
-                Menampilkan {filteredData.length} dari {attendanceData.length} data kehadiran
+              Menampilkan {filteredData.length} dari {attendanceData.length} data kehadiran
               </div>
               
               {/* Summary Statistics */}
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 p-4 bg-slate-50 rounded-lg border">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 p-4 bg-muted/50 rounded-lg">
                 <div className="text-center">
                   <div className="text-lg font-semibold text-slate-700">
                     {filteredData.filter(r => r.status === 'PRESENT').length}
                   </div>
-                  <div className="text-xs text-slate-500">Hadir</div>
+                  <div className="text-xs text-muted-foreground">Hadir</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-semibold text-slate-700">
                     {filteredData.filter(r => r.isLate).length}
                   </div>
-                  <div className="text-xs text-slate-500">Terlambat</div>
+                  <div className="text-xs text-muted-foreground">Terlambat</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-semibold text-slate-700">
                     {filteredData.filter(r => r.status === 'ABSENT').length}
                   </div>
-                  <div className="text-xs text-slate-500">Tidak Hadir</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-semibold text-slate-700">
-                    {filteredData.filter(r => r.isAutoCutOff).length}
-                  </div>
-                  <div className="text-xs text-slate-500">Auto Cut-off</div>
+                  <div className="text-xs text-muted-foreground">Tidak Hadir</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-semibold text-slate-700">
                     {filteredData.filter(r => r.regularOvertimeHours && r.regularOvertimeHours > 0).length}
                   </div>
-                  <div className="text-xs text-slate-500">Ada Lembur</div>
+                  <div className="text-xs text-muted-foreground">Ada Lembur</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-semibold text-slate-700">
                     {filteredData.filter(r => r.isCheckInValidated && r.isCheckOutValidated).length}
                   </div>
-                  <div className="text-xs text-slate-500">Tervalidasi</div>
+                  <div className="text-xs text-muted-foreground">Tervalidasi</div>
                 </div>
               </div>
             </div>
