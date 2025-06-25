@@ -31,29 +31,197 @@ export function DeleteEmployeeModal({
 }: DeleteEmployeeModalProps) {
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleDelete = async () => {
+  const handleDelete = async (isRetry = false, retryAttempt = 0) => {
     if (!employeeId) return;
 
     try {
       setIsDeleting(true);
-      console.log(`Menghapus karyawan dengan ID: ${employeeId}`);
+      console.log(`Menghapus karyawan dengan ID: ${employeeId}${isRetry ? ` (retry ${retryAttempt}/2)` : ''}`);
 
-      const response = await fetch(`/api/employees/${employeeId}`, {
-        method: "DELETE",
-      });
+      // Enhanced timeout untuk delete operation - diperpanjang untuk mencocokkan backend
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 detik timeout
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Gagal menghapus karyawan");
+      try {
+        const response = await fetch(`/api/employees/${employeeId}`, {
+          method: "DELETE",
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Request-ID': `delete-${employeeId}-${Date.now()}`,
+          },
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          // Enhanced error handling berdasarkan response dari backend
+          let errorData: { error?: string; retryable?: boolean; errorType?: string } = {};
+          try {
+            errorData = await response.json();
+          } catch {
+            // Fallback jika tidak bisa parse JSON
+          }
+          
+          const errorMessage = errorData.error || `Gagal menghapus karyawan (Status: ${response.status})`;
+          const isRetryable = errorData.retryable === true;
+          const errorType = errorData.errorType || 'unknown';
+          
+          console.error(`Delete failed with status ${response.status}:`, {
+            error: errorMessage,
+            retryable: isRetryable,
+            errorType,
+            retryAttempt
+          });
+          
+          // Auto-retry untuk retryable errors (kecuali error gaji/tunjangan)
+          const isSalaryOrAllowanceError = errorMessage.includes('data gaji') || 
+                                         errorMessage.includes('data tunjangan') || 
+                                         errorMessage.includes('belum dibayar') ||
+                                         errorMessage.includes('riwayat gaji') ||
+                                         errorType === 'salary_data' ||
+                                         errorType === 'allowance_data';
+          
+          if (isRetryable && retryAttempt < 2 && !isSalaryOrAllowanceError) {
+            const nextRetryAttempt = retryAttempt + 1;
+            const waitTime = Math.min(3000 * Math.pow(1.5, retryAttempt), 10000);
+            
+            console.log(`Auto-retrying delete in ${waitTime}ms (attempt ${nextRetryAttempt}/2)`);
+            toast.info(`${errorMessage}. Mencoba lagi dalam ${Math.round(waitTime/1000)} detik...`, {
+              description: `Percobaan ${nextRetryAttempt}/2`
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            setIsDeleting(false);
+            return handleDelete(true, nextRetryAttempt);
+          }
+          
+          // Enhanced error messages berdasarkan error type
+          switch (errorType) {
+            case 'salary_data':
+              throw new Error(errorMessage);
+            case 'allowance_data':
+              throw new Error(errorMessage);
+            case 'timeout':
+              throw new Error('Operasi penghapusan membutuhkan waktu terlalu lama. Server mungkin sedang sibuk.');
+            case 'connection':
+              throw new Error('Masalah koneksi database. Silakan coba lagi dalam beberapa saat.');
+            case 'constraint':
+              throw new Error('Karyawan tidak dapat dihapus karena masih memiliki data terkait. Silakan hapus data presensi atau riwayat lainnya terlebih dahulu.');
+            case 'not_found':
+              throw new Error('Karyawan tidak ditemukan atau sudah dihapus sebelumnya.');
+            default:
+              // Check for salary/allowance related errors - jangan retry untuk error jenis ini
+              if (errorMessage.includes('data gaji') || 
+                  errorMessage.includes('data tunjangan') || 
+                  errorMessage.includes('belum dibayar') ||
+                  errorMessage.includes('riwayat gaji')) {
+                throw new Error(errorMessage); // Re-throw original error message as-is
+              }
+              throw new Error(errorMessage);
+          }
+        }
+
+        const result = await response.json();
+        
+        // Validate response structure
+        if (!result || typeof result !== 'object') {
+          throw new Error('Format respons tidak valid dari server');
+        }
+        
+        if (result.success) {
+          console.log('Employee deleted successfully:', result);
+          toast.success("Karyawan berhasil dihapus", {
+            description: retryAttempt > 0 ? `Berhasil setelah ${retryAttempt + 1} percobaan` : undefined
+          });
+          onSuccess();
+          onOpenChange(false);
+        } else {
+          throw new Error(result.error || "Gagal menghapus karyawan");
+        }
+        
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        throw fetchError;
       }
-
-      toast.success("Karyawan berhasil dihapus");
-      onSuccess();
-      onOpenChange(false);
+      
     } catch (error: unknown) {
-      console.error("Error deleting employee:", error);
-      const errorMessage = error instanceof Error ? error.message : "Gagal menghapus karyawan";
-      toast.error(errorMessage);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error("Error deleting employee:", errorMessage);
+      
+      // Enhanced error categorization
+      const isNetworkError = error instanceof TypeError || errorMessage.includes('fetch');
+      const isTimeoutError = (
+        errorMessage.toLowerCase().includes('timeout') || 
+        errorMessage.toLowerCase().includes('aborted') ||
+        errorMessage.toLowerCase().includes('signal')
+      );
+      const isConnectionError = (
+        errorMessage.toLowerCase().includes('koneksi') || 
+        errorMessage.toLowerCase().includes('connection') ||
+        errorMessage.toLowerCase().includes('database')
+      );
+      
+      // Retry logic untuk network/timeout errors yang belum di-handle oleh backend
+      const isSalaryOrAllowanceError = errorMessage.includes('data gaji') || 
+                                     errorMessage.includes('data tunjangan') || 
+                                     errorMessage.includes('belum dibayar') ||
+                                     errorMessage.includes('riwayat gaji');
+      
+      const shouldRetry = (
+        retryAttempt < 2 && 
+        (isNetworkError || isTimeoutError) &&
+        !errorMessage.toLowerCase().includes('tidak dapat dihapus') &&
+        !errorMessage.toLowerCase().includes('tidak ditemukan') &&
+        !isSalaryOrAllowanceError
+      );
+      
+      if (shouldRetry) {
+        const nextRetryAttempt = retryAttempt + 1;
+        const waitTime = Math.min(4000 * Math.pow(1.5, retryAttempt), 12000);
+        
+        console.log(`Client-side retry in ${waitTime}ms due to network/timeout error`);
+        
+        let errorType = 'Network';
+        if (isTimeoutError) errorType = 'Timeout';
+        else if (isConnectionError) errorType = 'Connection';
+        
+        toast.error(`${errorType} error. Mencoba lagi dalam ${Math.round(waitTime/1000)} detik...`, {
+          description: `Percobaan ${nextRetryAttempt}/2`,
+          action: {
+            label: "Retry Sekarang",
+            onClick: () => {
+              setIsDeleting(false);
+              handleDelete(true, nextRetryAttempt);
+            }
+          }
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        setIsDeleting(false);
+        return handleDelete(true, nextRetryAttempt);
+      }
+      
+      // Final error - no more retries
+      let userFriendlyError = errorMessage;
+      
+      if (isNetworkError) {
+        userFriendlyError = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
+      } else if (isTimeoutError && !errorMessage.includes('membutuhkan waktu terlalu lama')) {
+        userFriendlyError = 'Permintaan timeout. Server membutuhkan waktu terlalu lama.';
+      } else if (isConnectionError && !errorMessage.includes('koneksi database')) {
+        userFriendlyError = 'Masalah koneksi. Silakan coba lagi nanti.';
+      }
+      
+      // Show final error with retry count info
+      const finalErrorMessage = retryAttempt > 0 
+        ? `Gagal menghapus karyawan setelah ${retryAttempt + 1} percobaan: ${userFriendlyError}`
+        : `Gagal menghapus karyawan: ${userFriendlyError}`;
+      
+      toast.error(finalErrorMessage, {
+        description: retryAttempt > 0 ? "Silakan coba lagi nanti atau hubungi administrator." : undefined,
+        duration: 5000
+      });
     } finally {
       setIsDeleting(false);
     }
@@ -72,7 +240,7 @@ export function DeleteEmployeeModal({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isDeleting}>Batal</AlertDialogCancel>
           <Button
-            onClick={handleDelete}
+            onClick={() => handleDelete(false)}
             disabled={isDeleting}
             variant="destructive"
           >

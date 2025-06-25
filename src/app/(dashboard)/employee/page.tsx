@@ -138,21 +138,79 @@ export default function EmployeePage() {
   // State untuk menyimpan data karyawan yang sedang diedit
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   
-  // Fetch data karyawan dari API
-  const fetchEmployees = async () => {
+  // Fetch data karyawan dari API dengan retry logic
+  const fetchEmployees = async (retryCount = 0) => {
+    const maxRetries = 3;
+    
     try {
       setLoading(true);
-      const response = await fetch('/api/employees');
-      if (!response.ok) {
-        throw new Error('Gagal mengambil data karyawan');
+      
+      // Jika ini adalah retry kedua atau lebih, coba bersihkan koneksi database terlebih dahulu
+      if (retryCount >= 1) {
+        console.log(`Mencoba retry ke-${retryCount}, membersihkan koneksi database...`);
+        
+        try {
+          const cleanResponse = await fetch('/api/employees/clean-connection', {
+            method: 'POST',
+          });
+          
+          if (cleanResponse.ok) {
+            const cleanResult = await cleanResponse.json();
+            console.log('Koneksi database berhasil dibersihkan:', cleanResult);
+            
+            // Tunggu sebentar setelah pembersihan
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch {
+          console.log('Gagal membersihkan koneksi, lanjut dengan request normal');
+        }
       }
+      
+      const response = await fetch('/api/employees', {
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        
+        // Jika error adalah koneksi database dan masih ada retry, coba lagi
+        if (
+          errorData.code === 'DB_CONNECTION_ERROR' &&
+          retryCount < maxRetries
+        ) {
+          console.log(`Database connection error, retry ${retryCount + 1}/${maxRetries}`);
+          await new Promise(resolve => setTimeout(resolve, 3000 * (retryCount + 1)));
+          return fetchEmployees(retryCount + 1);
+        }
+        
+        throw new Error(errorData.error || 'Gagal mengambil data karyawan');
+      }
+      
       const data = await response.json();
       setEmployees(data);
+      
+      // Reset retry count on success
+      if (retryCount > 0) {
+        toast.success('Berhasil memuat data karyawan setelah retry');
+      }
+      
     } catch (error) {
       console.error('Error fetching employees:', error);
-      toast.error('Gagal mengambil data karyawan');
       
-      // Gunakan data dummy jika API gagal
+      // Jika masih ada retry dan ini bukan error parsing, coba lagi
+      if (retryCount < maxRetries && !String(error).includes('Unexpected token')) {
+        console.log(`Retry ${retryCount + 1}/${maxRetries} after error:`, error);
+        toast.warning(`Gagal memuat data, mencoba lagi... (${retryCount + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, 3000 * (retryCount + 1)));
+        return fetchEmployees(retryCount + 1);
+      }
+      
+      // Jika semua retry gagal, tampilkan error dan gunakan fallback
+      toast.error(`Gagal mengambil data karyawan setelah ${maxRetries} percobaan. Menampilkan data fallback.`);
+      
+      // Gunakan data dummy jika API gagal setelah semua retry
       setEmployees([
         {
           id: "1",
@@ -167,7 +225,7 @@ export default function EmployeePage() {
           createdAt: "2023-01-01T00:00:00.000Z",
           updatedAt: "2023-01-01T00:00:00.000Z",
           user: {
-            name: "Budi Santoso",
+            name: "Data Fallback - Budi Santoso",
             email: "budi@example.com",
             role: "EMPLOYEE"
           },
@@ -202,7 +260,7 @@ export default function EmployeePage() {
           createdAt: "2023-01-01T00:00:00.000Z",
           updatedAt: "2023-01-01T00:00:00.000Z",
           user: {
-            name: "Siti Nurhaliza",
+            name: "Data Fallback - Siti Nurhaliza",
             email: "siti@example.com",
             role: "EMPLOYEE"
           },
@@ -280,24 +338,28 @@ export default function EmployeePage() {
   
   // Handler untuk membuka modal ubah status SP
   const handleOpenWarningModal = (employee: Employee) => {
+    console.log('Opening warning modal for employee:', employee.user.name);
     setSelectedEmployee(employee);
     setWarningModalOpen(true);
   };
   
   // Handler untuk membuka modal ubah shift
   const handleOpenShiftModal = (employee: Employee) => {
+    console.log('Opening shift modal for employee:', employee.user.name);
     setSelectedEmployee(employee);
     setShiftModalOpen(true);
   };
   
   // Handler untuk membuka modal hapus karyawan
   const handleOpenDeleteModal = (employee: Employee) => {
+    console.log('Opening delete modal for employee:', employee.user.name);
     setSelectedEmployee(employee);
     setDeleteModalOpen(true);
   };
   
   // Handler untuk melihat detail karyawan
   const handleViewEmployeeDetail = (employeeId: string) => {
+    console.log('Navigating to employee detail:', employeeId);
     router.push(`/employee/${employeeId}`);
   };
   
@@ -403,6 +465,8 @@ export default function EmployeePage() {
       
       if (responseData.success) {
         toast.success('Status SP berhasil diubah dan riwayat disimpan');
+        setWarningModalOpen(false);
+        setSelectedEmployee(null);
         fetchEmployees(); // Refresh data
       } else {
         throw new Error(responseData.message || 'Gagal mengubah status SP');
@@ -442,8 +506,9 @@ export default function EmployeePage() {
       
       if (responseData.success) {
         toast.success('Shift berhasil diubah dan riwayat disimpan');
-        fetchEmployees(); // Refresh data
         setShiftModalOpen(false);
+        setSelectedEmployee(null);
+        fetchEmployees(); // Refresh data
       } else {
         throw new Error(responseData.message || 'Gagal mengubah shift');
       }

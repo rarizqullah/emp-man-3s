@@ -276,7 +276,22 @@ export default function AttendancePage() {
       const result = await response.json();
 
       if (result.success) {
-        toast.success(result.message);
+        // Tampilkan notifikasi berdasarkan status keterlambatan
+        if (result.data?.latenessInfo?.isLate) {
+          // Notifikasi keterlambatan dengan durasi lebih lama
+          toast.error(result.data.latenessInfo.latenessMessage, {
+            duration: 8000,
+            icon: '⚠️',
+          });
+          
+          // Notifikasi sukses check-in
+          toast.success('Check-in berhasil dicatat dengan pembulatan waktu', {
+            duration: 4000,
+          });
+        } else {
+          // Notifikasi sukses normal
+          toast.success(result.message);
+        }
         
         // Update data attendance dan mode
         await fetchTodayAttendance();
@@ -288,7 +303,9 @@ export default function AttendancePage() {
         // Update status berdasarkan action yang baru dilakukan
         if (currentMode === 'checkIn') {
           setIsCheckedIn(true);
-          toast.success(`✅ Check-in berhasil! Mode beralih ke Check-out untuk kunjungan berikutnya.`);
+          if (!result.data?.latenessInfo?.isLate) {
+            toast.success(`✅ Check-in berhasil! Mode beralih ke Check-out untuk kunjungan berikutnya.`);
+          }
         } else {
           setIsCheckedIn(false);
           toast.success(`✅ Check-out berhasil! Mode beralih ke Check-in untuk kunjungan berikutnya.`);

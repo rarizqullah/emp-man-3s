@@ -33,6 +33,10 @@ export function calculateWorkHours(
   today.setHours(0, 0, 0, 0);
 
   // Buat waktu shift berdasarkan konfigurasi
+  if (!shift.mainWorkStart || !shift.mainWorkEnd) {
+    throw new Error('Shift configuration incomplete: missing mainWorkStart or mainWorkEnd');
+  }
+  
   const mainWorkStart = createTimeFromShift(today, shift.mainWorkStart);
   const mainWorkEnd = createTimeFromShift(today, shift.mainWorkEnd);
   
@@ -155,6 +159,10 @@ function createTimeFromShift(baseDate: Date, shiftTime: Date): Date {
  * @returns boolean - true jika waktu saat ini dalam shift
  */
 export function isWithinShiftTime(shift: Shift, currentTime: Date): boolean {
+  if (!shift.mainWorkStart || !shift.mainWorkEnd) {
+    return false;
+  }
+  
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -210,6 +218,13 @@ export function validateAttendanceTime(
   isValid: boolean;
   message: string;
 } {
+  if (!shift.mainWorkStart || !shift.mainWorkEnd) {
+    return {
+      isValid: false,
+      message: 'Konfigurasi shift tidak lengkap'
+    };
+  }
+  
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -257,4 +272,249 @@ export function validateAttendanceTime(
     isValid: true,
     message: 'Waktu presensi valid'
   };
+}
+
+/**
+ * Menentukan waktu check-in yang akan digunakan untuk pencatatan
+ * Mengikuti logika:
+ * 1. Jika karyawan masuk terlambat, otomatis check-in tercatat lebih 15 menit
+ * 2. Jika karyawan masuk lebih awal, otomatis check-in tercatat sesuai jam shift
+ * 
+ * @param shift - Data shift karyawan
+ * @param actualCheckInTime - Waktu check-in aktual
+ * @returns Waktu check-in yang akan dicatat dalam sistem
+ */
+export function calculateAdjustedCheckInTime(
+  shift: ExtendedShift,
+  actualCheckInTime: Date
+): {
+  adjustedCheckInTime: Date;
+  isAdjusted: boolean;
+  adjustmentReason: string;
+  originalTime: Date;
+  adjustmentMinutes: number;
+} {
+  if (!shift.mainWorkStart) {
+    return {
+      adjustedCheckInTime: actualCheckInTime,
+      isAdjusted: false,
+      adjustmentReason: 'Shift tidak memiliki jam mulai',
+      originalTime: actualCheckInTime,
+      adjustmentMinutes: 0
+    };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const shiftStartTime = createTimeFromShift(today, shift.mainWorkStart);
+  
+  // Case 1: Masuk lebih awal dari jam shift - set ke jam shift
+  if (actualCheckInTime < shiftStartTime) {
+    return {
+      adjustedCheckInTime: new Date(shiftStartTime),
+      isAdjusted: true,
+      adjustmentReason: `Masuk lebih awal, disesuaikan ke jam shift ${formatTimeDisplay(shiftStartTime)}`,
+      originalTime: actualCheckInTime,
+      adjustmentMinutes: Math.round((shiftStartTime.getTime() - actualCheckInTime.getTime()) / (60 * 1000))
+    };
+  }
+  
+  // Case 2: Masuk terlambat - bulatkan ke 15 menit berikutnya
+  if (actualCheckInTime > shiftStartTime) {
+    const minutesLate = Math.ceil((actualCheckInTime.getTime() - shiftStartTime.getTime()) / (60 * 1000));
+    const roundedMinutesLate = Math.ceil(minutesLate / 15) * 15;
+    
+    const adjustedTime = new Date(shiftStartTime);
+    adjustedTime.setMinutes(adjustedTime.getMinutes() + roundedMinutesLate);
+    
+    return {
+      adjustedCheckInTime: adjustedTime,
+      isAdjusted: true,
+      adjustmentReason: `Terlambat ${minutesLate} menit, dibulatkan ke ${formatTimeDisplay(adjustedTime)}`,
+      originalTime: actualCheckInTime,
+      adjustmentMinutes: roundedMinutesLate
+    };
+  }
+  
+  // Case 3: Masuk tepat waktu
+  return {
+    adjustedCheckInTime: actualCheckInTime,
+    isAdjusted: false,
+    adjustmentReason: 'Masuk tepat waktu',
+    originalTime: actualCheckInTime,
+    adjustmentMinutes: 0
+  };
+}
+
+/**
+ * Menghitung dan mencatat waktu istirahat dan lembur otomatis berdasarkan konfigurasi shift
+ * 
+ * @param shift - Data shift karyawan
+ * @param checkInTime - Waktu check-in yang sudah disesuaikan
+ * @param checkOutTime - Waktu check-out
+ * @returns Data auto record untuk jam istirahat dan lembur
+ */
+export function calculateAutoTimeRecord(
+  shift: ExtendedShift,
+  checkInTime: Date,
+  checkOutTime: Date
+): {
+  breakStartTime: Date | null;
+  breakEndTime: Date | null;
+  overtimeStartTime: Date | null;
+  overtimeEndTime: Date | null;
+  autoRecordReason: string[];
+} {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  let breakStartTime: Date | null = null;
+  let breakEndTime: Date | null = null;
+  let overtimeStartTime: Date | null = null;
+  let overtimeEndTime: Date | null = null;
+  const autoRecordReason: string[] = [];
+
+  // Auto record jam istirahat jika shift memiliki konfigurasi lunch break
+  if (shift.lunchBreakStart && shift.lunchBreakEnd) {
+    const lunchStart = createTimeFromShift(today, shift.lunchBreakStart);
+    const lunchEnd = createTimeFromShift(today, shift.lunchBreakEnd);
+    
+    // PERBAIKAN LOGIC: Ada beberapa skenario untuk mencatat jam istirahat
+    const totalWorkDuration = (checkOutTime.getTime() - checkInTime.getTime()) / (60 * 60 * 1000); // dalam jam
+    
+    // Skenario 1: Karyawan bekerja melewati jam istirahat (normal case)
+    if (checkInTime <= lunchStart && checkOutTime >= lunchEnd) {
+      breakStartTime = lunchStart;
+      breakEndTime = lunchEnd;
+      autoRecordReason.push(`Jam istirahat otomatis: ${formatTimeDisplay(lunchStart)} - ${formatTimeDisplay(lunchEnd)}`);
+    }
+    // Skenario 2: Karyawan masuk setelah jam istirahat, tapi bekerja cukup lama (>4 jam)
+    // Dalam hal ini, kita asumsikan karyawan mengambil istirahat di tengah-tengah waktu kerjanya
+    else if (checkInTime > lunchEnd && totalWorkDuration >= 4) {
+      // Hitung jam istirahat di tengah-tengah shift
+      const midWorkTime = new Date(checkInTime.getTime() + (checkOutTime.getTime() - checkInTime.getTime()) / 2);
+      breakStartTime = new Date(midWorkTime.getTime() - 30 * 60 * 1000); // 30 menit sebelum tengah
+      breakEndTime = new Date(midWorkTime.getTime() + 30 * 60 * 1000);   // 30 menit setelah tengah
+      autoRecordReason.push(`Jam istirahat otomatis (tengah shift): ${formatTimeDisplay(breakStartTime)} - ${formatTimeDisplay(breakEndTime)}`);
+    }
+    // Skenario 3: Karyawan checkout sebelum jam istirahat, tapi bekerja cukup lama (>4 jam)
+    else if (checkOutTime < lunchStart && totalWorkDuration >= 4) {
+      // Hitung jam istirahat di tengah-tengah shift
+      const midWorkTime = new Date(checkInTime.getTime() + (checkOutTime.getTime() - checkInTime.getTime()) / 2);
+      breakStartTime = new Date(midWorkTime.getTime() - 30 * 60 * 1000); // 30 menit sebelum tengah
+      breakEndTime = new Date(midWorkTime.getTime() + 30 * 60 * 1000);   // 30 menit setelah tengah
+      autoRecordReason.push(`Jam istirahat otomatis (tengah shift): ${formatTimeDisplay(breakStartTime)} - ${formatTimeDisplay(breakEndTime)}`);
+    }
+    // Skenario 4: Karyawan bekerja pendek (<4 jam), tidak ada istirahat
+    else if (totalWorkDuration < 4) {
+      autoRecordReason.push(`Tidak ada jam istirahat (durasi kerja < 4 jam: ${totalWorkDuration.toFixed(1)} jam)`);
+    }
+  }
+
+  // Auto record jam lembur jika shift memiliki konfigurasi overtime dan karyawan bekerja melewati jam normal
+  if (shift.mainWorkEnd && shift.regularOvertimeStart && shift.regularOvertimeEnd) {
+    const mainWorkEnd = createTimeFromShift(today, shift.mainWorkEnd);
+    const overtimeStart = createTimeFromShift(today, shift.regularOvertimeStart);
+    const overtimeEnd = createTimeFromShift(today, shift.regularOvertimeEnd);
+    
+    // Handle shift yang melewati hari berikutnya
+    if (overtimeEnd <= overtimeStart) {
+      overtimeEnd.setDate(overtimeEnd.getDate() + 1);
+    }
+    
+    // Jika karyawan bekerja melewati jam kerja normal sampai ke jam lembur
+    if (checkOutTime > mainWorkEnd && checkOutTime >= overtimeStart) {
+      overtimeStartTime = overtimeStart;
+      overtimeEndTime = checkOutTime < overtimeEnd ? checkOutTime : overtimeEnd;
+      autoRecordReason.push(`Lembur otomatis: ${formatTimeDisplay(overtimeStartTime)} - ${formatTimeDisplay(overtimeEndTime)}`);
+    }
+  }
+
+  return {
+    breakStartTime,
+    breakEndTime,
+    overtimeStartTime,
+    overtimeEndTime,
+    autoRecordReason
+  };
+}
+
+/**
+ * Mendeteksi keterlambatan dengan logika baru yang sudah disesuaikan
+ * Fungsi ini di-update untuk menggunakan calculateAdjustedCheckInTime
+ */
+export function detectLatenessAndCalculateRoundedTime(
+  shift: ExtendedShift,
+  checkInTime: Date
+): {
+  isLate: boolean;
+  actualMinutesLate: number;
+  roundedMinutesLate: number;
+  originalShiftStart: Date;
+  roundedCheckInTime: Date;
+  latenessMessage: string;
+} {
+  // Gunakan fungsi baru untuk menghitung waktu check-in yang disesuaikan
+  const adjustmentResult = calculateAdjustedCheckInTime(shift, checkInTime);
+  
+  if (!shift.mainWorkStart) {
+    return {
+      isLate: false,
+      actualMinutesLate: 0,
+      roundedMinutesLate: 0,
+      originalShiftStart: checkInTime,
+      roundedCheckInTime: checkInTime,
+      latenessMessage: ''
+    };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const shiftStartTime = createTimeFromShift(today, shift.mainWorkStart);
+  
+  const isLate = checkInTime > shiftStartTime;
+  
+  if (isLate) {
+    const actualMinutesLate = Math.ceil((checkInTime.getTime() - shiftStartTime.getTime()) / (60 * 1000));
+    const roundedMinutesLate = adjustmentResult.adjustmentMinutes;
+    
+    const lateHours = Math.floor(roundedMinutesLate / 60);
+    const lateMinutes = roundedMinutesLate % 60;
+    
+    let latenessMessage = '';
+    if (lateHours > 0) {
+      latenessMessage = `Anda terlambat ${lateHours} jam ${lateMinutes} menit (dibulatkan dari ${actualMinutesLate} menit keterlambatan)`;
+    } else {
+      latenessMessage = `Anda terlambat ${lateMinutes} menit (dibulatkan dari ${actualMinutesLate} menit keterlambatan)`;
+    }
+    
+    return {
+      isLate: true,
+      actualMinutesLate,
+      roundedMinutesLate,
+      originalShiftStart: shiftStartTime,
+      roundedCheckInTime: adjustmentResult.adjustedCheckInTime,
+      latenessMessage
+    };
+  }
+
+  return {
+    isLate: false,
+    actualMinutesLate: 0,
+    roundedMinutesLate: 0,
+    originalShiftStart: shiftStartTime,
+    roundedCheckInTime: adjustmentResult.adjustedCheckInTime,
+    latenessMessage: ''
+  };
+}
+
+/**
+ * Format waktu untuk tampilan (HH:MM)
+ */
+export function formatTimeDisplay(time: Date): string {
+  return time.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
 } 

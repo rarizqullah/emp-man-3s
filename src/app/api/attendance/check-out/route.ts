@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { calculateWorkHours, validateAttendanceTime } from '@/lib/utils/attendance-calculator';
+import { calculateWorkHours, validateAttendanceTime, calculateAutoTimeRecord } from '@/lib/utils/attendance-calculator';
 import { startOfDay, endOfDay } from 'date-fns';
 
 export async function POST(request: NextRequest) {
@@ -103,18 +103,28 @@ export async function POST(request: NextRequest) {
     // Calculate work hours using the new calculator
     const workHours = calculateWorkHours(employee.shift, checkInTime, checkOutTime);
     
+    // Calculate auto time record untuk jam istirahat dan lembur
+    const autoTimeRecord = calculateAutoTimeRecord(employee.shift, checkInTime, checkOutTime);
+    
     const updatedAttendance = await prisma.attendance.update({
       where: { id: todayAttendance.id },
       data: {
         checkOutTime: checkOutTime,
         mainWorkHours: workHours.mainWorkHours,
         regularOvertimeHours: workHours.regularOvertimeHours,
-        weeklyOvertimeHours: workHours.weeklyOvertimeHours
+        weeklyOvertimeHours: workHours.weeklyOvertimeHours,
+        // Auto record jam istirahat dan lembur
+        breakStartTime: autoTimeRecord.breakStartTime,
+        breakEndTime: autoTimeRecord.breakEndTime,
+        overtimeStartTime: autoTimeRecord.overtimeStartTime,
+        overtimeEndTime: autoTimeRecord.overtimeEndTime,
+        isAutoCutOff: false // Mark sebagai manual check-out
       }
     });
     
     console.log(`✅ Check-out successful for employee ${employee.user.name} at ${checkOutTime.toISOString()}`);
     console.log(`Work hours calculated:`, workHours);
+    console.log(`Auto time record:`, autoTimeRecord);
     
     return NextResponse.json({
       success: true,
@@ -131,8 +141,17 @@ export async function POST(request: NextRequest) {
         mainWorkHours: updatedAttendance.mainWorkHours,
         regularOvertimeHours: updatedAttendance.regularOvertimeHours,
         weeklyOvertimeHours: updatedAttendance.weeklyOvertimeHours,
+        // Informasi auto record jam istirahat dan lembur
+        breakStartTime: updatedAttendance.breakStartTime,
+        breakEndTime: updatedAttendance.breakEndTime,
+        overtimeStartTime: updatedAttendance.overtimeStartTime,
+        overtimeEndTime: updatedAttendance.overtimeEndTime,
         status: updatedAttendance.status,
-        workHoursCalculation: workHours
+        workHoursCalculation: workHours,
+        autoTimeRecordInfo: {
+          hasAutoRecord: autoTimeRecord.autoRecordReason.length > 0,
+          autoRecordReason: autoTimeRecord.autoRecordReason
+        }
       }
     });
     

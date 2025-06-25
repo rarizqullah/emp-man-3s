@@ -187,35 +187,158 @@ const AttendanceFaceRecognition: React.FC<AttendanceFaceRecognitionProps> = ({
     }
   };
 
-  // Load employee face data
-  const loadEmployeeData = async () => {
+  // Load employee face data dengan enhanced error handling
+  const loadEmployeeData = async (retryCount = 0, maxRetries = 3) => {
     try {
       setMessage('Mengambil data karyawan...');
+      console.log(`Loading employee data (attempt ${retryCount + 1}/${maxRetries + 1})`);
       
-      const response = await fetch('/api/attendance/face-recognition-data');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      // Enhanced fetch dengan timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
       
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || 'Gagal mengambil data');
-      }
-      
-      setEmployees(result.data || []);
-      
-      if (result.data && result.data.length > 0) {
-        await processFaceDescriptors(result.data);
-        console.log(`✅ Loaded ${result.data.length} employees with face data`);
-      } else {
-        setMessage('Tidak ada karyawan dengan data wajah');
-        toast.error('Tidak ada karyawan dengan data wajah.');
+      try {
+        const response = await fetch('/api/attendance/face-recognition-data', {
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
+          }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          // Enhanced error handling berdasarkan status code
+          let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          let shouldRetry = false;
+          
+          if (response.status === 503) {
+            errorMessage = 'Database tidak tersedia saat ini';
+            shouldRetry = true;
+          } else if (response.status === 408) {
+            errorMessage = 'Permintaan timeout, server membutuhkan waktu terlalu lama';
+            shouldRetry = true;
+          } else if (response.status === 500) {
+            errorMessage = 'Terjadi kesalahan pada server';
+            shouldRetry = true;
+          }
+          
+          // Coba parse response untuk mendapatkan detail error
+          try {
+            const errorData = await response.json();
+            if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+            if (errorData.retryable !== undefined) {
+              shouldRetry = errorData.retryable;
+            }
+          } catch {
+            // Fallback ke error message default
+          }
+          
+          // Retry logic untuk retryable errors
+          if (shouldRetry && retryCount < maxRetries) {
+            const waitTime = Math.min(2000 * Math.pow(2, retryCount), 10000);
+            console.log(`Retrying loadEmployeeData in ${waitTime}ms due to ${response.status} error`);
+            setMessage(`${errorMessage}. Mencoba lagi dalam ${waitTime/1000} detik...`);
+            
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            return loadEmployeeData(retryCount + 1, maxRetries);
+          }
+          
+          throw new Error(errorMessage);
+        }
+        
+        const result = await response.json();
+        
+        // Validate response structure
+        if (!result || typeof result !== 'object') {
+          throw new Error('Format respons tidak valid dari server');
+        }
+        
+        if (!result.success) {
+          const errorMsg = result.error || 'Gagal mengambil data face recognition';
+          
+          // Check if retryable dari response
+          if (result.retryable && retryCount < maxRetries) {
+            const waitTime = Math.min(2000 * Math.pow(2, retryCount), 8000);
+            console.log(`API returned retryable error, retrying in ${waitTime}ms`);
+            setMessage(`${errorMsg}. Mencoba lagi dalam ${waitTime/1000} detik...`);
+            
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            return loadEmployeeData(retryCount + 1, maxRetries);
+          }
+          
+          throw new Error(errorMsg);
+        }
+        
+        // Process successful response
+        const employees = result.data || [];
+        console.log(`Received ${employees.length} employees from API`);
+        
+        setEmployees(employees);
+        
+        if (employees.length > 0) {
+          await processFaceDescriptors(employees);
+          console.log(`✅ Loaded ${employees.length} employees with face data`);
+          setMessage(`Siap mengenali ${employees.length} karyawan`);
+          toast.success(`Berhasil memuat data ${employees.length} karyawan`);
+        } else {
+          setMessage('Tidak ada karyawan dengan data wajah');
+          toast.warning('Tidak ada karyawan dengan data wajah yang tersedia.');
+        }
+        
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        throw fetchError;
       }
       
     } catch (error) {
-      console.error('❌ Error loading employee data:', error);
-      setMessage('Gagal mengambil data karyawan');
-      toast.error('Gagal mengambil data karyawan');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error loading employee data:', errorMessage);
+      
+      // Enhanced error categorization
+      const isNetworkError = error instanceof TypeError || errorMessage.includes('fetch');
+      const isTimeoutError = errorMessage.includes('timeout') || errorMessage.includes('aborted');
+      const isConnectionError = errorMessage.includes('database') || errorMessage.includes('connection');
+      
+      // Retry logic untuk network/timeout errors
+      const shouldRetry = (
+        retryCount < maxRetries && 
+        (isNetworkError || isTimeoutError || isConnectionError) &&
+        !errorMessage.includes('tidak tersedia') // Don't retry if explicitly unavailable
+      );
+      
+      if (shouldRetry) {
+        const waitTime = Math.min(3000 * Math.pow(1.5, retryCount), 12000);
+        console.log(`Network/timeout error, retrying in ${waitTime}ms`);
+        
+        let errorType = 'Network';
+        if (isTimeoutError) errorType = 'Timeout';
+        else if (isConnectionError) errorType = 'Database';
+        
+        setMessage(`${errorType} error. Mencoba lagi dalam ${Math.round(waitTime/1000)} detik...`);
+        
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return loadEmployeeData(retryCount + 1, maxRetries);
+      }
+      
+      // Final error - no more retries
+      let userFriendlyError = errorMessage;
+      
+      if (isNetworkError) {
+        userFriendlyError = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
+      } else if (isTimeoutError) {
+        userFriendlyError = 'Permintaan timeout. Server membutuhkan waktu terlalu lama.';
+      } else if (isConnectionError) {
+        userFriendlyError = 'Masalah koneksi database. Silakan coba lagi nanti.';
+      }
+      
+      setMessage(`Gagal memuat data: ${userFriendlyError}`);
+      toast.error(`Gagal memuat data karyawan: ${userFriendlyError}`, {
+        description: retryCount > 0 ? `Gagal setelah ${retryCount + 1} percobaan` : undefined
+      });
     }
   };
 

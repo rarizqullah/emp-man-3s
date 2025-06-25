@@ -6,12 +6,12 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
-// Fungsi untuk membuat instance Prisma dengan penanganan error
+// Fungsi untuk membuat instance Prisma dengan penanganan error yang enhanced
 function createPrismaClient() {
   const client = new PrismaClient({
-    log: ['query', 'info', 'warn', 'error'],
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
     errorFormat: 'pretty',
-    // Meningkatkan timeout koneksi untuk mengatasi masalah jaringan
+    // Enhanced connection configuration
     datasources: {
       db: {
         url: process.env.DATABASE_URL || '',
@@ -19,30 +19,59 @@ function createPrismaClient() {
     },
   });
 
-  // Menangani event untuk debugging
-  if (process.env.NODE_ENV !== 'production') {
-    client.$use(async (params, next) => {
+  // Enhanced middleware untuk connection handling
+  client.$use(async (params, next) => {
+    const maxRetries = 3;
+    let retryCount = 0;
+    
+    while (retryCount <= maxRetries) {
       try {
         const result = await next(params);
         return result;
-      } catch (error) {
-        console.error('Error dalam transaksi Prisma:', error);
-        // Mencoba ulang jika terjadi error koneksi
-        if (isConnectionError(error)) {
-          console.log('Mencoba menghubungkan kembali...');
-          await connectWithRetry();
+      } catch (error: any) {
+        console.error(`Prisma operation failed (attempt ${retryCount + 1}/${maxRetries + 1}):`, error?.code || error?.message);
+        
+        // Check if it's a connection error that can be retried
+        if (isRetryableConnectionError(error) && retryCount < maxRetries) {
+          retryCount++;
+          const waitTime = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+          
+          console.log(`Retrying in ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // Force disconnect and reconnect for connection errors
+          if (error?.code === 'P1017') {
+            try {
+              await client.$disconnect();
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              await client.$connect();
+            } catch (reconnectError) {
+              console.error('Reconnection failed:', reconnectError);
+            }
+          }
+          
+          continue;
         }
+        
         throw error;
       }
-    });
-  }
+    }
+  });
 
   return client;
 }
 
-// Fungsi untuk mengecek apakah error adalah error koneksi
-function isConnectionError(error: unknown): boolean {
+// Enhanced function to check retryable connection errors
+function isRetryableConnectionError(error: any): boolean {
   if (!error) return false;
+  
+  // Check Prisma error codes
+  if (error.code) {
+    const retryableCodes = ['P1017', 'P1008', 'P1001', 'P1002'];
+    if (retryableCodes.includes(error.code)) {
+      return true;
+    }
+  }
   
   const errorMessage = String(error).toLowerCase();
   return (
@@ -51,31 +80,39 @@ function isConnectionError(error: unknown): boolean {
      errorMessage.includes('closed') || 
      errorMessage.includes('terminated') ||
      errorMessage.includes('timeout') ||
-     errorMessage.includes('could not connect'))
+     errorMessage.includes('refused') ||
+     errorMessage.includes('could not connect') ||
+     errorMessage.includes('server has closed'))
   );
 }
 
-// Fungsi untuk mencoba ulang koneksi jika gagal
-async function connectWithRetry(maxRetries = 5, delay = 5000) {
+// Enhanced connection retry function
+async function connectWithRetry(maxRetries = 3, baseDelay = 2000) {
   let retries = 0;
   
   while (retries < maxRetries) {
     try {
-      // Test koneksi dengan query sederhana
+      // Ensure fresh connection
+      await prisma.$disconnect();
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await prisma.$connect();
+      
+      // Test connection with simple query
       await prisma.$executeRaw`SELECT 1 as result`;
-      console.log('Berhasil terhubung ke database');
+      console.log('✅ Database connection established successfully');
       return true;
-    } catch (error) {
+    } catch (error: any) {
       retries++;
-      console.error(`Gagal terhubung ke database (percobaan ${retries}/${maxRetries}):`, error);
+      console.error(`❌ Database connection failed (attempt ${retries}/${maxRetries}):`, error?.code || error?.message);
       
       if (retries >= maxRetries) {
-        console.error('Batas percobaan koneksi tercapai. Tidak dapat terhubung ke database.');
+        console.error('🚫 Max connection retries reached. Database unavailable.');
         return false;
       }
       
-      // Tunggu sebelum mencoba lagi
-      console.log(`Mencoba ulang dalam ${delay/1000} detik...`);
+      // Exponential backoff with jitter
+      const delay = baseDelay * Math.pow(2, retries - 1) + Math.random() * 1000;
+      console.log(`⏳ Retrying connection in ${Math.round(delay)}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -83,30 +120,69 @@ async function connectWithRetry(maxRetries = 5, delay = 5000) {
   return false;
 }
 
-// Buat atau ambil instance yang ada
+// Create or get existing instance
 export const prisma = globalForPrisma.prisma || createPrismaClient();
 
-// Fungsi yang dapat digunakan untuk memastikan koneksi database sebelum operasi penting
-export async function ensureDatabaseConnection() {
+// Enhanced function to ensure database connection before operations
+export async function ensureDatabaseConnection(): Promise<boolean> {
   try {
-    // Coba koneksi dengan query sederhana
-    await prisma.$executeRaw`SELECT 1 as result`;
+    // Quick connection test with timeout
+    await Promise.race([
+      prisma.$executeRaw`SELECT 1 as result`,
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection test timeout')), 3000)
+      )
+    ]);
+    
     return true;
-  } catch (error) {
-    console.error('Kesalahan koneksi database:', error);
-    return connectWithRetry();
+  } catch (error: any) {
+    console.error('⚠️ Database connection test failed:', error?.message);
+    
+    // If it's a connection error, try to reconnect
+    if (isRetryableConnectionError(error)) {
+      console.log('🔄 Attempting to restore database connection...');
+      return await connectWithRetry();
+    }
+    
+    return false;
   }
 }
 
-// Inisialisasi awal koneksi
+// Enhanced function for forced connection refresh
+export async function refreshDatabaseConnection(): Promise<boolean> {
+  try {
+    console.log('🔄 Refreshing database connection...');
+    await prisma.$disconnect();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return await connectWithRetry();
+  } catch (error) {
+    console.error('❌ Failed to refresh database connection:', error);
+    return false;
+  }
+}
+
+// Graceful connection initialization
 (async () => {
   try {
-    // Mencoba koneksi saat startup
-    await ensureDatabaseConnection();
+    const connected = await ensureDatabaseConnection();
+    if (!connected) {
+      console.warn('⚠️ Initial database connection failed, but application will continue');
+    }
   } catch (error) {
-    console.error('Gagal inisialisasi koneksi database:', error);
+    console.error('❌ Database initialization error:', error);
   }
 })();
+
+// Graceful shutdown handling
+if (typeof process !== 'undefined') {
+  process.on('beforeExit', async () => {
+    try {
+      await prisma.$disconnect();
+    } catch (error) {
+      console.error('Error during database disconnect:', error);
+    }
+  });
+}
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 

@@ -363,6 +363,9 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
     activeTab: "info" as string,
   });
 
+  // AbortController ref untuk cleanup yang proper - moved outside callback
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Update referensi state saat state berubah
   useEffect(() => {
     stateRef.current.employee = employee;
@@ -370,87 +373,77 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
   }, [employee, activeTab]);
   
   // Fungsi untuk memuat data karyawan
-  const fetchEmployeeData = useCallback(async (retryCount = 0, maxRetries = 3) => {
+  const fetchEmployeeData = useCallback(async (retryCount = 0, maxRetries = 2) => {
     if (!employeeIdRef.current) return;
     
     try {
       setLoading(true);
       console.log(`Fetching employee data for ID: ${employeeIdRef.current} (attempt ${retryCount + 1}/${maxRetries + 1})`);
       
-      const response = await fetch(`/api/employees/${employeeIdRef.current}`, {
-        // Tambahkan cache: 'no-store' untuk memastikan data selalu fresh
-        cache: 'no-store',
-        // Tambahkan timeout 10 detik untuk menghindari permintaan yang menggantung
-        signal: AbortSignal.timeout(10000)
+      // Create new AbortController untuk setiap request
+      abortControllerRef.current = new AbortController();
+      const controller = abortControllerRef.current;
+      
+      // Enhanced timeout management dengan progressive timeout
+      const baseTimeout = retryCount === 0 ? 45000 : 30000; // Diperpanjang untuk mencocokkan backend
+      const timeoutDuration = Math.max(baseTimeout - (retryCount * 5000), 20000);
+      
+      console.log(`Setting timeout untuk ${timeoutDuration/1000} detik`);
+      
+      // Enhanced timeout promise dengan proper cleanup
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        const timeoutId = setTimeout(() => {
+          if (!controller.signal.aborted) {
+            console.log(`Request timeout setelah ${timeoutDuration/1000} detik, membatalkan request...`);
+            controller.abort();
+            reject(new Error(`Request timeout after ${timeoutDuration/1000} seconds`));
+          }
+        }, timeoutDuration);
+        
+        // Cleanup timeout jika controller sudah aborted
+        controller.signal.addEventListener('abort', () => {
+          clearTimeout(timeoutId);
+        });
       });
       
-      if (!response.ok) {
-        let errorText = '';
-        try {
-          errorText = await response.text();
-        } catch {
-          errorText = 'Tidak dapat membaca respons error';
-        }
-        
-        console.error(`Error ${response.status}: ${response.statusText}`, errorText);
-        
-        // Cek status kode untuk menentukan apakah perlu retry
-        if (response.status === 503 || response.status === 500) {
-          if (retryCount < maxRetries) {
-            // Tunggu sebentar sebelum mencoba lagi (exponential backoff)
-            const waitTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
-            console.log(`Tunggu ${waitTime}ms sebelum mencoba lagi...`);
-            
-            setError(`Terjadi kesalahan: ${response.statusText}. Mencoba kembali dalam ${waitTime/1000} detik...`);
-            
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            
-            // Retry dengan menambah counter
-            setLoading(false);
-            return fetchEmployeeData(retryCount + 1, maxRetries);
-          }
-        }
-        
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
-      }
-      
-      let result;
       try {
-        result = await response.json();
-        console.log('Employee data fetched:', result);
-      } catch (error) {
-        console.error('Failed to parse response as JSON:', error);
+        const fetchPromise = fetch(`/api/employees/${employeeIdRef.current}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            // Add request ID untuk debugging
+            'X-Request-ID': `emp-${employeeIdRef.current}-${Date.now()}`,
+          }
+        });
         
-        // Retry parsing jika masih dalam batas maksimum
-        if (retryCount < maxRetries) {
-          const waitTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
-          console.log(`Error parsing JSON, akan mencoba lagi dalam ${waitTime}ms`);
-          
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          
-          setLoading(false);
-          return fetchEmployeeData(retryCount + 1, maxRetries);
-        }
+        console.log('Mengirim request ke API...');
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
         
-        throw new Error('Format respons tidak valid');
-      }
-      
-      // Periksa format respons API
-      if (!result) {
-        throw new Error('Respons kosong dari server');
-      }
-      
-      // Dapatkan data karyawan, baik dari format {success, data} atau langsung
-      let data = result;
-      
-      // Jika respons menggunakan format {success, data}
-      if (result.hasOwnProperty('success')) {
-        if (!result.success) {
-          if (retryCount < maxRetries && result.error?.includes('koneksi database')) {
-            const waitTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
-            console.log(`Database error, akan mencoba lagi dalam ${waitTime}ms`);
+        // Clear reference setelah request selesai
+        abortControllerRef.current = null;
+        
+        if (!response.ok) {
+          let errorData = null;
+          try {
+            const responseText = await response.text();
+            errorData = responseText ? JSON.parse(responseText) : null;
+          } catch {
+            // Fallback jika tidak bisa parse JSON
+          }
+          
+          console.error(`HTTP Error ${response.status}: ${response.statusText}`, errorData);
+          
+          // Enhanced retry logic berdasarkan status code dan error type
+          const shouldRetryStatus = [408, 500, 502, 503, 504].includes(response.status);
+          const isRetryableError = errorData?.retryable === true || errorData?.errorType === 'timeout' || errorData?.errorType === 'connection';
+          
+          if ((shouldRetryStatus || isRetryableError) && retryCount < maxRetries) {
+            // Progressive backoff dengan cap maksimum
+            const waitTime = Math.min(2000 * Math.pow(1.5, retryCount), 8000);
+            console.log(`HTTP ${response.status} error, akan mencoba lagi dalam ${waitTime}ms...`);
             
-            setError(`Terjadi kesalahan koneksi database. Mencoba kembali dalam ${waitTime/1000} detik...`);
+            setError(`${errorData?.error || 'Terjadi kesalahan server'}. Mencoba kembali dalam ${waitTime/1000} detik...`);
             
             await new Promise(resolve => setTimeout(resolve, waitTime));
             
@@ -458,46 +451,176 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
             return fetchEmployeeData(retryCount + 1, maxRetries);
           }
           
-          throw new Error(result.error || 'Gagal memuat data karyawan');
+          // Tampilkan error yang user-friendly berdasarkan status dan error type
+          let userError = errorData?.error;
+          
+          if (!userError) {
+            switch (response.status) {
+              case 408:
+                userError = 'Permintaan membutuhkan waktu terlalu lama. Silakan coba lagi.';
+                break;
+              case 503:
+                userError = 'Layanan sementara tidak tersedia. Silakan coba lagi dalam beberapa saat.';
+                break;
+              case 404:
+                userError = 'Data karyawan tidak ditemukan.';
+                break;
+              case 500:
+                userError = 'Terjadi kesalahan pada server. Tim teknis telah diberitahu.';
+                break;
+              default:
+                userError = `Error ${response.status}: ${response.statusText}`;
+            }
+          }
+          
+          throw new Error(userError);
         }
-        if (result.hasOwnProperty('data')) {
-          data = result.data;
+        
+        let result;
+        try {
+          console.log('Memproses response JSON...');
+          result = await response.json();
+          console.log('Employee data fetched successfully:', result ? 'Data received' : 'No data');
+        } catch (parseError) {
+          console.error('Failed to parse response as JSON:', parseError);
+          
+          // Retry parsing untuk network-related issues
+          if (retryCount < maxRetries) {
+            const waitTime = Math.min(2000 * Math.pow(1.5, retryCount), 6000);
+            console.log(`JSON parse error, akan mencoba lagi dalam ${waitTime}ms`);
+            
+            setError(`Terjadi kesalahan saat memproses data. Mencoba kembali dalam ${waitTime/1000} detik...`);
+            
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            
+            setLoading(false);
+            return fetchEmployeeData(retryCount + 1, maxRetries);
+          }
+          
+          throw new Error('Format respons tidak valid dari server');
         }
+        
+        // Periksa format respons API dengan enhanced validation
+        if (!result) {
+          throw new Error('Respons kosong dari server');
+        }
+        
+        // Dapatkan data karyawan, baik dari format {success, data} atau langsung
+        let data = result;
+        
+        // Jika respons menggunakan format {success, data}
+        if (result.hasOwnProperty('success')) {
+          if (!result.success) {
+            // Cek apakah ini adalah retryable error dari API
+            const isRetryableApiError = (
+              result.retryable === true || 
+              result.errorType === 'timeout' || 
+              result.errorType === 'connection' ||
+              (result.error && (
+                result.error.includes('database') || 
+                result.error.includes('connection') ||
+                result.error.includes('timeout')
+              ))
+            );
+            
+            if (isRetryableApiError && retryCount < maxRetries) {
+              const waitTime = Math.min(2000 * Math.pow(1.5, retryCount), 6000);
+              console.log(`API error (retryable), akan mencoba lagi dalam ${waitTime}ms`);
+              
+              setError(`${result.error || 'Terjadi kesalahan'}. Mencoba kembali dalam ${waitTime/1000} detik...`);
+              
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+              
+              setLoading(false);
+              return fetchEmployeeData(retryCount + 1, maxRetries);
+            }
+            
+            throw new Error(result.error || 'Gagal memuat data karyawan');
+          }
+          if (result.hasOwnProperty('data')) {
+            data = result.data;
+          }
+        }
+        
+        // Validasi data yang diterima dengan pengecekan yang comprehensive
+        if (!data || typeof data !== 'object') {
+          throw new Error('Data karyawan tidak valid');
+        }
+        
+        // Enhanced data validation dan fallback handling
+        if (!data.id || !data.employeeId) {
+          throw new Error('Data karyawan tidak lengkap (missing ID)');
+        }
+        
+        // Siapkan struktur data dengan enhanced fallback yang aman
+        const safeData = {
+          ...data,
+          user: data.user || { id: '', name: 'Nama tidak tersedia', email: '-', role: 'user' },
+          department: data.department || { id: '', name: 'Departemen tidak tersedia' },
+          subDepartment: data.subDepartment || null,
+          position: data.position || null,
+          shift: data.shift || { id: '', name: 'Shift tidak tersedia', shiftType: 'NORMAL' }
+        };
+        
+        // Validate critical fields
+        if (!safeData.user.name || safeData.user.name === 'Nama tidak tersedia') {
+          console.warn('Employee name not available, using fallback');
+        }
+        
+        // Data valid, update state
+        setEmployee(safeData);
+        setError(null);
+        console.log('Employee data successfully loaded and validated');
+        
+      } catch (fetchError) {
+        // Proper cleanup di catch block
+        if (abortControllerRef.current && !abortControllerRef.current.signal.aborted) {
+          abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = null;
+        throw fetchError;
       }
-      
-      // Validasi data yang diterima dengan pengecekan minimal
-      if (!data || typeof data !== 'object') {
-        throw new Error('Data karyawan tidak valid');
-      }
-      
-      // Siapkan struktur data jika properti penting tidak ada
-      const safeData = {
-        ...data,
-        user: data.user || { id: '', name: 'Nama tidak tersedia', email: '-', role: 'user' },
-        department: data.department || { id: '', name: 'Departemen tidak tersedia' },
-        shift: data.shift || { id: '', name: 'Shift tidak tersedia', shiftType: 'NORMAL' }
-      };
-      
-      // Data valid, update state
-      setEmployee(safeData);
-      setError(null);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error fetching employee:', errorMessage);
       
-      // Coba retry jika ini adalah error network atau timeout
-      if (
+      // Enhanced error categorization dengan better detection
+      const isAbortError = (
+        error instanceof Error && 
+        (error.name === 'AbortError' || error.message.includes('aborted') || error.message.includes('signal'))
+      );
+      const isTimeoutError = (
+        errorMessage.includes('timeout') || 
+        errorMessage.includes('Request timeout') ||
+        errorMessage.includes('time')
+      );
+      const isNetworkError = (
+        error instanceof TypeError || 
+        /failed to fetch|network|connection refused/i.test(errorMessage)
+      );
+      const isConnectionError = /connection|database|server/i.test(errorMessage);
+      
+      // Enhanced retry logic dengan better condition checking
+      const shouldRetry = (
         retryCount < maxRetries && 
-        (
-          error instanceof TypeError || // Network error
-          (error instanceof Error && error.name === 'AbortError') || // Timeout
-          /failed to fetch|network|timeout|abort/i.test(errorMessage)
-        )
-      ) {
-        const waitTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
-        console.log(`Network error, akan mencoba lagi dalam ${waitTime}ms`);
+        !errorMessage.includes('tidak ditemukan') && // Don't retry for not found
+        !errorMessage.includes('tidak valid') && // Don't retry for invalid data
+        (isTimeoutError || isNetworkError || isConnectionError || (isAbortError && retryCount === 0))
+      );
+      
+      if (shouldRetry) {
+        // Progressive wait time dengan randomization untuk menghindari thundering herd
+        const baseWait = Math.min(2000 * Math.pow(1.5, retryCount), 8000);
+        const randomDelay = Math.random() * 1000; // 0-1 second random delay
+        const waitTime = baseWait + randomDelay;
         
-        setError(`Koneksi terputus. Mencoba kembali dalam ${waitTime/1000} detik...`);
+        let errorType = 'Network';
+        if (isTimeoutError || isAbortError) errorType = 'Timeout';
+        else if (isConnectionError) errorType = 'Database';
+        
+        console.log(`${errorType} error, akan mencoba lagi dalam ${Math.round(waitTime)}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        
+        setError(`${errorType} error. Mencoba kembali dalam ${Math.round(waitTime/1000)} detik... (${retryCount + 1}/${maxRetries})`);
         
         await new Promise(resolve => setTimeout(resolve, waitTime));
         
@@ -505,9 +628,28 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
         return fetchEmployeeData(retryCount + 1, maxRetries);
       }
       
-      setError(`Terjadi kesalahan: ${errorMessage}`);
-      toast.error('Gagal memuat data karyawan');
+      // Final error - tidak ada retry lagi dengan enhanced user messaging
+      let userFriendlyError = `Terjadi kesalahan: ${errorMessage}`;
+      
+      if (isAbortError || isTimeoutError) {
+        userFriendlyError = 'Permintaan membutuhkan waktu terlalu lama. Silakan periksa koneksi internet dan coba lagi.';
+      } else if (isNetworkError) {
+        userFriendlyError = 'Tidak dapat terhubung ke server. Silakan periksa koneksi internet Anda dan coba lagi.';
+      } else if (isConnectionError) {
+        userFriendlyError = 'Terjadi masalah koneksi database. Tim teknis telah diberitahu. Silakan coba lagi dalam beberapa menit.';
+      } else if (errorMessage.includes('tidak ditemukan')) {
+        userFriendlyError = 'Data karyawan tidak ditemukan. Silakan periksa ID karyawan atau hubungi administrator.';
+      }
+      
+      setError(userFriendlyError);
+      toast.error('Gagal memuat data karyawan', {
+        description: retryCount > 0 ? `Gagal setelah ${retryCount + 1} percobaan` : undefined
+      });
     } finally {
+      // Final cleanup
+      if (abortControllerRef.current) {
+        abortControllerRef.current = null;
+      }
       setLoading(false);
     }
   }, []); // Tidak ada dependensi, state diakses melalui refs

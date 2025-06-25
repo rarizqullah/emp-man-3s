@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { startOfDay, endOfDay, isAfter, addMinutes } from 'date-fns';
+import { calculateWorkHours, calculateAutoTimeRecord } from '@/lib/utils/attendance-calculator';
 
 // Fungsi untuk menentukan status presensi berdasarkan jam kerja dan validasi
-function determineAttendanceStatus(attendance: any, shift: any, hasValidatedCheckOut: boolean = false) {
+function determineAttendanceStatus(attendance: any, shift: any) {
   if (!attendance.checkInTime) {
     return 'Tidak Hadir';
   }
@@ -27,8 +28,8 @@ function determineAttendanceStatus(attendance: any, shift: any, hasValidatedChec
 
   // Cek apakah sudah check-out terlebih dahulu
   if (attendance.checkOutTime) {
-    // Sudah check-out, status berdasarkan validasi
-    return hasValidatedCheckOut ? 'Divalidasi' : 'Belum Divalidasi';
+    // Sudah check-out, semua dianggap divalidasi untuk sekarang
+    return 'Divalidasi';
   }
 
   // Jika belum check-out, cek waktu jam kerja
@@ -41,7 +42,7 @@ function determineAttendanceStatus(attendance: any, shift: any, hasValidatedChec
   }
 }
 
-// Fungsi untuk melakukan auto cut-off
+// Fungsi untuk melakukan auto cut-off dengan auto record
 async function performAutoCutoff(attendance: any, shift: any) {
   if (!shift?.mainWorkEnd || attendance.checkOutTime) {
     return attendance; // Tidak perlu auto cut-off
@@ -65,12 +66,33 @@ async function performAutoCutoff(attendance: any, shift: any) {
   if (isAfter(now, cutoffTime) && !attendance.checkOutTime) {
     console.log(`Auto cut-off for employee ${attendance.employee.user.name} at shift end time`);
     
-    // Update attendance dengan auto cut-off
+    const checkInTime = new Date(attendance.checkInTime);
+    const checkOutTime = shiftEndTime; // Check-out di jam selesai shift
+    
+    // Calculate work hours and auto time record
+    const workHours = calculateWorkHours(shift, checkInTime, checkOutTime);
+    const autoTimeRecord = calculateAutoTimeRecord(shift, checkInTime, checkOutTime);
+    
+    console.log(`Auto cut-off with auto record:`, {
+      workHours,
+      autoTimeRecord,
+      checkOutTime: checkOutTime.toISOString()
+    });
+    
+    // Update attendance dengan auto cut-off dan auto record
     const updatedAttendance = await prisma.attendance.update({
       where: { id: attendance.id },
       data: {
-        checkOutTime: shiftEndTime, // Set check-out ke waktu shift berakhir
-        // Note: Untuk sementara tidak menggunakan kolom validasi sampai schema diupdate
+        checkOutTime: checkOutTime,
+        mainWorkHours: workHours.mainWorkHours,
+        regularOvertimeHours: workHours.regularOvertimeHours,
+        weeklyOvertimeHours: workHours.weeklyOvertimeHours,
+        // Auto record jam istirahat dan lembur
+        breakStartTime: autoTimeRecord.breakStartTime,
+        breakEndTime: autoTimeRecord.breakEndTime,
+        overtimeStartTime: autoTimeRecord.overtimeStartTime,
+        overtimeEndTime: autoTimeRecord.overtimeEndTime,
+        isAutoCutOff: true // Mark sebagai auto cut-off
       }
     });
 
@@ -166,7 +188,7 @@ export async function GET() {
         hasValidatedCheckOut = attendance.checkOutTime.getTime() !== shiftEndTime.getTime();
       }
       
-      const status = determineAttendanceStatus(attendance, attendance.employee.shift, hasValidatedCheckOut);
+      const status = determineAttendanceStatus(attendance, attendance.employee.shift);
 
       return {
         id: attendance.id,
@@ -177,11 +199,11 @@ export async function GET() {
         checkInTime: attendance.checkInTime,
         checkOutTime: attendance.checkOutTime,
         
-        // Tambahan kolom jam istirahat dan lembur (sementara null sampai schema diupdate)
-        breakStartTime: null, // attendance.breakStartTime
-        breakEndTime: null, // attendance.breakEndTime
-        overtimeStartTime: null, // attendance.overtimeStartTime
-        overtimeEndTime: null, // attendance.overtimeEndTime
+        // Kolom jam istirahat dan lembur yang sudah di-auto record
+        breakStartTime: attendance.breakStartTime,
+        breakEndTime: attendance.breakEndTime,
+        overtimeStartTime: attendance.overtimeStartTime,
+        overtimeEndTime: attendance.overtimeEndTime,
         
         mainWorkHours: attendance.mainWorkHours,
         overtimeHours: attendance.regularOvertimeHours,
