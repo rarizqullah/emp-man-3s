@@ -85,9 +85,9 @@ const formatDate = (dateString: string) => {
 
 export default function AttendanceHistoryPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterDepartment, setFilterDepartment] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterLateness, setFilterLateness] = useState("");
+  const [filterDepartment, setFilterDepartment] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterLateness, setFilterLateness] = useState("all");
   const [date, setDate] = useState<Date>(new Date());
   const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
   const [filteredData, setFilteredData] = useState<AttendanceRecord[]>([]);
@@ -153,10 +153,10 @@ export default function AttendanceHistoryPage() {
         record.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         record.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesDepartment = filterDepartment === "" || record.departmentName === filterDepartment;
-      const matchesStatus = filterStatus === "" || record.status === filterStatus;
+      const matchesDepartment = filterDepartment === "all" || record.departmentName === filterDepartment;
+      const matchesStatus = filterStatus === "all" || record.status === filterStatus;
 
-      const matchesLateness = filterLateness === "" || 
+      const matchesLateness = filterLateness === "all" || 
         (filterLateness === "late" && record.isLate) ||
         (filterLateness === "ontime" && !record.isLate);
 
@@ -225,109 +225,112 @@ export default function AttendanceHistoryPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row justify-between mb-4 gap-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1">
-              <div className="relative w-full max-w-sm">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Cari nama karyawan..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
-                  disabled={isLoading}
-                />
-              </div>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-10 gap-1" disabled={isLoading}>
-                    <CalendarIcon className="h-4 w-4" />
-                    {format(date, "MMMM yyyy", { locale: id })}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={date}
-                    onSelect={(date) => date && setDate(date)}
-                    month={date}
-                    onMonthChange={handleMonthChange}
-                    initialFocus
+          <div className="mb-6 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4 items-end">
+              <div className="flex-1 max-w-md">
+                <Label className="mb-2 block text-sm font-semibold">Pencarian</Label>
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Cari nama karyawan..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8 h-10"
+                    disabled={isLoading}
                   />
-                </PopoverContent>
-              </Popover>
-
-              <div className="flex gap-2 w-full sm:w-auto flex-wrap">
-                <DropdownFilter
-                  label="Departemen"
-                  placeholder="Pilih departemen"
-                  items={[
-                    { value: "", label: "Semua" },
-                    ...departments.map(dept => ({ value: dept, label: dept }))
-                  ]}
-                  value={filterDepartment}
-                  onChange={setFilterDepartment}
-                  className="w-full sm:w-[140px]"
-                  disabled={isLoading}
-                />
-
-                <DropdownFilter
-                  label="Status"
-                  placeholder="Pilih status"
-                  items={[
-                    { value: "", label: "Semua" },
-                    { value: "PRESENT", label: "Hadir" },
-                    { value: "LATE", label: "Terlambat" },
-                    { value: "ABSENT", label: "Tidak Hadir" },
-                  ]}
-                  value={filterStatus}
-                  onChange={setFilterStatus}
-                  className="w-full sm:w-[140px]"
-                  disabled={isLoading}
-                />
-
-                <DropdownFilter
-                  label="Keterlambatan"
-                  placeholder="Pilih keterlambatan"
-                  items={[
-                    { value: "", label: "Semua" },
-                    { value: "late", label: "Terlambat" },
-                    { value: "ontime", label: "Tepat Waktu" },
-                  ]}
-                  value={filterLateness}
-                  onChange={setFilterLateness}
-                  className="w-full sm:w-[140px]"
-                  disabled={isLoading}
-                />
+                </div>
               </div>
+
+              <div>
+                <Label className="mb-2 block text-sm font-semibold">Periode</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-10 gap-1" disabled={isLoading}>
+                      <CalendarIcon className="h-4 w-4" />
+                      {format(date, "MMMM yyyy", { locale: id })}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={date}
+                      onSelect={(date) => date && setDate(date)}
+                      month={date}
+                      onMonthChange={handleMonthChange}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <Button variant="outline" onClick={handleExportData} disabled={isLoading} className="h-10">
+                <FileDown className="mr-2 h-4 w-4" />
+                Export Data
+              </Button>
             </div>
 
-            <Button variant="outline" onClick={handleExportData} disabled={isLoading}>
-              <FileDown className="mr-2 h-4 w-4" />
-              Export Data
-            </Button>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <DropdownFilter
+                label="Departemen"
+                placeholder="Pilih departemen"
+                items={[
+                  { value: "all", label: "Semua" },
+                  ...departments.map(dept => ({ value: dept, label: dept }))
+                ]}
+                value={filterDepartment}
+                onChange={setFilterDepartment}
+                disabled={isLoading}
+              />
+
+              <DropdownFilter
+                label="Status"
+                placeholder="Pilih status"
+                items={[
+                  { value: "all", label: "Semua" },
+                  { value: "PRESENT", label: "Hadir" },
+                  { value: "LATE", label: "Terlambat" },
+                  { value: "ABSENT", label: "Tidak Hadir" },
+                ]}
+                value={filterStatus}
+                onChange={setFilterStatus}
+                disabled={isLoading}
+              />
+
+              <DropdownFilter
+                label="Keterlambatan"
+                placeholder="Pilih keterlambatan"
+                items={[
+                  { value: "all", label: "Semua" },
+                  { value: "late", label: "Terlambat" },
+                  { value: "ontime", label: "Tepat Waktu" },
+                ]}
+                value={filterLateness}
+                onChange={setFilterLateness}
+                disabled={isLoading}
+              />
+            </div>
           </div>
 
           <div className="rounded-md border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[100px]">Tanggal</TableHead>
-                  <TableHead className="min-w-[120px]">ID</TableHead>
-                  <TableHead className="min-w-[150px]">Nama</TableHead>
-                  <TableHead className="min-w-[120px]">Departemen</TableHead>
-                  <TableHead className="min-w-[100px]">Shift</TableHead>
-                  <TableHead className="min-w-[90px]">Check In</TableHead>
-                  <TableHead className="min-w-[90px]">Check Out</TableHead>
-                  <TableHead className="min-w-[100px]">Istirahat Mulai</TableHead>
-                  <TableHead className="min-w-[100px]">Istirahat Selesai</TableHead>
-                  <TableHead className="min-w-[100px]">Lembur Mulai</TableHead>
-                  <TableHead className="min-w-[100px]">Lembur Selesai</TableHead>
-                  <TableHead className="min-w-[90px]">Jam Kerja</TableHead>
-                  <TableHead className="min-w-[90px]">Lembur Reg</TableHead>
-                  <TableHead className="min-w-[90px]">Lembur Mingguan</TableHead>
-                  <TableHead className="min-w-[100px]">Keterlambatan</TableHead>
-                  <TableHead className="min-w-[100px]">Status</TableHead>
+                  <TableHead className="min-w-[90px] text-center">Tanggal</TableHead>
+                  <TableHead className="min-w-[120px] text-center">ID</TableHead>
+                  <TableHead className="min-w-[150px] text-center">Nama</TableHead>
+                  <TableHead className="min-w-[120px] text-center">Departemen</TableHead>
+                  <TableHead className="min-w-[100px] text-center">Shift</TableHead>
+                  <TableHead className="min-w-[80px] text-center">Masuk</TableHead>
+                  <TableHead className="min-w-[80px] text-center">Keluar</TableHead>
+                  <TableHead className="min-w-[90px] text-center">Istirahat<br/>Mulai</TableHead>
+                  <TableHead className="min-w-[90px] text-center">Istirahat<br/>Selesai</TableHead>
+                  <TableHead className="min-w-[90px] text-center">Lembur<br/>Mulai</TableHead>
+                  <TableHead className="min-w-[90px] text-center">Lembur<br/>Selesai</TableHead>
+                  <TableHead className="min-w-[80px] text-center">Jam<br/>Kerja</TableHead>
+                  <TableHead className="min-w-[80px] text-center">Lembur<br/>Reguler</TableHead>
+                  <TableHead className="min-w-[80px] text-center">Lembur<br/>Mingguan</TableHead>
+                  <TableHead className="min-w-[100px] text-center">Keterlambatan</TableHead>
+                  <TableHead className="min-w-[90px] text-center">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -343,49 +346,49 @@ export default function AttendanceHistoryPage() {
                 ) : filteredData.length > 0 ? (
                   filteredData.map((record) => (
                     <TableRow key={record.id}>
-                      <TableCell>{formatDate(record.attendanceDate)}</TableCell>
-                      <TableCell>{record.employeeId}</TableCell>
+                      <TableCell className="text-center">{formatDate(record.attendanceDate)}</TableCell>
+                      <TableCell className="text-center">{record.employeeId}</TableCell>
                       <TableCell className="font-medium">{record.employeeName}</TableCell>
-                      <TableCell>{record.departmentName}</TableCell>
-                      <TableCell>{record.shiftName}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
+                      <TableCell className="text-center">{record.departmentName}</TableCell>
+                      <TableCell className="text-center">{record.shiftName}</TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex flex-col items-center">
                           <span>{formatTime(record.checkInTime)}</span>
                           {record.isCheckInValidated && (
                             <span className="text-xs text-green-600">✓ Tervalidasi</span>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
+                      <TableCell className="text-center">
+                        <div className="flex flex-col items-center">
                           <span>{formatTime(record.checkOutTime)}</span>
                           {record.isCheckOutValidated && (
                             <span className="text-xs text-green-600">✓ Tervalidasi</span>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>{formatTime(record.breakStartTime)}</TableCell>
-                      <TableCell>{formatTime(record.breakEndTime)}</TableCell>
-                      <TableCell>{formatTime(record.overtimeStartTime)}</TableCell>
-                      <TableCell>{formatTime(record.overtimeEndTime)}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">{formatTime(record.breakStartTime)}</TableCell>
+                      <TableCell className="text-center">{formatTime(record.breakEndTime)}</TableCell>
+                      <TableCell className="text-center">{formatTime(record.overtimeStartTime)}</TableCell>
+                      <TableCell className="text-center">{formatTime(record.overtimeEndTime)}</TableCell>
+                      <TableCell className="text-center">
                         <span className="font-mono text-sm">
                           {record.mainWorkHours ? `${record.mainWorkHours.toFixed(2)}h` : "-"}
                         </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <span className="font-mono text-sm">
                           {record.regularOvertimeHours ? `${record.regularOvertimeHours.toFixed(2)}h` : "-"}
                         </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <span className="font-mono text-sm">
                           {record.weeklyOvertimeHours ? `${record.weeklyOvertimeHours.toFixed(2)}h` : "-"}
                         </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         {record.isLate ? (
-                          <div className="flex flex-col">
+                          <div className="flex flex-col items-center">
                             <Badge variant="destructive" className="text-xs mb-1">
                               Terlambat {record.roundedMinutesLate || record.minutesLate}m
                             </Badge>
@@ -399,7 +402,7 @@ export default function AttendanceHistoryPage() {
                           <span className="text-xs text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <Badge variant={getStatusBadge(record.status).variant}>
                           {getStatusBadge(record.status).label}
                         </Badge>
@@ -473,7 +476,6 @@ interface DropdownFilterProps {
   items: { value: string; label: string }[];
   value: string;
   onChange: (value: string) => void;
-  className: string;
   disabled: boolean;
 }
 
@@ -483,22 +485,18 @@ function DropdownFilter({
   items,
   value,
   onChange,
-  className,
   disabled,
 }: DropdownFilterProps) {
   return (
-    <div className={className}>
+    <div>
       <Label className="mb-2 block text-sm font-semibold">{label}</Label>
       <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger>
+        <SelectTrigger className="h-10">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
           {items.map((item) => (
-            <SelectItem
-              key={item.value || `item-${item.label}`}
-              value={item.value || `default-${item.label}`}
-            >
+            <SelectItem key={item.value} value={item.value}>
               {item.label}
             </SelectItem>
           ))}
