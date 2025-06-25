@@ -91,12 +91,29 @@ export async function GET(request: Request) {
       departmentName: attendance.employee.department?.name || 'Unknown',
       shiftName: attendance.employee.shift?.name || 'Unknown',
       attendanceDate: attendance.attendanceDate.toISOString().split('T')[0],
-      checkInTime: attendance.checkInTime.toISOString(),
+      checkInTime: attendance.checkInTime ? attendance.checkInTime.toISOString() : null,
       checkOutTime: attendance.checkOutTime ? attendance.checkOutTime.toISOString() : null,
       mainWorkHours: attendance.mainWorkHours,
       regularOvertimeHours: attendance.regularOvertimeHours,
       weeklyOvertimeHours: attendance.weeklyOvertimeHours,
-      status: attendance.status
+      status: attendance.status,
+      // Break times
+      breakStartTime: attendance.breakStartTime ? attendance.breakStartTime.toISOString() : null,
+      breakEndTime: attendance.breakEndTime ? attendance.breakEndTime.toISOString() : null,
+      // Overtime times
+      overtimeStartTime: attendance.overtimeStartTime ? attendance.overtimeStartTime.toISOString() : null,
+      overtimeEndTime: attendance.overtimeEndTime ? attendance.overtimeEndTime.toISOString() : null,
+      // Auto cutoff info
+      isAutoCutOff: attendance.isAutoCutOff,
+      autoCutOffReason: attendance.autoCutOffReason,
+      // Validation status
+      isCheckInValidated: attendance.isCheckInValidated,
+      isCheckOutValidated: attendance.isCheckOutValidated,
+      // Lateness info
+      isLate: attendance.isLate || false,
+      minutesLate: attendance.minutesLate,
+      roundedMinutesLate: attendance.roundedMinutesLate,
+      latenessMessage: attendance.latenessMessage
     }));
     
     return NextResponse.json({

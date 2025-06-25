@@ -138,6 +138,11 @@ model Attendance {
   isCheckOutValidated  Boolean          @default(false)
   overtimeEndTime      DateTime?
   overtimeStartTime    DateTime?
+  // Lateness tracking fields
+  isLate               Boolean          @default(false)
+  minutesLate          Int?
+  roundedMinutesLate   Int?
+  latenessMessage      String?
   employee             Employee         @relation(fields: [employeeId], references: [id])
 
   @@map("attendances")
