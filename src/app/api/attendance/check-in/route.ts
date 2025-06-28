@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { validateAttendanceTime, isWithinShiftTime, detectLatenessAndCalculateRoundedTime, calculateAdjustedCheckInTime } from '@/lib/utils/attendance-calculator';
+import { validateAttendanceTime, detectLatenessAndCalculateRoundedTime, calculateAdjustedCheckInTime } from '@/lib/utils/attendance-calculator';
+import { ShiftCycleManager } from '@/lib/utils/shift-cycle-manager';
 import { startOfDay, endOfDay } from 'date-fns';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('=== Check-in API Called ===');
+    console.log('=== Enhanced Shift Cycle Check-in API Called ===');
     
     const { employeeId } = await request.json();
     
@@ -51,50 +52,70 @@ export async function POST(request: NextRequest) {
     
     const actualCheckInTime = new Date();
     
-    // Validate if check-in is within acceptable shift time
-    if (!isWithinShiftTime(employee.shift, actualCheckInTime)) {
+    // Gunakan ShiftCycleManager untuk validasi shift cycle
+    const allShifts = await prisma.shift.findMany({
+      where: {
+        shiftType: {
+          not: 'NON_SHIFT'
+        },
+        mainWorkEnd: {
+          not: null
+        }
+      }
+    });
+
+    const shiftCycleInfo = ShiftCycleManager.determineCurrentShiftCycle(allShifts as any, actualCheckInTime);
+    
+    // Periksa apakah bisa check-in berdasarkan shift cycle
+    if (!shiftCycleInfo.canCheckIn) {
       return NextResponse.json({
         success: false,
-        error: 'Check-in dilakukan di luar jam shift yang diizinkan'
+        error: 'Check-in tidak dapat dilakukan di luar periode shift yang diizinkan',
+        shiftCycleInfo: {
+          currentShift: shiftCycleInfo.currentShift?.name || 'Tidak ada shift aktif',
+          nextShift: shiftCycleInfo.nextShift?.name || 'Tidak ada shift berikutnya',
+          isInGracePeriod: shiftCycleInfo.isInGracePeriod,
+          canCheckIn: shiftCycleInfo.canCheckIn
+        }
       }, { status: 400 });
     }
     
-    // Validate attendance time
-    const validation = validateAttendanceTime(employee.shift, actualCheckInTime);
+    // Validate attendance time (backward compatibility)
+    const validation = validateAttendanceTime(employee.shift as any, actualCheckInTime);
     
     if (!validation.isValid) {
-      return NextResponse.json({
-        success: false,
-        error: validation.message
-      }, { status: 400 });
+      console.log(`Validation warning: ${validation.message}`);
+      // Log but don't block - shift cycle validation takes precedence
     }
 
     // Hitung waktu check-in yang disesuaikan berdasarkan logika baru
-    const adjustmentResult = calculateAdjustedCheckInTime(employee.shift, actualCheckInTime);
+    const adjustmentResult = calculateAdjustedCheckInTime(employee.shift as any, actualCheckInTime);
     const finalCheckInTime = adjustmentResult.adjustedCheckInTime;
     
     // Deteksi keterlambatan dengan logika baru
-    const latenessInfo = detectLatenessAndCalculateRoundedTime(employee.shift, actualCheckInTime);
+    const latenessInfo = detectLatenessAndCalculateRoundedTime(employee.shift as any, actualCheckInTime);
     
-    const today = new Date();
-    const startDate = startOfDay(today);
-    const endDate = endOfDay(today);
+    // Cek existing attendance - gunakan range yang lebih fleksibel untuk shift cycle
+    const lookbackDate = new Date(actualCheckInTime);
+    lookbackDate.setDate(lookbackDate.getDate() - 1); // Look back 1 day untuk cross-day shifts
     
-    // Check if already checked in today
     const existingAttendance = await prisma.attendance.findFirst({
       where: {
         employeeId,
-        attendanceDate: {
-          gte: startDate,
-          lte: endDate
+        checkInTime: {
+          gte: startOfDay(lookbackDate),
+          lte: endOfDay(actualCheckInTime)
         }
+      },
+      orderBy: {
+        checkInTime: 'desc'
       }
     });
     
     if (existingAttendance?.checkInTime) {
       return NextResponse.json({
         success: false,
-        error: 'Karyawan sudah melakukan check-in hari ini',
+        error: 'Karyawan sudah melakukan check-in dalam periode ini',
         data: {
           existingCheckIn: existingAttendance.checkInTime,
           attendanceId: existingAttendance.id
@@ -111,7 +132,12 @@ export async function POST(request: NextRequest) {
         where: { id: existingAttendance.id },
         data: {
           checkInTime: finalCheckInTime, // Gunakan waktu yang sudah disesuaikan
-          status: 'PRESENT'
+          status: 'PRESENT',
+          // Update lateness info
+          isLate: latenessInfo.isLate,
+          minutesLate: latenessInfo.actualMinutesLate,
+          roundedMinutesLate: latenessInfo.roundedMinutesLate,
+          latenessMessage: latenessInfo.latenessMessage
         }
       });
     } else {
@@ -119,14 +145,19 @@ export async function POST(request: NextRequest) {
       attendance = await prisma.attendance.create({
         data: {
           employeeId,
-          attendanceDate: startDate,
+          attendanceDate: startOfDay(actualCheckInTime),
           checkInTime: finalCheckInTime, // Gunakan waktu yang sudah disesuaikan
-          status: 'PRESENT'
+          status: 'PRESENT',
+          // Store lateness info
+          isLate: latenessInfo.isLate,
+          minutesLate: latenessInfo.actualMinutesLate,
+          roundedMinutesLate: latenessInfo.roundedMinutesLate,
+          latenessMessage: latenessInfo.latenessMessage
         }
       });
     }
     
-    console.log(`✅ Check-in successful for employee ${employee.user.name} at ${finalCheckInTime.toISOString()}`);
+    console.log(`✅ Enhanced shift cycle check-in successful for employee ${employee.user.name} at ${finalCheckInTime.toISOString()}`);
     
     // Siapkan pesan response dengan informasi penyesuaian waktu
     let responseMessage = `Check-in berhasil untuk ${employee.user.name}`;
@@ -153,6 +184,15 @@ export async function POST(request: NextRequest) {
         checkOutTime: attendance.checkOutTime,
         status: attendance.status,
         validationMessage: validation.message,
+        // Informasi shift cycle
+        shiftCycleInfo: {
+          currentShift: shiftCycleInfo.currentShift?.name || 'Tidak ada shift aktif',
+          nextShift: shiftCycleInfo.nextShift?.name || 'Tidak ada shift berikutnya',
+          isInGracePeriod: shiftCycleInfo.isInGracePeriod,
+          isActiveShiftPeriod: shiftCycleInfo.isActiveShiftPeriod,
+          canCheckIn: shiftCycleInfo.canCheckIn,
+          canCheckOut: shiftCycleInfo.canCheckOut
+        },
         // Informasi penyesuaian waktu untuk frontend
         adjustmentInfo: {
           isAdjusted: adjustmentResult.isAdjusted,
@@ -172,7 +212,7 @@ export async function POST(request: NextRequest) {
     });
     
   } catch (error) {
-    console.error('Error during check-in:', error);
+    console.error('Error during enhanced shift cycle check-in:', error);
     return NextResponse.json({
       success: false,
       error: 'Terjadi kesalahan saat check-in',

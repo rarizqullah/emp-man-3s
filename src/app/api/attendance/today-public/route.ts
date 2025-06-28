@@ -67,7 +67,7 @@ async function performAutoCutoff(attendance: any, shift: any) {
     console.log(`Auto cut-off for employee ${attendance.employee.user.name} at shift end time`);
     
     const checkInTime = new Date(attendance.checkInTime);
-    const checkOutTime = shiftEndTime; // Check-out di jam selesai shift
+    const checkOutTime = shiftEndTime; // REVISI: Check-out di waktu akhir shift sesuai requirement
     
     // Calculate work hours and auto time record
     const workHours = calculateWorkHours(shift, checkInTime, checkOutTime);

@@ -1,146 +1,186 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { startOfDay, endOfDay, isAfter, addMinutes } from 'date-fns';
+import { calculateWorkHours, calculateAutoTimeRecord } from '@/lib/utils/attendance-calculator';
+import { SessionCheckoutManager } from '@/lib/utils/session-checkout-manager';
+import { startOfDay, endOfDay } from 'date-fns';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    console.log('=== Auto Cut-off Job Started ===');
+    console.log('=== Enhanced Multi-Session Auto Cut-off Job Started ===');
     
-    const now = new Date();
-    const today = startOfDay(now);
-    const endOfToday = endOfDay(now);
-
-    // Ambil semua karyawan dengan shift yang memiliki mainWorkEnd
-    const employeesWithShifts = await prisma.employee.findMany({
+    const cutoffTime = new Date();
+    
+    // Find all pending attendances (checked in but not checked out)
+    const pendingAttendances = await prisma.attendance.findMany({
       where: {
-        shift: {
-          mainWorkEnd: {
-            not: null
-          }
+        checkInTime: {
+          not: null
+        },
+        checkOutTime: null,
+        attendanceDate: {
+          gte: startOfDay(new Date(cutoffTime.getTime() - 24 * 60 * 60 * 1000)), // Yesterday
+          lte: endOfDay(cutoffTime)
         }
       },
       include: {
-        user: {
-          select: {
-            name: true
-          }
-        },
-        shift: true,
-        attendances: {
-          where: {
-            attendanceDate: {
-              gte: today,
-              lte: endOfToday
-            }
+        employee: {
+          include: {
+            user: {
+              select: {
+                name: true
+              }
+            },
+            shift: true
           }
         }
       }
     });
-
-    console.log(`Found ${employeesWithShifts.length} employees with shifts to check`);
-
-    const processedEmployees: string[] = [];
+    
+    console.log(`Found ${pendingAttendances.length} pending attendances for auto cut-off`);
+    
     const cutoffResults = [];
-
-    for (const employee of employeesWithShifts) {
-      if (!employee.shift?.mainWorkEnd) continue;
-
-      // Buat waktu akhir shift hari ini
-      const shiftEndTime = new Date(today);
-      shiftEndTime.setHours(
-        employee.shift.mainWorkEnd.getHours(),
-        employee.shift.mainWorkEnd.getMinutes(),
-        0,
-        0
-      );
-
-      // Grace period 15 menit setelah shift berakhir
-      const cutoffTime = addMinutes(shiftEndTime, 15);
-
-      // Jika waktu saat ini sudah melewati cut-off time
-      if (isAfter(now, cutoffTime)) {
-        const todayAttendance = employee.attendances[0];
-
-        // Case 1: Karyawan sudah check-in tapi belum check-out
-        if (todayAttendance && todayAttendance.checkInTime && !todayAttendance.checkOutTime) {
-          await prisma.attendance.update({
-            where: { id: todayAttendance.id },
-            data: {
-              checkOutTime: shiftEndTime, // Set ke waktu shift berakhir
-            }
-          });
-
-          processedEmployees.push(`${employee.user.name} - Auto check-out`);
-          cutoffResults.push({
-            employeeName: employee.user.name,
-            shiftName: employee.shift.name,
-            action: 'auto_checkout',
-            shiftEndTime: shiftEndTime.toISOString(),
-            reason: 'Karyawan tidak melakukan check-out manual'
-          });
-
-          console.log(`Auto check-out applied for: ${employee.user.name} at ${shiftEndTime.toISOString()}`);
+    
+    for (const attendance of pendingAttendances) {
+      try {
+        if (!attendance.employee.shift || !attendance.checkInTime) {
+          console.log(`Skipping attendance ${attendance.id}: missing shift or check-in time`);
+          continue;
         }
         
-        // Case 2: Karyawan tidak hadir sama sekali
-        else if (!todayAttendance) {
-          await prisma.attendance.create({
-            data: {
-              employeeId: employee.id,
-              attendanceDate: today,
-              checkInTime: today, // Set ke awal hari untuk record keeping
-              checkOutTime: null,
-              status: 'ABSENT'
-            }
-          });
-
-          processedEmployees.push(`${employee.user.name} - Marked absent`);
-          cutoffResults.push({
-            employeeName: employee.user.name,
-            shiftName: employee.shift.name,
-            action: 'marked_absent',
-            shiftEndTime: shiftEndTime.toISOString(),
-            reason: 'Tidak ada presensi sama sekali'
-          });
-
-          console.log(`Marked absent: ${employee.user.name}`);
+        // GUNAKAN SESSION CHECKOUT MANAGER UNTUK AUTO CUT-OFF
+        const multiSessionInfo = SessionCheckoutManager.determineCheckoutTime(
+          attendance.employee.shift as any,
+          cutoffTime,
+          true // Force auto cut-off (manual override = true)
+        );
+        
+        // Auto cut-off hanya jika tidak dalam sesi aktif atau grace period
+        if (multiSessionInfo.currentSession || multiSessionInfo.currentGracePeriodSession) {
+          console.log(`Skipping auto cut-off for ${attendance.employee.user.name}: still in active session or grace period`);
+          continue;
         }
+        
+        const checkInTime = new Date(attendance.checkInTime);
+        const finalCheckOutTime = multiSessionInfo.checkoutDecision.checkoutTime;
+        const isLateCheckout = multiSessionInfo.checkoutDecision.isLateCheckout;
+        const lateCheckoutLabel = multiSessionInfo.checkoutDecision.lateCheckoutLabel;
+        
+        console.log(`Auto cut-off for ${attendance.employee.user.name}:`);
+        console.log(`  Check-in: ${checkInTime.toISOString()}`);
+        console.log(`  Cut-off time: ${finalCheckOutTime.toISOString()}`);
+        console.log(`  Reason: ${multiSessionInfo.checkoutDecision.reason}`);
+        console.log(`  Is Late Checkout: ${isLateCheckout}`);
+        console.log(`  Late Checkout Label: ${lateCheckoutLabel || 'None'}`);
+        
+        // Calculate work hours and auto time record
+        const workHours = calculateWorkHours(
+          attendance.employee.shift as any,
+          checkInTime,
+          finalCheckOutTime
+        );
+        
+        const autoTimeRecord = calculateAutoTimeRecord(
+          attendance.employee.shift as any,
+          checkInTime,
+          finalCheckOutTime
+        );
+        
+        // Prepare auto cut-off reason dengan informasi late checkout
+        let autoCutOffReason = `Multi-session auto cut-off: ${multiSessionInfo.checkoutDecision.reason} at ${cutoffTime.toISOString()}`;
+        if (isLateCheckout && lateCheckoutLabel) {
+          autoCutOffReason += ` (${lateCheckoutLabel})`;
+        }
+        
+        // Update attendance record
+        const updatedAttendance = await prisma.attendance.update({
+          where: { id: attendance.id },
+          data: {
+            checkOutTime: finalCheckOutTime,
+            mainWorkHours: workHours.mainWorkHours,
+            regularOvertimeHours: workHours.regularOvertimeHours,
+            weeklyOvertimeHours: workHours.weeklyOvertimeHours,
+            breakStartTime: autoTimeRecord.breakStartTime,
+            breakEndTime: autoTimeRecord.breakEndTime,
+            overtimeStartTime: autoTimeRecord.overtimeStartTime,
+            overtimeEndTime: autoTimeRecord.overtimeEndTime,
+            isAutoCutOff: true,
+            isCheckOutValidated: false, // Auto cut-off tidak tervalidasi
+            autoCutOffReason
+          }
+        });
+        
+        cutoffResults.push({
+          attendanceId: attendance.id,
+          employeeName: attendance.employee.user.name,
+          checkInTime: checkInTime,
+          checkOutTime: finalCheckOutTime,
+          mainWorkHours: workHours.mainWorkHours,
+          regularOvertimeHours: workHours.regularOvertimeHours,
+          sessionType: multiSessionInfo.checkoutDecision.sessionType,
+          reason: multiSessionInfo.checkoutDecision.reason,
+          isLateCheckout: isLateCheckout,
+          lateCheckoutLabel: lateCheckoutLabel,
+          useActualTime: multiSessionInfo.checkoutDecision.useActualTime
+        });
+        
+        console.log(`✅ Auto cut-off successful for ${attendance.employee.user.name}`);
+        if (isLateCheckout) {
+          console.log(`⚠️ Late checkout detected: ${lateCheckoutLabel}`);
+        }
+        
+      } catch (error) {
+        console.error(`Error during auto cut-off for attendance ${attendance.id}:`, error);
+        cutoffResults.push({
+          attendanceId: attendance.id,
+          employeeName: attendance.employee.user.name,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
       }
     }
-
-    console.log(`=== Auto Cut-off Job Completed: ${processedEmployees.length} employees processed ===`);
-
+    
+    console.log(`✅ Enhanced multi-session auto cut-off job completed`);
+    console.log(`Processed: ${cutoffResults.length} attendances`);
+    
     return NextResponse.json({
       success: true,
-      message: `Auto cut-off job selesai. ${processedEmployees.length} karyawan diproses`,
-      timestamp: now.toISOString(),
-      totalEmployeesChecked: employeesWithShifts.length,
-      processedEmployees,
-      details: cutoffResults
+      message: `Auto cut-off job completed - processed ${cutoffResults.length} attendances`,
+      data: {
+        cutoffTime: cutoffTime,
+        totalPending: pendingAttendances.length,
+        totalProcessed: cutoffResults.length,
+        results: cutoffResults
+      }
     });
-
+    
   } catch (error) {
-    console.error('Error dalam auto cut-off job:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Gagal menjalankan auto cut-off job',
-        details: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
-      },
-      { status: 500 }
-    );
+    console.error('Error in enhanced multi-session auto cut-off job:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Auto cut-off job failed',
+      debug: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
 
-// GET endpoint untuk melihat status job
+// GET endpoint untuk melihat status shift cycles dan pending cut-offs
 export async function GET() {
   try {
     const now = new Date();
-    const today = startOfDay(now);
     
-    // Ambil statistik karyawan hari ini
-    const employeesWithShifts = await prisma.employee.findMany({
+    // Ambil semua shift aktif
+    const allShifts = await prisma.shift.findMany({
+      where: {
+        shiftType: {
+          not: 'NON_SHIFT'
+        },
+        mainWorkEnd: {
+          not: null
+        }
+      }
+    });
+
+    // Ambil karyawan dengan attendance pending
+    const employeesWithPendingAttendance = await prisma.employee.findMany({
       where: {
         shift: {
           mainWorkEnd: {
@@ -157,60 +197,96 @@ export async function GET() {
         shift: true,
         attendances: {
           where: {
-            attendanceDate: {
-              gte: today,
-              lte: endOfDay(now)
-            }
-          }
+            checkInTime: {
+              not: null
+            },
+            checkOutTime: null
+          },
+          orderBy: {
+            checkInTime: 'desc'
+          },
+          take: 1
         }
       }
     });
 
+    // Analisis shift cycle untuk setiap karyawan
     const stats = {
-      totalEmployeesWithShifts: employeesWithShifts.length,
-      hasAttendanceToday: employeesWithShifts.filter(emp => emp.attendances.length > 0).length,
+      totalActiveShifts: allShifts.length,
+      totalEmployeesWithPendingAttendance: employeesWithPendingAttendance.length,
       needsAutoCutoff: 0,
-      alreadyCompletedToday: 0
+      inGracePeriod: 0,
+      inActiveShift: 0
     };
 
-    // Hitung yang perlu auto cut-off
-    for (const employee of employeesWithShifts) {
-      if (!employee.shift?.mainWorkEnd) continue;
+    const employeeAnalysis = [];
 
-      const shiftEndTime = new Date(today);
-      shiftEndTime.setHours(
-        employee.shift.mainWorkEnd.getHours(),
-        employee.shift.mainWorkEnd.getMinutes(),
-        0,
-        0
+    for (const employee of employeesWithPendingAttendance) {
+      if (!employee.shift || !employee.attendances.length) continue;
+
+      const attendance = employee.attendances[0];
+      const checkInTime = new Date(attendance.checkInTime!);
+
+      const cutOffDecision = SessionCheckoutManager.shouldAutoCutOff(
+        employee.shift as any,
+        checkInTime,
+        now
       );
 
-      const cutoffTime = addMinutes(shiftEndTime, 15);
-      const todayAttendance = employee.attendances[0];
+      const shiftCycleInfo = SessionCheckoutManager.determineCurrentShiftCycle([employee.shift] as any, now);
 
-      if (isAfter(now, cutoffTime)) {
-        if (todayAttendance && todayAttendance.checkInTime && !todayAttendance.checkOutTime) {
-          stats.needsAutoCutoff++;
-        } else if (todayAttendance && todayAttendance.checkInTime && todayAttendance.checkOutTime) {
-          stats.alreadyCompletedToday++;
-        }
+      employeeAnalysis.push({
+        employeeName: employee.user.name,
+        shiftName: employee.shift.name,
+        checkInTime: checkInTime.toISOString(),
+        shouldCutOff: cutOffDecision.shouldCutOff,
+        cutOffReason: cutOffDecision.reason,
+        isInGracePeriod: shiftCycleInfo.isInGracePeriod,
+        isInActiveShift: shiftCycleInfo.isActiveShiftPeriod
+      });
+
+      if (cutOffDecision.shouldCutOff) {
+        stats.needsAutoCutoff++;
+      }
+      
+      if (shiftCycleInfo.isInGracePeriod) {
+        stats.inGracePeriod++;
+      }
+      
+      if (shiftCycleInfo.isActiveShiftPeriod) {
+        stats.inActiveShift++;
       }
     }
 
+    // Get current shift cycle info
+    const currentShiftCycles = SessionCheckoutManager.getShiftCyclesForRange(
+      allShifts as any,
+      now,
+      new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    );
+
+    const debugInfo = SessionCheckoutManager.getDebugInfo(allShifts as any, now);
+
     return NextResponse.json({
       success: true,
-      message: 'Status auto cut-off job',
+      message: 'Enhanced shift cycle auto cut-off job status',
       timestamp: now.toISOString(),
       stats,
-      nextJobRecommendation: stats.needsAutoCutoff > 0 ? 'Run auto cut-off job' : 'No action needed'
+      employeeAnalysis,
+      currentShiftCycles,
+      nextJobRecommendation: stats.needsAutoCutoff > 0 ? 
+        `Run auto cut-off job - ${stats.needsAutoCutoff} employees need cut-off` : 
+        'No action needed',
+      debugInfo
     });
 
   } catch (error) {
-    console.error('Error getting auto cut-off job status:', error);
+    console.error('Error getting enhanced shift cycle auto cut-off job status:', error);
     return NextResponse.json(
       {
         success: false,
-        error: 'Gagal mendapatkan status auto cut-off job'
+        error: 'Gagal mendapatkan status enhanced shift cycle auto cut-off job',
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     );

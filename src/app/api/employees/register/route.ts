@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Mulai transaksi untuk membuat user dan employee
+    // Mulai transaksi untuk membuat user dan employee dengan timeout yang lebih besar
     try {
       const result = await prisma.$transaction(async (tx) => {
         // 1. Buat user baru
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
         
         console.log("User berhasil dibuat dengan ID:", user.id);
         
-        // 2. Buat karyawan baru
+        // 2. Buat karyawan baru (tanpa include untuk mengoptimalkan performance)
         const employee = await tx.employee.create({
           data: {
             userId: user.id,
@@ -122,34 +122,56 @@ export async function POST(request: NextRequest) {
             address: validatedData.address,
             faceData: validatedData.faceData,
           },
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              }
-            },
-            department: true,
-            subDepartment: true,
-            position: true,
-            shift: true,
-          }
         });
         
         console.log("Karyawan berhasil dibuat dengan ID:", employee.id);
         
-        return employee;
+        return { employeeId: employee.id, userId: user.id };
+      }, {
+        timeout: 15000, // Increase timeout to 15 seconds
       });
       
-      console.log("Transaksi berhasil, data karyawan:", result);
-      return NextResponse.json(result, { status: 201 });
+      // Fetch complete employee data with relations outside transaction (more efficient)
+      const employeeWithRelations = await prisma.employee.findUnique({
+        where: { id: result.employeeId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            }
+          },
+          department: true,
+          subDepartment: true,
+          position: true,
+          shift: true,
+        }
+      });
+      
+      console.log("Transaksi berhasil, data karyawan:", employeeWithRelations);
+      return NextResponse.json(employeeWithRelations, { status: 201 });
     } catch (dbError) {
       console.error("Error database saat membuat karyawan:", dbError);
       
-      // Cek apakah error koneksi
+      // Cek apakah error koneksi atau timeout
       const errorMessage = String(dbError).toLowerCase();
+      
+      // Handle transaction timeout specifically
+      if (errorMessage.includes('transaction already closed') || 
+          errorMessage.includes('expired transaction') ||
+          errorMessage.includes('timeout')) {
+        return NextResponse.json(
+          { 
+            error: "Proses pendaftaran membutuhkan waktu terlalu lama. Silakan coba lagi.",
+            retryable: true
+          },
+          { status: 408 }
+        );
+      }
+      
+      // Handle connection errors
       if (
         errorMessage.includes('connection') &&
         (errorMessage.includes('reset') || 
@@ -157,7 +179,10 @@ export async function POST(request: NextRequest) {
          errorMessage.includes('timeout'))
       ) {
         return NextResponse.json(
-          { error: "Koneksi database terputus, silakan coba lagi" },
+          { 
+            error: "Koneksi database terputus, silakan coba lagi",
+            retryable: true
+          },
           { status: 503 }
         );
       }

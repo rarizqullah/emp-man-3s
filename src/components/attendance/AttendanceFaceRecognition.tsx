@@ -286,7 +286,9 @@ const AttendanceFaceRecognition: React.FC<AttendanceFaceRecognitionProps> = ({
           toast.success(`Berhasil memuat data ${employees.length} karyawan`);
         } else {
           setMessage('Tidak ada karyawan dengan data wajah');
-          toast.warning('Tidak ada karyawan dengan data wajah yang tersedia.');
+          toast.error('Tidak ada karyawan dengan data wajah yang tersedia.', {
+            description: 'Hubungi admin untuk menambahkan data wajah karyawan'
+          });
         }
         
       } catch (fetchError) {

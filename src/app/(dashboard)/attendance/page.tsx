@@ -90,7 +90,7 @@ export default function AttendancePage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('attendance');
   const [currentTime, setCurrentTime] = useState<string>(format(new Date(), 'HH:mm:ss'));
-  const [employeeInfo, setEmployeeInfo] = useState<EmployeeInfo | null>(null);
+  const [employeeInfo, setEmployeeInfo] = useState<EmployeeInfo | null>(null); // Mulai dengan null - akan diset setelah face recognition
   const [isCheckedIn, setIsCheckedIn] = useState<boolean>(false);
   const [mode, setMode] = useState<'checkIn' | 'checkOut'>('checkIn');
   const [manualEmployeeId, setManualEmployeeId] = useState<string>("");
@@ -130,69 +130,7 @@ export default function AttendancePage() {
     }
   };
 
-  // Fetch data karyawan saat ini
-  const fetchCurrentEmployeeInfo = async () => {
-    try {
-      setIsLoading(true);
-      console.log("Fetching employee data...");
-      
-      const response = await fetch('/api/attendance/employee-data');
-      
-      if (!response.ok) {
-        console.log("No session found or unauthorized");
-        setEmployeeInfo(null);
-        await fetchTodayAttendance();
-        return;
-      }
-      
-      const result = await response.json();
-      
-      console.log("API Response:", result);
-      
-      if (!result.success) {
-        throw new Error(result.error || "Gagal mengambil data karyawan");
-      }
-      
-      // Jika tidak ada data employee (user belum terdaftar sebagai karyawan)
-      if (!result.data || result.data.length === 0) {
-        console.log("User belum terdaftar sebagai karyawan");
-        toast.error("Anda belum terdaftar sebagai karyawan. Hubungi admin untuk didaftarkan.");
-        setEmployeeInfo(null);
-        await fetchTodayAttendance();
-        return;
-      }
-      
-      // Ambil data karyawan pertama (seharusnya hanya satu)
-      const employeeData = result.data[0];
-      
-      setEmployeeInfo({
-        id: employeeData.employeeId,
-        name: employeeData.name,
-        department: employeeData.departmentName || "-",
-        shift: employeeData.shiftName || "-"
-      });
-      
-      console.log("Employee data loaded:", employeeData);
-      
-      // Jika karyawan belum memiliki data wajah, tampilkan peringatan
-      if (!employeeData.hasFaceData) {
-        toast.error("Anda belum memiliki data wajah. Tambahkan data wajah di profil Anda untuk menggunakan fitur pengenalan wajah.");
-      }
-      
-      // Setelah mendapatkan data karyawan, fetch juga data presensi hari ini
-      await fetchTodayAttendance();
-      
-      // Fetch attendance untuk user ini
-      await fetchAttendance();
-    } catch (error) {
-      console.error("Error fetching current employee info:", error);
-      toast.error("Gagal memuat data karyawan. Pastikan Anda sudah login.");
-      setEmployeeInfo(null);
-      await fetchTodayAttendance();
-    } finally {
-      setIsLoading(false);
-    }
-  };
+
 
   // Fungsi untuk memperbarui jam saat ini
   useEffect(() => {
@@ -206,7 +144,8 @@ export default function AttendancePage() {
   // Ambil data saat komponen dimuat
   useEffect(() => {
     fetchTodayAttendance();
-    fetchCurrentEmployeeInfo();
+    // Tidak lagi auto-load employee info saat halaman dimuat
+    // Employee info akan dimuat setelah face recognition berhasil
   }, []);
 
   // Filtering data attendance berdasarkan pencarian
@@ -311,12 +250,19 @@ export default function AttendancePage() {
           toast.success(`✅ Check-out berhasil! Mode beralih ke Check-in untuk kunjungan berikutnya.`);
         }
         
-        // Update employee info
+        // SEKARANG SET EMPLOYEE INFO SETELAH FACE RECOGNITION BERHASIL
         setEmployeeInfo({
-          id: employeeId,
+          id: result.data?.employeeId || employeeId,
           name: result.data?.employeeName || '',
           department: result.data?.department || '',
           shift: result.data?.shift || ''
+        });
+        
+        console.log("Employee info updated after successful recognition:", {
+          id: result.data?.employeeId || employeeId,
+          name: result.data?.employeeName,
+          department: result.data?.department,
+          shift: result.data?.shift
         });
       } else {
         toast.error(result.error || result.message || `Gagal melakukan ${currentMode}`);
@@ -451,45 +397,65 @@ export default function AttendancePage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {employeeInfo ? (
+                {isLoading ? (
+                  <div className="py-4 text-center">
+                    <div className="flex justify-center items-center space-x-2">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <p>Memuat informasi karyawan...</p>
+                    </div>
+                  </div>
+                ) : employeeInfo ? (
                   <>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="text-sm font-medium">Nama:</div>
-                      <div>{employeeInfo.name}</div>
+                      <div>{employeeInfo.name || '-'}</div>
 
                       <div className="text-sm font-medium">ID Karyawan:</div>
-                      <div>{employeeInfo.id}</div>
+                      <div>{employeeInfo.id || '-'}</div>
 
                       <div className="text-sm font-medium">Departemen:</div>
-                      <div>{employeeInfo.department}</div>
+                      <div>{employeeInfo.department === '-' ? '-' : employeeInfo.department}</div>
 
                       <div className="text-sm font-medium">Shift:</div>
                       <div>
-                        <Badge variant="outline">{employeeInfo.shift}</Badge>
-                          </div>
+                        <Badge variant="outline">
+                          {employeeInfo.shift === '-' ? '-' : employeeInfo.shift}
+                        </Badge>
+                      </div>
 
                       <div className="text-sm font-medium">Status:</div>
                       <div>
                         <Badge variant={isCheckedIn ? "default" : "secondary"}>
-                          {isCheckedIn ? "Sudah Presensi" : "Belum Presensi"}
+                          {isCheckedIn ? "Sudah Presensi" : "Sedang Presensi"}
                         </Badge>
                       </div>
                     </div>
                   </>
                 ) : (
-                  <div className="py-4 text-center">
-                    <p>Memuat informasi karyawan...</p>
-                </div>
+                  <div className="py-8 text-center">
+                    <div className="space-y-4">
+                      <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                        <UserCheck className="h-8 w-8 text-gray-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-700">Belum Ada Presensi</h3>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Lakukan scan wajah untuk memulai presensi.<br />
+                          Informasi karyawan akan muncul setelah berhasil check-in.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </CardContent>
               <CardFooter>
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={() => fetchCurrentEmployeeInfo()}
+                  onClick={() => window.location.reload()}
                 >
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Refresh Data
+                  Refresh Halaman
                 </Button>
               </CardFooter>
             </Card>
