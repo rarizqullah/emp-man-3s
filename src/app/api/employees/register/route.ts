@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
           data: {
             name: validatedData.name,
             email: validatedData.email,
+            phone: validatedData.phone, // Tambahkan field phone
             authId: crypto.randomUUID(),
             role: Role.EMPLOYEE,
           },
@@ -126,6 +127,30 @@ export async function POST(request: NextRequest) {
         
         console.log("Karyawan berhasil dibuat dengan ID:", employee.id);
         
+        // Setelah employee berhasil dibuat, tambahkan riwayat kontrak dan shift otomatis
+        await tx.contractHistory.create({
+          data: {
+            employeeId: employee.id,
+            contractType: validatedData.contractType,
+            contractNumber: validatedData.contractNumber || null,
+            startDate: new Date(validatedData.contractStartDate),
+            endDate: validatedData.contractEndDate ? new Date(validatedData.contractEndDate) : null,
+            status: 'ACTIVE',
+            notes: 'Kontrak awal saat karyawan bergabung'
+          }
+        });
+
+        await tx.shiftHistory.create({
+          data: {
+            employeeId: employee.id,
+            shiftId: validatedData.shift,
+            startDate: new Date(validatedData.contractStartDate),
+            notes: 'Shift awal saat karyawan bergabung'
+          }
+        });
+
+        console.log('Initial history records created successfully');
+        
         return { employeeId: employee.id, userId: user.id };
       }, {
         timeout: 15000, // Increase timeout to 15 seconds
@@ -140,6 +165,7 @@ export async function POST(request: NextRequest) {
               id: true,
               name: true,
               email: true,
+              phone: true, // Tambahkan field phone
               role: true,
             }
           },

@@ -1,5 +1,5 @@
 import prisma from '@/lib/db/prisma';
-import { Prisma, ContractType, WarningStatus, Gender } from '@prisma/client';
+import { Prisma, ContractType, WarningStatus } from '@prisma/client';
 
 // Tipe data untuk parameter employee baru
 export interface EmployeeCreateInput {
@@ -16,25 +16,16 @@ export interface EmployeeCreateInput {
   faceData?: string;
 }
 
-// Tipe data untuk update employee - UPDATED untuk mendukung field user
+// Tipe data untuk update employee
 export interface EmployeeUpdateInput {
-  // User data - TAMBAHAN BARU
-  name?: string;
-  email?: string;
-  phone?: string | null;
-  
-  // Employee data (yang sudah ada)
   departmentId?: string;
   subDepartmentId?: string | null;
-  positionId?: string | null; // Tambahkan positionId yang hilang
   shiftId?: string;
   contractType?: ContractType;
   contractNumber?: string | null;
   contractStartDate?: Date;
   contractEndDate?: Date | null;
   warningStatus?: WarningStatus;
-  gender?: Gender; // Tambahkan gender yang hilang
-  address?: string | null; // Tambahkan address yang hilang
   faceData?: string | null;
 }
 
@@ -558,110 +549,57 @@ export async function createEmployee(data: EmployeeCreateInput) {
 
 // Update karyawan
 export async function updateEmployee(id: string, data: EmployeeUpdateInput) {
-  // Gunakan transaction untuk update user dan employee secara terpisah
-  return await prisma.$transaction(async (tx) => {
-    // 1. Get employee dengan user data
-    const employee = await tx.employee.findUnique({
-      where: { id },
-      include: { user: true }
-    });
-    
-    if (!employee) {
-      throw new Error('Employee not found');
-    }
-    
-    // 2. Update user data jika ada
-    const userUpdateData: any = {};
-    if (data.name !== undefined) userUpdateData.name = data.name;
-    if (data.email !== undefined) userUpdateData.email = data.email;
-    if (data.phone !== undefined) userUpdateData.phone = data.phone;
-    
-    if (Object.keys(userUpdateData).length > 0) {
-      await tx.user.update({
-        where: { id: employee.userId },
-        data: userUpdateData
-      });
-    }
-    
-    // 3. Update employee data
-    const employeeUpdateData: Prisma.EmployeeUpdateInput = {};
-    
-    if (data.departmentId) {
-      employeeUpdateData.department = { connect: { id: data.departmentId } };
-    }
-    
-    if (data.subDepartmentId === null) {
-      employeeUpdateData.subDepartment = { disconnect: true };
-    } else if (data.subDepartmentId) {
-      employeeUpdateData.subDepartment = { connect: { id: data.subDepartmentId } };
-    }
-    
-    if (data.positionId === null) {
-      employeeUpdateData.position = { disconnect: true };
-    } else if (data.positionId) {
-      employeeUpdateData.position = { connect: { id: data.positionId } };
-    }
-    
-    if (data.shiftId) {
-      employeeUpdateData.shift = { connect: { id: data.shiftId } };
-    }
-    
-    if (data.contractType) {
-      employeeUpdateData.contractType = data.contractType;
-    }
-    
-    if (data.contractNumber !== undefined) {
-      employeeUpdateData.contractNumber = data.contractNumber;
-    }
-    
-    if (data.contractStartDate) {
-      employeeUpdateData.contractStartDate = data.contractStartDate;
-    }
-    
-    if (data.contractEndDate === null) {
-      employeeUpdateData.contractEndDate = null;
-    } else if (data.contractEndDate) {
-      employeeUpdateData.contractEndDate = data.contractEndDate;
-    }
-    
-    if (data.warningStatus) {
-      employeeUpdateData.warningStatus = data.warningStatus;
-    }
-    
-    if (data.gender) {
-      employeeUpdateData.gender = data.gender;
-    }
-    
-    if (data.address !== undefined) {
-      employeeUpdateData.address = data.address;
-    }
-    
-    if (data.faceData !== undefined) {
-      employeeUpdateData.faceData = data.faceData;
-    }
-    
-    // Update employee
-    const updatedEmployee = await tx.employee.update({
-      where: { id },
-      data: employeeUpdateData,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            role: true,
-          }
-        },
-        department: true,
-        subDepartment: true,
-        position: true,
-        shift: true,
-      },
-    });
-    
-    return updatedEmployee;
+  const updateData: Prisma.EmployeeUpdateInput = {};
+
+  if (data.departmentId) {
+    updateData.department = { connect: { id: data.departmentId } };
+  }
+
+  if (data.subDepartmentId === null) {
+    updateData.subDepartment = { disconnect: true };
+  } else if (data.subDepartmentId) {
+    updateData.subDepartment = { connect: { id: data.subDepartmentId } };
+  }
+
+  if (data.shiftId) {
+    updateData.shift = { connect: { id: data.shiftId } };
+  }
+
+  if (data.contractType) {
+    updateData.contractType = data.contractType;
+  }
+
+  if (data.contractNumber !== undefined) {
+    updateData.contractNumber = data.contractNumber;
+  }
+
+  if (data.contractStartDate) {
+    updateData.contractStartDate = data.contractStartDate;
+  }
+
+  if (data.contractEndDate === null) {
+    updateData.contractEndDate = null;
+  } else if (data.contractEndDate) {
+    updateData.contractEndDate = data.contractEndDate;
+  }
+
+  if (data.warningStatus) {
+    updateData.warningStatus = data.warningStatus;
+  }
+
+  if (data.faceData !== undefined) {
+    updateData.faceData = data.faceData;
+  }
+
+  return prisma.employee.update({
+    where: { id },
+    data: updateData,
+    include: {
+      user: true,
+      department: true,
+      subDepartment: true,
+      shift: true,
+    },
   });
 }
 

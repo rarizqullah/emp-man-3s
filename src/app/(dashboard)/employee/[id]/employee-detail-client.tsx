@@ -63,6 +63,7 @@ interface Employee {
     id: string;
     name: string;
     email: string;
+    phone?: string;
     role: string;
   };
   department: {
@@ -191,7 +192,7 @@ const EmployeeInfo = ({
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -200,25 +201,25 @@ const EmployeeInfo = ({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
               <span className="text-sm text-muted-foreground">Email</span>
-              <span className="text-sm col-span-2">{userEmail}</span>
+              <span className="text-sm sm:col-span-2 break-all">{userEmail}</span>
             </div>
-            <div className="grid grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
               <span className="text-sm text-muted-foreground">Telepon</span>
-              <span className="text-sm col-span-2">-</span>
+              <span className="text-sm sm:col-span-2">{data.user?.phone || '-'}</span>
             </div>
-            <div className="grid grid-cols-3">
-              <span className="text-sm text-muted-foreground">No. Identitas</span>
-              <span className="text-sm col-span-2">{data.employeeId || '-'}</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
+              <span className="text-sm text-muted-foreground">NIK</span>
+              <span className="text-sm sm:col-span-2">{data.employeeId || '-'}</span>
             </div>
-            <div className="grid grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
               <span className="text-sm text-muted-foreground">Alamat</span>
-              <span className="text-sm col-span-2">{data.address || '-'}</span>
+              <span className="text-sm sm:col-span-2 break-words">{data.address || '-'}</span>
             </div>
-            <div className="grid grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
               <span className="text-sm text-muted-foreground">Jenis Kelamin</span>
-              <span className="text-sm col-span-2">{data.gender === "MALE" ? "Laki-laki" : data.gender === "FEMALE" ? "Perempuan" : "-"}</span>
+              <span className="text-sm sm:col-span-2">{data.gender === "MALE" ? "Laki-laki" : data.gender === "FEMALE" ? "Perempuan" : "-"}</span>
             </div>
           </CardContent>
         </Card>
@@ -231,21 +232,21 @@ const EmployeeInfo = ({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-3">
-              <span className="text-sm text-muted-foreground">ID Karyawan</span>
-              <span className="text-sm col-span-2">{data.employeeId || '-'}</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
+              <span className="text-sm text-muted-foreground">NIK</span>
+              <span className="text-sm sm:col-span-2">{data.employeeId || '-'}</span>
             </div>
-            <div className="grid grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
               <span className="text-sm text-muted-foreground">Departemen</span>
-              <span className="text-sm col-span-2">{deptName} {data.subDepartment ? `- ${data.subDepartment.name}` : ''}</span>
+              <span className="text-sm sm:col-span-2 break-words">{deptName} {data.subDepartment ? `- ${data.subDepartment.name}` : ''}</span>
             </div>
-            <div className="grid grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
               <span className="text-sm text-muted-foreground">Jabatan</span>
-              <span className="text-sm col-span-2">{positionName}</span>
+              <span className="text-sm sm:col-span-2">{positionName}</span>
             </div>
-            <div className="grid grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
               <span className="text-sm text-muted-foreground">Tanggal Bergabung</span>
-              <span className="text-sm col-span-2">{formatDate(data.contractStartDate) || '-'}</span>
+              <span className="text-sm sm:col-span-2">{formatDate(data.contractStartDate) || '-'}</span>
             </div>
           </CardContent>
         </Card>

@@ -112,6 +112,7 @@ const employeeEditSchema = z.object({
   personalInfo: z.object({
     name: z.string().min(3, { message: "Nama harus diisi minimal 3 karakter" }),
     email: z.string().email({ message: "Format email tidak valid" }),
+    phone: z.string().optional(),
     gender: z.string(),
     address: z.string().optional(),
   }),
@@ -162,6 +163,7 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
       personalInfo: {
         name: "",
         email: "",
+        phone: "",
         gender: "",
         address: "",
       },
@@ -195,6 +197,7 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
       // Set form values
       form.setValue("personalInfo.name", data.user.name);
       form.setValue("personalInfo.email", data.user.email);
+      form.setValue("personalInfo.phone", data.user.phone || "");
       form.setValue("personalInfo.gender", data.gender || "");
       form.setValue("personalInfo.address", data.address || "");
       
@@ -361,6 +364,7 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
         // User data
         name: data.personalInfo.name,
         email: data.personalInfo.email,
+        phone: data.personalInfo.phone || null,
         
         // Employee data
         departmentId: data.departmentInfo.departmentId,
@@ -398,6 +402,40 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
     } finally {
       setSubmitting(false);
     }
+  };
+  
+  // Handle navigasi ke tab berikutnya dengan validasi
+  const handleNextStep = async () => {
+    try {
+      setSubmitting(true);
+      
+      if (activeTab === "personal") {
+        // Validasi form personal info
+        const personalValid = await form.trigger("personalInfo");
+        if (personalValid) {
+          setActiveTab("department");
+          toast.success("Informasi pribadi valid, lanjut ke Departemen & Posisi");
+        }
+      } else if (activeTab === "department") {
+        // Validasi form department info
+        const departmentValid = await form.trigger("departmentInfo");
+        if (departmentValid) {
+          setActiveTab("contract");
+          toast.success("Informasi departemen valid, lanjut ke Kontrak");
+        }
+      }
+    } catch (error) {
+      console.error("Error validating form:", error);
+      toast.error("Terjadi kesalahan saat validasi form");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  
+  // Handle final submission (hanya untuk tab contract)
+  const handleFinalSubmit = async () => {
+    const data = form.getValues();
+    await onSubmit(data);
   };
   
   // Handler untuk mengubah kontrak dan mencatat riwayat
@@ -478,7 +516,7 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
         </TabsList>
         
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-6">
+          <div className="space-y-6 mt-6">
             <TabsContent value="personal">
               <Card>
                 <CardHeader>
@@ -511,6 +549,20 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
                           <FormLabel>Email</FormLabel>
                           <FormControl>
                             <Input placeholder="Masukkan email" type="email" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="personalInfo.phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>No. Telepon</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Masukkan nomor telepon" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -563,6 +615,17 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
                   </div>
                 </CardContent>
               </Card>
+              
+              <div className="flex justify-end mt-6">
+                <Button 
+                  onClick={handleNextStep}
+                  disabled={submitting}
+                  className="w-full md:w-auto"
+                >
+                  {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Selanjutnya
+                </Button>
+              </div>
             </TabsContent>
             
             <TabsContent value="department">
@@ -690,6 +753,24 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
                   </div>
                 </CardContent>
               </Card>
+              
+              <div className="flex justify-between mt-6">
+                <Button 
+                  variant="outline"
+                  onClick={() => setActiveTab("personal")}
+                  disabled={submitting}
+                >
+                  Kembali
+                </Button>
+                <Button 
+                  onClick={handleNextStep}
+                  disabled={submitting}
+                  className="w-full md:w-auto"
+                >
+                  {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Selanjutnya
+                </Button>
+              </div>
             </TabsContent>
             
             <TabsContent value="contract">
@@ -786,19 +867,26 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
                   </div>
                 </CardContent>
               </Card>
+              
+              <div className="flex justify-between mt-6">
+                <Button 
+                  variant="outline"
+                  onClick={() => setActiveTab("department")}
+                  disabled={submitting}
+                >
+                  Kembali
+                </Button>
+                <Button 
+                  onClick={handleFinalSubmit}
+                  disabled={submitting}
+                  className="w-full md:w-auto"
+                >
+                  {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Simpan Perubahan
+                </Button>
+              </div>
             </TabsContent>
-            
-            <div className="flex justify-end">
-              <Button 
-                type="submit" 
-                disabled={submitting}
-                className="w-full md:w-auto"
-              >
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Simpan Perubahan
-              </Button>
-            </div>
-          </form>
+          </div>
         </Form>
       </Tabs>
       

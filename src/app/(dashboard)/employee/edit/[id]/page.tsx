@@ -1,5 +1,6 @@
 import { EmployeeEditClient } from "./employee-edit-client";
 
-export default function EmployeeEditPage({ params }: { params: { id: string } }) {
-  return <EmployeeEditClient employeeId={params.id} />;
+export default async function EmployeeEditPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <EmployeeEditClient employeeId={id} />;
 } 

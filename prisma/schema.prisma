@@ -12,6 +12,7 @@ model User {
   id                  String       @id @default(uuid())
   email               String       @unique
   name                String
+  phone               String?      // Field telepon
   role                Role         @default(EMPLOYEE)
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt

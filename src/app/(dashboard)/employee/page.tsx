@@ -7,7 +7,13 @@ import {
   FileDown,
   UserPlus,
   Filter,
-  Loader2
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Users,
+  AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,13 +46,17 @@ import {
   SelectTrigger,
   SelectValue 
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import * as XLSX from 'xlsx';
 
 // Import modals
 import { AddEmployeeModal } from "@/components/employee/AddEmployeeModal";
 import { WarningStatusModal } from "@/components/employee/WarningStatusModal";
 import { ShiftChangeModal } from "@/components/employee/ShiftChangeModal";
 import { DeleteEmployeeModal } from "@/components/employee/DeleteEmployeeModal";
+import { BulkShiftChangeModal } from "@/components/employee/BulkShiftChangeModal";
+import { EmployeeHistoryModal } from "@/components/employee/EmployeeHistoryModal";
 
 // Type untuk form perubahan status SP
 interface WarningStatusFormValues {
@@ -128,15 +138,27 @@ export default function EmployeePage() {
   const [warningModalOpen, setWarningModalOpen] = useState(false);
   const [shiftModalOpen, setShiftModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [bulkShiftModalOpen, setBulkShiftModalOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
   
   // State untuk data dari API
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expiringContracts, setExpiringContracts] = useState<Employee[]>([]);
   
   // State untuk menyimpan data karyawan yang sedang diedit
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  
+  // State untuk multiple selection
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [selectAll, setSelectAll] = useState(false);
+  
+  // State untuk pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
   
   // Fetch data karyawan dari API dengan retry logic
   const fetchEmployees = async (retryCount = 0) => {
@@ -316,6 +338,127 @@ export default function EmployeePage() {
       console.error('Error fetching positions:', error);
     }
   };
+
+  // Check for expiring contracts
+  const checkExpiringContracts = (employeeData: Employee[]) => {
+    const today = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(today.getDate() + 30);
+    
+    const expiring = employeeData.filter(emp => {
+      if (!emp.contractEndDate) return false;
+      const endDate = new Date(emp.contractEndDate);
+      return endDate <= thirtyDaysFromNow && endDate >= today;
+    });
+    
+    setExpiringContracts(expiring);
+    
+    if (expiring.length > 0) {
+      toast.warning(`${expiring.length} kontrak karyawan akan berakhir dalam 30 hari`, {
+        duration: 8000,
+        action: {
+          label: "Lihat Detail",
+          onClick: () => setHistoryModalOpen(true)
+        }
+      });
+    }
+  };
+
+  // Export to Excel function
+  const handleExportExcel = () => {
+    try {
+      // Prepare data for export
+      const exportData = filteredEmployees.map((emp, index) => ({
+        'No': index + 1,
+        'NIK': emp.employeeId,
+        'Nama Lengkap': emp.user.name,
+        'Email': emp.user.email,
+        'Jenis Kelamin': emp.gender === 'MALE' ? 'Laki-laki' : 'Perempuan',
+        'Alamat': emp.address || '-',
+        'Departemen': emp.department.name,
+        'Sub Departemen': emp.subDepartment?.name || '-',
+        'Posisi': emp.position?.name || '-',
+        'Level Posisi': emp.position?.level || '-',
+        'Shift': emp.shift.name,
+        'Tipe Shift': emp.shift.shiftType,
+        'Tipe Kontrak': emp.contractType === 'PERMANENT' ? 'Permanen' : 'Training',
+        'Nomor Kontrak': emp.contractNumber || '-',
+        'Tanggal Mulai Kontrak': new Date(emp.contractStartDate).toLocaleDateString('id-ID'),
+        'Tanggal Berakhir Kontrak': emp.contractEndDate ? new Date(emp.contractEndDate).toLocaleDateString('id-ID') : 'Permanen',
+        'Status SP': emp.warningStatus === 'NONE' ? 'Tidak Ada SP' : emp.warningStatus,
+        'Tanggal Dibuat': new Date(emp.createdAt).toLocaleDateString('id-ID'),
+        'Terakhir Diupdate': new Date(emp.updatedAt).toLocaleDateString('id-ID')
+      }));
+
+      // Create workbook and worksheet
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 5 },  // No
+        { wch: 15 }, // NIK
+        { wch: 25 }, // Nama
+        { wch: 30 }, // Email
+        { wch: 12 }, // Gender
+        { wch: 30 }, // Alamat
+        { wch: 20 }, // Departemen
+        { wch: 20 }, // Sub Departemen
+        { wch: 20 }, // Posisi
+        { wch: 12 }, // Level
+        { wch: 15 }, // Shift
+        { wch: 15 }, // Tipe Shift
+        { wch: 15 }, // Tipe Kontrak
+        { wch: 20 }, // Nomor Kontrak
+        { wch: 20 }, // Mulai Kontrak
+        { wch: 20 }, // Berakhir Kontrak
+        { wch: 15 }, // Status SP
+        { wch: 15 }, // Dibuat
+        { wch: 15 }  // Update
+      ];
+      ws['!cols'] = colWidths;
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'Data Karyawan');
+      
+      // Generate filename with current date
+      const fileName = `Data_Karyawan_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // Save file
+      XLSX.writeFile(wb, fileName);
+      
+      toast.success(`Data berhasil diekspor ke ${fileName}`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Gagal mengekspor data ke Excel');
+    }
+  };
+
+  // Handle multiple selection
+  const handleSelectEmployee = (employeeId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedEmployees(prev => [...prev, employeeId]);
+    } else {
+      setSelectedEmployees(prev => prev.filter(id => id !== employeeId));
+      setSelectAll(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    setSelectAll(checked);
+    if (checked) {
+      setSelectedEmployees(paginatedEmployees.map(emp => emp.id));
+    } else {
+      setSelectedEmployees([]);
+    }
+  };
+
+  const handleBulkShiftChange = () => {
+    if (selectedEmployees.length === 0) {
+      toast.error('Pilih minimal satu karyawan untuk mengubah shift');
+      return;
+    }
+    setBulkShiftModalOpen(true);
+  };
   
   // Memuat data saat komponen dimount
   useEffect(() => {
@@ -335,6 +478,30 @@ export default function EmployeePage() {
     
     return matchesSearch && matchesDepartment && matchesContractType;
   });
+
+  // Pagination logic
+  const totalItems = filteredEmployees.length;
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedEmployees = filteredEmployees.slice(startIndex, endIndex);
+
+  // Update total pages when filtered employees change
+  useEffect(() => {
+    const newTotalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
+    setTotalPages(newTotalPages);
+    
+    // Reset to first page if current page is beyond total pages
+    if (currentPage > newTotalPages && newTotalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [filteredEmployees.length, itemsPerPage, currentPage]);
+
+  // Update checkExpiringContracts call in fetchEmployees
+  useEffect(() => {
+    if (employees.length > 0) {
+      checkExpiringContracts(employees);
+    }
+  }, [employees]);
   
   // Handler untuk membuka modal ubah status SP
   const handleOpenWarningModal = (employee: Employee) => {
@@ -627,10 +794,24 @@ export default function EmployeePage() {
               </DropdownMenu>
             </div>
             
-            <Button variant="outline">
-              <FileDown className="mr-2 h-4 w-4" />
-              Export
-            </Button>
+            <div className="flex gap-2">
+              {selectedEmployees.length > 0 && (
+                <>
+                  <Button variant="outline" onClick={handleBulkShiftChange}>
+                    <Users className="mr-2 h-4 w-4" />
+                    Ubah Shift ({selectedEmployees.length})
+                  </Button>
+                  <Button variant="outline" onClick={() => setHistoryModalOpen(true)}>
+                    <AlertTriangle className="mr-2 h-4 w-4" />
+                    Riwayat
+                  </Button>
+                </>
+              )}
+              <Button variant="outline" onClick={handleExportExcel}>
+                <FileDown className="mr-2 h-4 w-4" />
+                Export Excel
+              </Button>
+            </div>
           </div>
           
           {loading ? (
@@ -643,7 +824,14 @@ export default function EmployeePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>ID</TableHead>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={selectAll}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        aria-label="Select all employees"
+                      />
+                    </TableHead>
+                    <TableHead>NIK</TableHead>
                     <TableHead>Nama</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Departemen</TableHead>
@@ -656,16 +844,23 @@ export default function EmployeePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredEmployees.length === 0 ? (
+                  {paginatedEmployees.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                         Tidak ada data karyawan yang ditemukan
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredEmployees.map((employee) => (
+                    paginatedEmployees.map((employee) => (
                       <TableRow key={employee.id}>
-                        <TableCell>{employee.employeeId}</TableCell>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedEmployees.includes(employee.id)}
+                            onChange={(e) => handleSelectEmployee(employee.id, e.target.checked)}
+                            aria-label={`Select ${employee.user.name}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">{employee.employeeId}</TableCell>
                         <TableCell>
                           <div className="font-medium">{employee.user.name}</div>
                           <div className="text-xs text-muted-foreground">
@@ -730,6 +925,52 @@ export default function EmployeePage() {
                   )}
                 </TableBody>
               </Table>
+              
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Menampilkan {startIndex + 1}-{Math.min(endIndex, totalItems)} dari {totalItems} karyawan
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm">
+                      Halaman {currentPage} dari {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -779,6 +1020,25 @@ export default function EmployeePage() {
           onSuccess={fetchEmployees}
         />
       )}
+
+      {/* Modal untuk bulk shift change */}
+      <BulkShiftChangeModal
+        open={bulkShiftModalOpen}
+        onOpenChange={setBulkShiftModalOpen}
+        selectedEmployeeIds={selectedEmployees}
+        onSuccess={() => {
+          fetchEmployees();
+          setSelectedEmployees([]);
+          setSelectAll(false);
+        }}
+      />
+
+      {/* Modal untuk employee history */}
+      <EmployeeHistoryModal
+        open={historyModalOpen}
+        onOpenChange={setHistoryModalOpen}
+        expiringContracts={expiringContracts}
+      />
     </div>
   );
 } 
