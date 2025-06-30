@@ -505,7 +505,7 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
         <Button variant="outline" size="icon" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h1 className="text-2xl font-bold">Edit Karyawan: {employee?.user.name}</h1>
+                  <h1 className="typography-h1">Edit Karyawan: {employee?.user.name}</h1>
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab}>

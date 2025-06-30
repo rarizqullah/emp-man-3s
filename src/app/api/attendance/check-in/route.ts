@@ -6,7 +6,7 @@ import { startOfDay, endOfDay } from 'date-fns';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('=== Enhanced Shift Cycle Check-in API Called ===');
+    console.log('=== Enhanced Strict Shift Validation Check-in API Called ===');
     
     const { employeeId } = await request.json();
     
@@ -49,10 +49,18 @@ export async function POST(request: NextRequest) {
         error: 'Employee shift configuration not found'
       }, { status: 400 });
     }
+
+    // ENHANCED: Skip validation for NON_SHIFT employees
+    if (employee.shift.shiftType === 'NON_SHIFT') {
+      return NextResponse.json({
+        success: false,
+        error: 'Karyawan NON_SHIFT tidak dapat melakukan presensi melalui sistem ini'
+      }, { status: 400 });
+    }
     
     const actualCheckInTime = new Date();
     
-    // Gunakan ShiftCycleManager untuk validasi shift cycle
+    // ENHANCED VALIDATION: Gunakan ShiftCycleManager untuk validasi strict
     const allShifts = await prisma.shift.findMany({
       where: {
         shiftType: {
@@ -66,27 +74,42 @@ export async function POST(request: NextRequest) {
 
     const shiftCycleInfo = ShiftCycleManager.determineCurrentShiftCycle(allShifts as any, actualCheckInTime);
     
-    // Periksa apakah bisa check-in berdasarkan shift cycle
+    // ENHANCED: Periksa apakah karyawan bisa check-in dengan validasi yang lebih ketat
     if (!shiftCycleInfo.canCheckIn) {
+      let errorMessage = 'Check-in tidak diizinkan di luar jam shift yang ditentukan';
+      
+      if (shiftCycleInfo.currentShift) {
+        errorMessage = `Presensi hanya diizinkan dalam jam kerja shift ${shiftCycleInfo.currentShift.name}`;
+      } else if (shiftCycleInfo.nextShift) {
+        errorMessage = `Shift berikutnya (${shiftCycleInfo.nextShift.name}) belum dimulai. Silakan kembali saat jam shift.`;
+      } else {
+        errorMessage = 'Tidak ada shift aktif saat ini. Presensi ditolak.';
+      }
+      
       return NextResponse.json({
         success: false,
-        error: 'Check-in tidak dapat dilakukan di luar periode shift yang diizinkan',
+        error: errorMessage,
         shiftCycleInfo: {
           currentShift: shiftCycleInfo.currentShift?.name || 'Tidak ada shift aktif',
           nextShift: shiftCycleInfo.nextShift?.name || 'Tidak ada shift berikutnya',
           isInGracePeriod: shiftCycleInfo.isInGracePeriod,
-          canCheckIn: shiftCycleInfo.canCheckIn
+          canCheckIn: shiftCycleInfo.canCheckIn,
+          currentTime: actualCheckInTime.toISOString()
         }
-      }, { status: 400 });
+      }, { status: 403 }); // 403 Forbidden untuk unauthorized time
+    }
+
+    // ENHANCED: Validasi tambahan untuk memastikan karyawan check-in di shift yang sesuai
+    if (shiftCycleInfo.currentShift && employee.shift.shiftType !== shiftCycleInfo.currentShift.type) {
+      return NextResponse.json({
+        success: false,
+        error: `Anda terdaftar di ${employee.shift.name} namun saat ini adalah periode ${shiftCycleInfo.currentShift.name}. Presensi ditolak.`
+      }, { status: 403 });
     }
     
-    // Validate attendance time (backward compatibility)
+    // Validate attendance time (backward compatibility) - now just for logging
     const validation = validateAttendanceTime(employee.shift as any, actualCheckInTime);
-    
-    if (!validation.isValid) {
-      console.log(`Validation warning: ${validation.message}`);
-      // Log but don't block - shift cycle validation takes precedence
-    }
+    console.log(`Legacy validation: ${validation.message}`);
 
     // Hitung waktu check-in yang disesuaikan berdasarkan logika baru
     const adjustmentResult = calculateAdjustedCheckInTime(employee.shift as any, actualCheckInTime);
@@ -123,55 +146,26 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    // Create or update attendance record dengan waktu yang disesuaikan
-    let attendance;
+    // Create attendance record dengan waktu yang disesuaikan
+    const attendance = await prisma.attendance.create({
+      data: {
+        employeeId,
+        attendanceDate: startOfDay(actualCheckInTime),
+        checkInTime: finalCheckInTime,
+        status: 'PRESENT',
+        // Store lateness info
+        isLate: latenessInfo.isLate,
+        minutesLate: latenessInfo.actualMinutesLate,
+        roundedMinutesLate: latenessInfo.roundedMinutesLate,
+        latenessMessage: latenessInfo.latenessMessage
+      }
+    });
     
-    if (existingAttendance) {
-      // Update existing record dengan waktu yang sudah disesuaikan
-      attendance = await prisma.attendance.update({
-        where: { id: existingAttendance.id },
-        data: {
-          checkInTime: finalCheckInTime, // Gunakan waktu yang sudah disesuaikan
-          status: 'PRESENT',
-          // Update lateness info
-          isLate: latenessInfo.isLate,
-          minutesLate: latenessInfo.actualMinutesLate,
-          roundedMinutesLate: latenessInfo.roundedMinutesLate,
-          latenessMessage: latenessInfo.latenessMessage
-        }
-      });
-    } else {
-      // Create new attendance record dengan waktu yang sudah disesuaikan
-      attendance = await prisma.attendance.create({
-        data: {
-          employeeId,
-          attendanceDate: startOfDay(actualCheckInTime),
-          checkInTime: finalCheckInTime, // Gunakan waktu yang sudah disesuaikan
-          status: 'PRESENT',
-          // Store lateness info
-          isLate: latenessInfo.isLate,
-          minutesLate: latenessInfo.actualMinutesLate,
-          roundedMinutesLate: latenessInfo.roundedMinutesLate,
-          latenessMessage: latenessInfo.latenessMessage
-        }
-      });
-    }
-    
-    console.log(`✅ Enhanced shift cycle check-in successful for employee ${employee.user.name} at ${finalCheckInTime.toISOString()}`);
-    
-    // Siapkan pesan response dengan informasi penyesuaian waktu
-    let responseMessage = `Check-in berhasil untuk ${employee.user.name}`;
-    let adjustmentNotification = '';
-    
-    if (adjustmentResult.isAdjusted) {
-      adjustmentNotification = adjustmentResult.adjustmentReason;
-      responseMessage += ` - ${adjustmentNotification}`;
-      console.log(`⏰ Time adjustment: ${adjustmentResult.adjustmentReason}`);
-    }
+    console.log(`✅ Enhanced strict validation check-in successful for employee ${employee.user.name} at ${finalCheckInTime.toISOString()}`);
     
     return NextResponse.json({
       success: true,
-      message: responseMessage,
+      message: `Check-in berhasil untuk ${employee.user.name}`,
       data: {
         attendanceId: attendance.id,
         employeeId: employee.id,
@@ -179,12 +173,10 @@ export async function POST(request: NextRequest) {
         employeeCode: employee.employeeId,
         department: employee.department?.name,
         shift: employee.shift?.name,
-        actualCheckInTime: actualCheckInTime, // Waktu check-in sebenarnya
-        recordedCheckInTime: attendance.checkInTime, // Waktu yang dicatat di sistem
+        actualCheckInTime: actualCheckInTime,
+        recordedCheckInTime: attendance.checkInTime,
         checkOutTime: attendance.checkOutTime,
         status: attendance.status,
-        validationMessage: validation.message,
-        // Informasi shift cycle
         shiftCycleInfo: {
           currentShift: shiftCycleInfo.currentShift?.name || 'Tidak ada shift aktif',
           nextShift: shiftCycleInfo.nextShift?.name || 'Tidak ada shift berikutnya',
@@ -193,30 +185,20 @@ export async function POST(request: NextRequest) {
           canCheckIn: shiftCycleInfo.canCheckIn,
           canCheckOut: shiftCycleInfo.canCheckOut
         },
-        // Informasi penyesuaian waktu untuk frontend
-        adjustmentInfo: {
-          isAdjusted: adjustmentResult.isAdjusted,
-          adjustmentReason: adjustmentResult.adjustmentReason,
-          adjustmentMinutes: adjustmentResult.adjustmentMinutes,
-          originalTime: adjustmentResult.originalTime
-        },
-        // Informasi keterlambatan untuk kompatibilitas dengan kode yang sudah ada
         latenessInfo: {
           isLate: latenessInfo.isLate,
           actualMinutesLate: latenessInfo.actualMinutesLate,
           roundedMinutesLate: latenessInfo.roundedMinutesLate,
-          latenessMessage: latenessInfo.latenessMessage,
-          isLateNotification: latenessInfo.isLate
+          latenessMessage: latenessInfo.latenessMessage
         }
       }
     });
     
   } catch (error) {
-    console.error('Error during enhanced shift cycle check-in:', error);
+    console.error('Error during enhanced check-in:', error);
     return NextResponse.json({
       success: false,
-      error: 'Terjadi kesalahan saat check-in',
-      debug: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Internal server error during check-in process'
     }, { status: 500 });
   }
 } 

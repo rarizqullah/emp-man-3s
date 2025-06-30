@@ -215,42 +215,31 @@ export default function AttendancePage() {
       const result = await response.json();
 
       if (result.success) {
-        // Tampilkan notifikasi berdasarkan status keterlambatan
+        // Handle successful attendance
         if (result.data?.latenessInfo?.isLate) {
-          // Notifikasi keterlambatan dengan durasi lebih lama
           toast.error(result.data.latenessInfo.latenessMessage, {
             duration: 8000,
             icon: '⚠️',
           });
           
-          // Notifikasi sukses check-in
           toast.success('Check-in berhasil dicatat dengan pembulatan waktu', {
             duration: 4000,
           });
         } else {
-          // Notifikasi sukses normal
           toast.success(result.message);
         }
         
-        // Update data attendance dan mode
         await fetchTodayAttendance();
         
-        // Update mode untuk employee recognition selanjutnya
         const newMode = currentMode === 'checkIn' ? 'checkOut' : 'checkIn';
         setMode(newMode);
         
-        // Update status berdasarkan action yang baru dilakukan
         if (currentMode === 'checkIn') {
           setIsCheckedIn(true);
-          if (!result.data?.latenessInfo?.isLate) {
-            toast.success(`✅ Check-in berhasil! Mode beralih ke Check-out untuk kunjungan berikutnya.`);
-          }
         } else {
           setIsCheckedIn(false);
-          toast.success(`✅ Check-out berhasil! Mode beralih ke Check-in untuk kunjungan berikutnya.`);
         }
         
-        // SEKARANG SET EMPLOYEE INFO SETELAH FACE RECOGNITION BERHASIL
         setEmployeeInfo({
           id: result.data?.employeeId || employeeId,
           name: result.data?.employeeName || '',
@@ -258,14 +247,18 @@ export default function AttendancePage() {
           shift: result.data?.shift || ''
         });
         
-        console.log("Employee info updated after successful recognition:", {
-          id: result.data?.employeeId || employeeId,
-          name: result.data?.employeeName,
-          department: result.data?.department,
-          shift: result.data?.shift
-        });
       } else {
-        toast.error(result.error || result.message || `Gagal melakukan ${currentMode}`);
+        // Enhanced error handling
+        if (response.status === 403) {
+          // Shift validation error - show specific message
+          toast.error(result.error || 'Presensi tidak diizinkan di luar jam shift', {
+            duration: 10000,
+            icon: '🚫',
+          });
+        } else {
+          // Other errors
+          toast.error(result.error || result.message || `Gagal melakukan ${currentMode}`);
+        }
       }
     } catch (error) {
       console.error(`Error during attendance:`, error);
@@ -348,11 +341,11 @@ export default function AttendancePage() {
   };
   
   return (
-    <div className="container mx-auto py-6 space-y-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Presensi Karyawan</h1>
-          <p className="text-muted-foreground">
+          <h1 className="typography-h1">Presensi Karyawan</h1>
+          <p className="typography-muted mt-2">
             Kelola presensi karyawan dan lihat rekaman presensi hari ini
           </p>
         </div>
@@ -362,11 +355,11 @@ export default function AttendancePage() {
           <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-center">
             <div className="flex items-center">
               <Clock className="mr-2 h-5 w-5" />
-              <span className="text-lg font-semibold">{currentTime}</span>
+              <span className="typography-large">{currentTime}</span>
             </div>
             <div className="flex items-center">
               <CalendarIcon className="mr-2 h-5 w-5" />
-              <span>{format(date, "EEEE, dd MMMM yyyy", { locale: id })}</span>
+              <span className="typography-small">{format(date, "EEEE, dd MMMM yyyy", { locale: id })}</span>
             </div>
           </CardContent>
         </Card>
@@ -391,8 +384,8 @@ export default function AttendancePage() {
             {/* Informasi Karyawan */}
             <Card>
               <CardHeader>
-                <CardTitle>Informasi Karyawan</CardTitle>
-                <CardDescription>
+                <CardTitle className="typography-h3">Informasi Karyawan</CardTitle>
+                <CardDescription className="typography-muted">
                   Detail karyawan dan shift yang berlaku hari ini
                 </CardDescription>
               </CardHeader>
@@ -463,10 +456,10 @@ export default function AttendancePage() {
             {/* Face Recognition */}
             <Card>
               <CardHeader>
-                <CardTitle>
+                <CardTitle className="typography-h3">
                   {mode === 'checkIn' ? 'Presensi Masuk' : 'Presensi Pulang'}
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="typography-muted">
                   {mode === 'checkIn'
                     ? 'Lakukan scan wajah untuk presensi masuk'
                     : 'Lakukan scan wajah untuk presensi pulang'}
@@ -509,10 +502,10 @@ export default function AttendancePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Daftar Presensi Hari Ini</CardTitle>
-              <CardDescription>
-                {format(date, "EEEE, dd MMMM yyyy", { locale: id })}
-              </CardDescription>
+              <CardTitle className="typography-h3">Daftar Presensi Hari Ini</CardTitle>
+                              <CardDescription className="typography-muted">
+                  {format(date, "EEEE, dd MMMM yyyy", { locale: id })}
+                </CardDescription>
             </CardHeader>
             <CardContent>
                 <Table>

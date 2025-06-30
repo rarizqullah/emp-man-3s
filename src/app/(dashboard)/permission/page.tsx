@@ -629,7 +629,6 @@ function PermissionPageContent() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Manajemen Izin</h1>
         <Button onClick={() => setIsSubmitDialogOpen(true)}>
           <PlusCircle className="mr-2 h-4 w-4" />
           Ajukan Izin
@@ -1305,9 +1304,12 @@ function PermissionPageContent() {
 export default function PermissionPage() {
   return (
     <PermissionPageGuard>
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold tracking-tight">Kelola Izin & Cuti</h1>
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="typography-h1">Kelola Izin & Cuti</h1>
+            <p className="typography-muted mt-2">Lihat dan kelola semua izin yang telah diajukan</p>
+          </div>
         </div>
         <div className="border rounded-lg bg-white">
           <PermissionPageContent />

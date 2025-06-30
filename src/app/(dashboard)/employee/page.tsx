@@ -8,10 +8,6 @@ import {
   UserPlus,
   Filter,
   Loader2,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   Users,
   AlertTriangle
 } from "lucide-react";
@@ -20,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -49,6 +44,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 
 // Import modals
 import { AddEmployeeModal } from "@/components/employee/AddEmployeeModal";
@@ -157,7 +153,7 @@ export default function EmployeePage() {
   
   // State untuk pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   
   // Fetch data karyawan dari API dengan retry logic
@@ -229,74 +225,18 @@ export default function EmployeePage() {
         return fetchEmployees(retryCount + 1);
       }
       
-      // Jika semua retry gagal, tampilkan error dan gunakan fallback
-      toast.error(`Gagal mengambil data karyawan setelah ${maxRetries} percobaan. Menampilkan data fallback.`);
-      
-      // Gunakan data dummy jika API gagal setelah semua retry
-      setEmployees([
-        {
-          id: "1",
-          employeeId: "EMP001",
-          departmentId: "1",
-          subDepartmentId: "1",
-          shiftId: "1",
-          contractType: "PERMANENT",
-          contractStartDate: "2023-01-01T00:00:00.000Z",
-          warningStatus: "NONE",
-          gender: "MALE",
-          createdAt: "2023-01-01T00:00:00.000Z",
-          updatedAt: "2023-01-01T00:00:00.000Z",
-          user: {
-            name: "Data Fallback - Budi Santoso",
-            email: "budi@example.com",
-            role: "EMPLOYEE"
-          },
-          department: {
-            id: "1",
-            name: "IT"
-          },
-          subDepartment: {
-            id: "1",
-            name: "Software Development"
-          },
-          position: {
-            id: "1",
-            name: "Software Engineer",
-            level: 1
-          },
-          shift: {
-            id: "1",
-            name: "Non-Shift",
-            shiftType: "NON_SHIFT"
-          }
-        },
-        {
-          id: "2",
-          employeeId: "EMP002",
-          departmentId: "2",
-          shiftId: "1",
-          contractType: "PERMANENT",
-          contractStartDate: "2023-01-01T00:00:00.000Z",
-          warningStatus: "NONE",
-          gender: "FEMALE",
-          createdAt: "2023-01-01T00:00:00.000Z",
-          updatedAt: "2023-01-01T00:00:00.000Z",
-          user: {
-            name: "Data Fallback - Siti Nurhaliza",
-            email: "siti@example.com",
-            role: "EMPLOYEE"
-          },
-          department: {
-            id: "2",
-            name: "HR"
-          },
-          shift: {
-            id: "1",
-            name: "Non-Shift",
-            shiftType: "NON_SHIFT"
-          }
+      // Jika semua retry gagal, tampilkan error dan kosongkan data
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Gagal memuat data karyawan: ${errorMessage}`, {
+        duration: 6000,
+        action: {
+          label: "Coba Lagi",
+          onClick: () => fetchEmployees(0)
         }
-      ]);
+      });
+      
+      // Set data kosong ketika error
+      setEmployees([]);
     } finally {
       setLoading(false);
     }
@@ -313,15 +253,10 @@ export default function EmployeePage() {
       setDepartments(data);
     } catch (error) {
       console.error('Error fetching departments:', error);
-      
-      // Gunakan data dummy jika API gagal
-      setDepartments([
-        { id: "1", name: "IT" },
-        { id: "2", name: "HR" },
-        { id: "3", name: "Finance" },
-        { id: "4", name: "Marketing" },
-        { id: "5", name: "Production" }
-      ]);
+      toast.error('Gagal memuat data departemen', {
+        duration: 4000
+      });
+      setDepartments([]);
     }
   };
   
@@ -716,9 +651,12 @@ export default function EmployeePage() {
   };
   
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Manajemen Karyawan</h1>
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="typography-h1">Manajemen Karyawan</h1>
+          <p className="typography-muted mt-2">Kelola data karyawan dan kontrak karyawan</p>
+        </div>
         <Button onClick={() => setAddModalOpen(true)}>
           <UserPlus className="mr-2 h-4 w-4" />
           Tambah Karyawan
@@ -727,10 +665,7 @@ export default function EmployeePage() {
       
       <Card>
         <CardHeader>
-          <CardTitle>Daftar Karyawan</CardTitle>
-          <CardDescription>
-            Kelola data karyawan dan kontrak karyawan
-          </CardDescription>
+          <CardTitle className="typography-h3">Daftar Karyawan</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex justify-between mb-4 gap-4">
@@ -820,55 +755,55 @@ export default function EmployeePage() {
               <span className="ml-2">Memuat data karyawan...</span>
             </div>
           ) : (
-            <div className="border rounded-md">
+            <div className="rounded-md border bg-background shadow-sm">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">
+                <TableHeader className="bg-muted/50 border-b">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-12 px-4 py-3 font-semibold text-muted-foreground">
                       <Checkbox
                         checked={selectAll}
                         onChange={(e) => handleSelectAll(e.target.checked)}
                         aria-label="Select all employees"
                       />
                     </TableHead>
-                    <TableHead>NIK</TableHead>
-                    <TableHead>Nama</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Departemen</TableHead>
-                    <TableHead>Posisi</TableHead>
-                    <TableHead>Kontrak</TableHead>
-                    <TableHead>Kontrak Berakhir</TableHead>
-                    <TableHead>Shift</TableHead>
-                    <TableHead>Status SP</TableHead>
-                    <TableHead className="text-right">Aksi</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">NIK</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Nama</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Email</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Departemen</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Posisi</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Kontrak</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Kontrak Berakhir</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Shift</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Status SP</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedEmployees.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
-                        Tidak ada data karyawan yang ditemukan
+                        Tidak ada data karyawan
                       </TableCell>
                     </TableRow>
                   ) : (
                     paginatedEmployees.map((employee) => (
-                      <TableRow key={employee.id}>
-                        <TableCell>
+                      <TableRow key={employee.id} className="hover:bg-muted/50 transition-colors border-b last:border-b-0">
+                        <TableCell className="px-4 py-4">
                           <Checkbox
                             checked={selectedEmployees.includes(employee.id)}
                             onChange={(e) => handleSelectEmployee(employee.id, e.target.checked)}
                             aria-label={`Select ${employee.user.name}`}
                           />
                         </TableCell>
-                        <TableCell className="font-medium">{employee.employeeId}</TableCell>
-                        <TableCell>
+                        <TableCell className="px-4 py-4 font-medium">{employee.employeeId}</TableCell>
+                        <TableCell className="px-4 py-4">
                           <div className="font-medium">{employee.user.name}</div>
                           <div className="text-xs text-muted-foreground">
                             {employee.gender === "MALE" ? "Laki-laki" : "Perempuan"}
                           </div>
                         </TableCell>
-                        <TableCell>{employee.user.email}</TableCell>
-                        <TableCell>
+                        <TableCell className="px-4 py-4">{employee.user.email}</TableCell>
+                        <TableCell className="px-4 py-4">
                           <div>{employee.department.name}</div>
                           {employee.subDepartment && (
                             <div className="text-xs text-muted-foreground">
@@ -876,8 +811,8 @@ export default function EmployeePage() {
                             </div>
                           )}
                         </TableCell>
-                        <TableCell>{employee.position?.name || '-'}</TableCell>
-                        <TableCell>
+                        <TableCell className="px-4 py-4">{employee.position?.name || '-'}</TableCell>
+                        <TableCell className="px-4 py-4">
                           {getContractBadge(employee.contractType)}
                           <div className="text-xs text-muted-foreground mt-1">
                             {employee.contractType === 'PERMANENT' 
@@ -885,16 +820,16 @@ export default function EmployeePage() {
                               : `Training: ${employee.contractNumber || '-'}`}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="px-4 py-4">
                           {employee.contractEndDate 
                             ? new Date(employee.contractEndDate).toLocaleDateString('id-ID')
                             : 'Permanen'}
                         </TableCell>
-                        <TableCell>{employee.shift.name}</TableCell>
-                        <TableCell>
+                        <TableCell className="px-4 py-4">{employee.shift.name}</TableCell>
+                        <TableCell className="px-4 py-4">
                           {getWarningStatusBadge(employee.warningStatus)}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="px-4 py-4 text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm">
@@ -927,50 +862,19 @@ export default function EmployeePage() {
               </Table>
               
               {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4">
-                  <div className="text-sm text-muted-foreground">
-                    Menampilkan {startIndex + 1}-{Math.min(endIndex, totalItems)} dari {totalItems} karyawan
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(1)}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronsLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(currentPage - 1)}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <span className="text-sm">
-                      Halaman {currentPage} dari {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(totalPages)}
-                      disabled={currentPage === totalPages}
-                    >
-                      <ChevronsRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <DataTablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
+                itemName="karyawan"
+                showRowsPerPage={true}
+                showFirstLastButtons={true}
+                showPageNumbers={true}
+                className="border-t"
+              />
             </div>
           )}
         </CardContent>

@@ -14,10 +14,10 @@ import {
   Building2,
   MapPin,
   UserCheck,
-  ShiftIcon,
   DollarSign,
   Gift,
-  Tag
+  Tag,
+  Calendar
 } from "lucide-react";
 
 import {
@@ -115,7 +115,7 @@ export function AppSidebar() {
     {
       title: "Shift Kerja",
       url: "/configuration/shifts",
-      icon: ShiftIcon,
+      icon: Calendar,
     },
     {
       title: "Tarif Gaji",
@@ -145,8 +145,8 @@ export function AppSidebar() {
                   <Building2 className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">EMS System</span>
-                  <span className="truncate text-xs">Employee Management</span>
+                  <span className="truncate typography-large">EMS System</span>
+                  <span className="truncate typography-subtle">Employee Management</span>
                 </div>
               </div>
             </SidebarMenuButton>
@@ -206,7 +206,7 @@ export function AppSidebar() {
                     </SidebarMenuSub>
                   </CollapsibleContent>
                 </SidebarMenuItem>
-                </Collapsible>
+              </Collapsible>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

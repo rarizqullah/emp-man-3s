@@ -75,7 +75,7 @@ export default function ProfilePage() {
 
   return (
     <div className="container py-8">
-      <h1 className="text-3xl font-bold mb-8">Profil Saya</h1>
+              <h1 className="typography-h1 mb-8">Profil Saya</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-1">

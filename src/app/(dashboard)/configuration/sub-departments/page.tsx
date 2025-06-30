@@ -282,7 +282,7 @@ export default function SubDepartmentsPage() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Konfigurasi Sub-Departemen</h1>
+          <h1 className="typography-h1">Konfigurasi Sub-Departemen</h1>
           <p className="text-muted-foreground mt-1">
             Kelola daftar sub-departemen yang tersedia dalam sistem
           </p>

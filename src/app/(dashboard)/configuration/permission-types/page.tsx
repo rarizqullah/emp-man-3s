@@ -184,8 +184,11 @@ export default function PermissionTypesPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Jenis Izin</h1>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="typography-h1">Jenis Izin</h1>
+          <p className="typography-muted mt-2">Kelola jenis-jenis izin yang tersedia dalam sistem</p>
+        </div>
       </div>
       
       <Card>

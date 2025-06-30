@@ -175,10 +175,10 @@ export default function SalaryPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Manajemen Penggajian</h1>
-          <p className="text-muted-foreground">
+          <h1 className="typography-h1">Manajemen Penggajian</h1>
+          <p className="typography-muted mt-2">
             Sistem penggajian terintegrasi dengan kehadiran dan tunjangan
           </p>
         </div>

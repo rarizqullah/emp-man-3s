@@ -27,8 +27,14 @@ export default function HomePage() {
               window.location.href = '/dashboard';
             }
           } else {
-            // Hentikan proses pengecekan agar tampilan homepage muncul
-            setChecking(false);
+            // Jika user belum login, arahkan ke halaman login
+            try {
+              router.push('/login');
+            } catch (routerError) {
+              console.error('Router navigation error:', routerError);
+              // Fallback jika router.push gagal
+              window.location.href = '/login';
+            }
           }
         }
       } catch (err) {
@@ -74,41 +80,15 @@ export default function HomePage() {
     );
   }
 
-  // Tampilkan homepage untuk user yang belum login
+  // Fallback return - seharusnya tidak pernah mencapai ini
+  // karena semua logic redirect sudah ditangani di useEffect
+  // Tampilkan loader sebagai fallback jika ada edge case
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-extrabold text-gray-900">
-            Sistem Pengelolaan Karyawan
-          </h1>
-          <p className="mt-3 text-xl text-gray-600">
-            Aplikasi manajemen karyawan terintegrasi
-          </p>
-        </div>
-        
-        <div className="mt-10 space-y-4">
-          <Link 
-            href="/login"
-            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Login
-          </Link>
-          
-          <Link 
-            href="/register"
-            className="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Daftar Akun Baru
-          </Link>
-        </div>
-        
-        <div className="mt-6 text-center text-sm">
-          <p className="text-gray-500">
-            Sistem Pengelolaan Karyawan dengan fitur lengkap untuk manajemen karyawan,
-            termasuk manajemen pengguna, presensi, dan banyak lagi.
-          </p>
-        </div>
+    <div className="min-h-screen flex flex-col items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <h1 className="text-3xl font-bold">Employee Management System</h1>
+        <p className="text-muted-foreground">Mengarahkan...</p>
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     </div>
   );

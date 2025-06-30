@@ -309,7 +309,7 @@ export default function SalaryRatesPage() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Konfigurasi Tarif Gaji</h1>
+          <h1 className="typography-h1">Konfigurasi Tarif Gaji</h1>
           <p className="text-muted-foreground mt-1">
             Kelola tarif gaji berdasarkan departemen dan tipe kontrak
           </p>

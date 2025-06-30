@@ -906,7 +906,7 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
           <Button variant="outline" size="icon" onClick={() => router.back()}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-2xl font-bold">Detail Karyawan</h1>
+          <h1 className="typography-h1">Detail Karyawan</h1>
         </div>
         <Card>
           <CardContent className="p-6">
@@ -927,7 +927,7 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
           <Button variant="outline" size="icon" onClick={() => router.back()}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-2xl font-bold">Detail Karyawan: {employee.user?.name}</h1>
+          <h1 className="typography-h1">Detail Karyawan: {employee.user?.name}</h1>
         </div>
         
         <Button onClick={() => router.push(`/employee/edit/${employee.id}`)}>

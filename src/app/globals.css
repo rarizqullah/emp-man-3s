@@ -25,7 +25,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.87 0 0);
@@ -125,5 +125,155 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+    scroll-behavior: smooth;
+  }
+
+  /* Typography defaults */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+    text-wrap: balance;
+  }
+
+  p {
+    @apply leading-7;
+    text-wrap: pretty;
+  }
+
+  /* Improved focus styles */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+
+  button:focus-visible {
+    @apply ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Typography utility classes */
+  .typography-h1 {
+    @apply scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl;
+  }
+
+  .typography-h2 {
+    @apply scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0;
+  }
+
+  .typography-h3 {
+    @apply scroll-m-20 text-2xl font-semibold tracking-tight;
+  }
+
+  .typography-h4 {
+    @apply scroll-m-20 text-xl font-semibold tracking-tight;
+  }
+
+  .typography-lead {
+    @apply text-xl text-muted-foreground;
+  }
+
+  .typography-large {
+    @apply text-lg font-semibold;
+  }
+
+  .typography-small {
+    @apply text-sm font-medium leading-none;
+  }
+
+  .typography-muted {
+    @apply text-sm text-muted-foreground;
+  }
+
+  .typography-subtle {
+    @apply text-xs text-muted-foreground;
+  }
+}
+
+@layer components {
+  /* Enhanced table styles */
+  .data-table {
+    @apply w-full border-collapse;
+  }
+  
+  .data-table-header {
+    @apply bg-muted/50 border-b font-semibold text-muted-foreground;
+  }
+  
+  .data-table-row {
+    @apply hover:bg-muted/50 transition-colors border-b last:border-b-0;
+  }
+  
+  .data-table-cell {
+    @apply px-4 py-4 align-middle;
+  }
+  
+  .data-table-head {
+    @apply px-4 py-3 font-semibold text-muted-foreground text-left;
+  }
+  
+  /* Badge variants */
+  .badge-status {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset;
+  }
+  
+  .badge-success {
+    @apply bg-green-50 text-green-700 ring-green-600/20;
+  }
+  
+  .badge-warning {
+    @apply bg-yellow-50 text-yellow-700 ring-yellow-600/20;
+  }
+  
+  .badge-danger {
+    @apply bg-red-50 text-red-700 ring-red-600/20;
+  }
+  
+  .badge-info {
+    @apply bg-blue-50 text-blue-700 ring-blue-600/20;
+  }
+  
+  .badge-neutral {
+    @apply bg-gray-50 text-gray-700 ring-gray-600/20;
+  }
+  
+  /* Enhanced pagination */
+  .pagination-wrapper {
+    @apply flex items-center justify-between space-x-6 lg:space-x-8 px-2 py-4;
+  }
+  
+  .pagination-info {
+    @apply text-sm text-muted-foreground;
+  }
+  
+  .pagination-controls {
+    @apply flex items-center space-x-2;
+  }
+  
+  /* Custom scrollbar */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-muted rounded-full;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground rounded-full;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/80;
+  }
+
+  /* Login form specific styles - no white background */
+  input[data-slot="input"] {
+    background: transparent !important;
+    background-color: transparent !important;
   }
 }

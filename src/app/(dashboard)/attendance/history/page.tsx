@@ -209,8 +209,11 @@ export default function AttendanceHistoryPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Riwayat Kehadiran</h1>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="typography-h1">Riwayat Kehadiran</h1>
+          <p className="typography-muted mt-2">Lihat dan kelola riwayat kehadiran karyawan untuk bulan {format(date, "MMMM yyyy", { locale: id })}</p>
+        </div>
         <Button variant="outline" onClick={handleRefreshData} disabled={isLoading}>
           <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh Data

@@ -452,7 +452,7 @@ export default function SalaryPageNew() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold">Manajemen Penggajian</h1>
+          <h1 className="typography-h1">Manajemen Penggajian</h1>
           <p className="text-muted-foreground">
             Kelola perhitungan dan pembayaran gaji karyawan
           </p>

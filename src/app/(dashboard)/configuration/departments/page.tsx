@@ -217,7 +217,7 @@ export default function DepartmentsPage() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Konfigurasi Departemen</h1>
+          <h1 className="typography-h1">Konfigurasi Departemen</h1>
           <p className="text-muted-foreground mt-1">
             Kelola daftar departemen yang tersedia dalam sistem
           </p>
