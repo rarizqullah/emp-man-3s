@@ -42,6 +42,10 @@ model Employee {
   faceData           String?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+  // Soft delete fields
+  deletedAt          DateTime?
+  deletedBy          String?
+  deletionReason     String?
   attendances        Attendance[]
   contractHistory    ContractHistory[]
   employeeAllowances EmployeeAllowance[]

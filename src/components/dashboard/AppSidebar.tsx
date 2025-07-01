@@ -17,7 +17,9 @@ import {
   DollarSign,
   Gift,
   Tag,
-  Calendar
+  Calendar,
+  Archive,
+  UserCog
 } from "lucide-react";
 
 import {
@@ -77,6 +79,16 @@ export function AppSidebar() {
       title: "Karyawan",
       url: "/employee",
       icon: Users,
+      items: [
+        {
+          title: "Manajemen Karyawan",
+          url: "/employee",
+        },
+        {
+          title: "Arsip Karyawan",
+          url: "/employee/archive",
+        }
+      ]
     },
     {
       title: "Absensi",
@@ -162,12 +174,44 @@ export function AppSidebar() {
             <SidebarMenu>
               {mainNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <Link href={item.url}>
-                      <item.icon className="size-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
+                  {item.items ? (
+                    // Menu with submenu (dropdown)
+                    <Collapsible defaultOpen={isGroupActive([item.url])}>
+                      <CollapsibleTrigger asChild>
+                        <SidebarMenuButton
+                          tooltip={item.title}
+                          isActive={isGroupActive([item.url])}
+                        >
+                          <item.icon className="size-4" />
+                          <span>{item.title}</span>
+                          <ChevronDown className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+                        </SidebarMenuButton>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          {item.items.map((subItem) => (
+                            <SidebarMenuSubItem key={subItem.title}>
+                              <SidebarMenuSubButton asChild isActive={isActive(subItem.url)}>
+                                <Link href={subItem.url}>
+                                  {subItem.title === "Manajemen Karyawan" && <UserCog className="size-4" />}
+                                  {subItem.title === "Arsip Karyawan" && <Archive className="size-4" />}
+                                  <span>{subItem.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ) : (
+                    // Regular menu item
+                    <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                      <Link href={item.url}>
+                        <item.icon className="size-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  )}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
