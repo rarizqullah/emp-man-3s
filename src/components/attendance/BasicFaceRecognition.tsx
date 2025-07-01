@@ -654,7 +654,7 @@ const BasicFaceRecognition: React.FC<BasicFaceRecognitionProps> = ({
         <div className="relative bg-gray-900 rounded-lg overflow-hidden mb-4" style={{ aspectRatio: '4/3', minHeight: '240px' }}>
           <video
             ref={videoRef}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover transform scale-x-[-1]"
             autoPlay
             muted
             playsInline

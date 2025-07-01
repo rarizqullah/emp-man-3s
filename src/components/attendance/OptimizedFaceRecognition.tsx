@@ -479,7 +479,7 @@ const OptimizedFaceRecognition: React.FC<OptimizedFaceRecognitionProps> = ({
           {/* Video Element */}
           <video
             ref={videoRef}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover transform scale-x-[-1]"
             autoPlay
             muted
             playsInline
