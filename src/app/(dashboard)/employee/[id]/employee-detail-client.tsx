@@ -903,7 +903,7 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
     return (
       <div className="p-6">
         <div className="flex items-center gap-2 mb-4">
-          <Button variant="outline" size="icon" onClick={() => router.back()}>
+          <Button variant="outline" size="icon" onClick={() => router.push('/employee')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="typography-h1">Detail Karyawan</h1>
@@ -911,7 +911,7 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
         <Card>
           <CardContent className="p-6">
             <p className="text-red-500">{error || "Data karyawan tidak ditemukan"}</p>
-            <Button className="mt-4" onClick={() => router.back()}>
+            <Button className="mt-4" onClick={() => router.push('/employee')}>
               Kembali
             </Button>
           </CardContent>
@@ -924,7 +924,7 @@ export function EmployeeDetailClient({ employeeId }: { employeeId: string }) {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => router.back()}>
+          <Button variant="outline" size="icon" onClick={() => router.push('/employee')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="typography-h1">Detail Karyawan: {employee.user?.name}</h1>
