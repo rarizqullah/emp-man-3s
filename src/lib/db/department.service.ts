@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/db/prisma';
-import { Prisma } from '@prisma/client';
 
 // Tipe data untuk parameter department baru
 export interface DepartmentCreateInput {
