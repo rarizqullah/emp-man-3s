@@ -25,7 +25,7 @@ const salaryFilterSchema = z.object({
   startDate: z.string().nullish().transform(val => val || undefined),
   endDate: z.string().nullish().transform(val => val || undefined),
   employeeId: z.string().nullish().transform(val => val || undefined),
-  export: z.enum(['excel', 'csv']).nullish().transform(val => val || undefined)
+  export: z.enum(['excel', 'csv', 'pdf']).nullish().transform(val => val || undefined)
 });
 
 export async function GET(request: NextRequest) {
@@ -106,6 +106,20 @@ export async function GET(request: NextRequest) {
           format: 'csv',
           data: exportData,
           filename: `salary_data_${new Date().toISOString().split('T')[0]}.csv`
+        });
+      } else if (validatedParams.export === 'pdf') {
+        // Return data untuk PDF export di frontend
+        return NextResponse.json({
+          type: 'export',
+          format: 'pdf',
+          data: exportData,
+          filename: `salary_data_${new Date().toISOString().split('T')[0]}.pdf`,
+          metadata: {
+            title: 'Laporan Data Gaji Karyawan',
+            subtitle: `Periode: ${filter.startDate ? filter.startDate.toLocaleDateString('id-ID') : ''} - ${filter.endDate ? filter.endDate.toLocaleDateString('id-ID') : ''}`,
+            generated: new Date().toLocaleDateString('id-ID'),
+            totalRecords: exportData.length
+          }
         });
       }
     }

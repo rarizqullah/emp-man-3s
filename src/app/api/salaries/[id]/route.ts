@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { 
   getSalaryById, 
-  updatePaymentStatus
+  updatePaymentStatus,
+  exportSalarySlipPDF
 } from '@/lib/db/salary.service';
 import { PaymentStatus } from '@prisma/client';
 
@@ -12,10 +13,25 @@ const paymentUpdateSchema = z.object({
   paymentDate: z.string().optional().transform((val) => val ? new Date(val) : undefined)
 });
 
-// GET: Mendapatkan detail gaji berdasarkan ID
+// GET: Mendapatkan detail gaji berdasarkan ID atau export PDF
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
+  const { searchParams } = new URL(request.url);
+  const exportType = searchParams.get('export');
+  
   try {
+    // Jika export PDF
+    if (exportType === 'pdf') {
+      const slipData = await exportSalarySlipPDF(params.id);
+      
+      return NextResponse.json({
+        success: true,
+        data: slipData,
+        message: 'Data slip gaji berhasil diambil untuk PDF'
+      });
+    }
+    
+    // Default: get salary detail
     const salary = await getSalaryById(params.id);
     
     if (!salary) {

@@ -22,7 +22,6 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { DateRangePicker } from "@/components/salary/date-range-picker";
-import { SalaryDatePicker } from "@/components/salary/salary-date-picker";
 import { ExportMenu } from "@/components/salary/export-menu";
 import { SalarySlipPDF } from "@/components/salary/salary-slip-pdf";
 
@@ -192,8 +191,8 @@ export default function SalaryPageUpdated() {
     }
   };
 
-  // Handle export data - Excel only
-  const handleExport = async (format: 'excel') => {
+  // Handle export data dengan perbaikan
+  const handleExport = async (format: 'excel' | 'pdf') => {
     try {
       const params = new URLSearchParams();
       params.append('export', format);
@@ -215,18 +214,102 @@ export default function SalaryPageUpdated() {
       const result = await response.json();
       
       if (result.type === 'export') {
-        // Process Excel export on client side
-        const { utils, writeFile } = await import('xlsx');
-        const worksheet = utils.json_to_sheet(result.data);
-        const workbook = utils.book_new();
-        utils.book_append_sheet(workbook, worksheet, 'Data Gaji');
-        writeFile(workbook, result.filename);
+        if (format === 'excel') {
+          // Process Excel export on client side
+          const { utils, writeFile } = await import('xlsx');
+          const worksheet = utils.json_to_sheet(result.data);
+          const workbook = utils.book_new();
+          utils.book_append_sheet(workbook, worksheet, 'Data Gaji Karyawan');
+          
+          // Set column widths for better readability
+          const wscols = [
+            { wch: 15 }, // NIK
+            { wch: 25 }, // Nama Karyawan
+            { wch: 20 }, // Departemen
+            { wch: 20 }, // Posisi
+            { wch: 12 }, // Periode Mulai
+            { wch: 12 }, // Periode Akhir
+            { wch: 12 }, // Jam Kerja Utama
+            { wch: 15 }, // Jam Lembur Reguler
+            { wch: 15 }, // Jam Lembur Mingguan
+            { wch: 15 }, // Gaji Pokok
+            { wch: 15 }, // Gaji Lembur
+            { wch: 18 }, // Gaji Lembur Mingguan
+            { wch: 15 }, // Total Tunjangan
+            { wch: 15 }, // Total Gaji
+            { wch: 15 }, // Status Pembayaran
+            { wch: 18 }, // Tanggal Dibuat
+            { wch: 18 }  // Tanggal Diperbarui
+          ];
+          worksheet['!cols'] = wscols;
+          
+          writeFile(workbook, result.filename);
+        } else if (format === 'pdf') {
+          // Process PDF export on client side with improved formatting
+          const { jsPDF } = await import('jspdf');
+          await import('jspdf-autotable');
+          
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const doc = new jsPDF('landscape') as any; // Use landscape for better table fit
+          
+          // Header with better styling
+          doc.setFontSize(18);
+          doc.setFont('helvetica', 'bold');
+          doc.text(result.metadata.title, doc.internal.pageSize.width / 2, 20, { align: 'center' });
+          
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'normal');
+          doc.text(result.metadata.subtitle, doc.internal.pageSize.width / 2, 30, { align: 'center' });
+          doc.text(`Digenerate: ${result.metadata.generated}`, 20, 45);
+          doc.text(`Total Records: ${result.metadata.totalRecords}`, 20, 55);
+          
+          // Prepare table data with selected columns
+          const tableData = result.data.map((row: Record<string, unknown>) => [
+            row['NIK'],
+            row['Nama Karyawan'],
+            row['Departemen'],
+            row['Periode Mulai'],
+            row['Periode Akhir'],
+            typeof row['Total Gaji'] === 'number' ? 
+              new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(row['Total Gaji'] as number) :
+              row['Total Gaji'],
+            row['Status Pembayaran']
+          ]);
+          
+          const tableHeaders = [
+            'NIK', 'Nama', 'Departemen', 'Periode Mulai', 'Periode Akhir', 'Total Gaji', 'Status'
+          ];
+          
+          (doc as unknown as { autoTable: (options: unknown) => void }).autoTable({
+            head: [tableHeaders],
+            body: tableData,
+            startY: 65,
+            styles: { 
+              fontSize: 8,
+              cellPadding: 3
+            },
+            headStyles: { 
+              fillColor: [66, 66, 66],
+              textColor: [255, 255, 255],
+              fontStyle: 'bold'
+            },
+            alternateRowStyles: {
+              fillColor: [245, 245, 245]
+            },
+            columnStyles: {
+              5: { halign: 'right' }, // Total Gaji column
+              6: { halign: 'center' }  // Status column
+            }
+          });
+          
+          doc.save(result.filename);
+        }
         
-        toast.success('Data berhasil diekspor ke Excel');
+        toast.success(`Data berhasil diekspor ke ${format.toUpperCase()}`);
       }
     } catch (error) {
       console.error('Export error:', error);
-      toast.error('Gagal mengekspor data ke Excel');
+      toast.error(`Gagal mengekspor data ke ${format.toUpperCase()}`);
     }
   };
 
@@ -394,23 +477,24 @@ export default function SalaryPageUpdated() {
                 {/* Row 2: Date Range Filter with Export Button - Layout yang simetris */}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Filter Periode Gaji</Label>
-                  <div className="flex flex-col sm:flex-row gap-2 sm:items-end sm:justify-start">
-                    <div className="w-full sm:w-[200px]">
-                      <SalaryDatePicker
+                  <div className="flex flex-col lg:flex-row gap-2 lg:items-end">
+                    <div className="flex-1">
+                      <DateRangePicker
                         startDate={dateFrom}
                         endDate={dateTo}
                         onDateChange={handleDateRangeChange}
-                        placeholder="Pilih periode"
+                        placeholder="Pilih periode gaji"
+                        showRangeText={false}
                         className="w-full"
                       />
                     </div>
                     
-                    <div className="w-full sm:w-[140px]">
+                    <div className="lg:flex-none min-w-[160px]">
                       <ExportMenu 
                         onExport={handleExport} 
                         size="default"
                         variant="outline"
-                        className="h-11 w-full"
+                        className="h-11 w-full font-medium"
                       />
                     </div>
                   </div>
@@ -421,14 +505,13 @@ export default function SalaryPageUpdated() {
               <div className="rounded-md border overflow-hidden">
                 <div className="overflow-x-auto">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
+                    <TableHeader>                      <TableRow>
                         <TableHead className="min-w-[100px]">NIK</TableHead>
-                        <TableHead className="min-w-[150px]">Nama</TableHead>
+                        <TableHead className="min-w-[150px]">Nama Karyawan</TableHead>
                         <TableHead className="min-w-[120px]">Departemen</TableHead>
-                        <TableHead className="min-w-[150px]">Periode</TableHead>
+                        <TableHead className="min-w-[150px]">Periode Gaji</TableHead>
                         <TableHead className="text-right min-w-[120px]">Total Gaji</TableHead>
-                        <TableHead className="min-w-[100px]">Status</TableHead>
+                        <TableHead className="min-w-[100px]">Status Pembayaran</TableHead>
                         <TableHead className="text-right min-w-[140px]">Aksi</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -531,32 +614,46 @@ export default function SalaryPageUpdated() {
         </TabsContent>
       </Tabs>
 
-      {/* Dialog Generate Gaji dengan Date Picker */}
+      {/* Dialog Generate Gaji dengan Date Picker yang Diperbaiki */}
       <Dialog open={isGeneratingOpen} onOpenChange={setIsGeneratingOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Hitung Gaji Karyawan</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <PlusCircle className="h-5 w-5 text-primary" />
+              Hitung Gaji Karyawan
+            </DialogTitle>
             <DialogDescription>
-              Hitung gaji berdasarkan data kehadiran untuk periode tertentu
+              Pilih periode tanggal untuk menghitung gaji berdasarkan data kehadiran karyawan
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
-            <div>
-              <Label className="text-sm font-medium">Periode Perhitungan Gaji</Label>
-              <SalaryDatePicker
+          <div className="space-y-6 py-4">
+            <div className="space-y-3">
+              <Label className="text-base font-semibold text-foreground">
+                Periode Perhitungan Gaji
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Pilih tanggal mulai dan akhir untuk periode gaji yang akan dihitung
+              </p>
+              <DateRangePicker
                 startDate={generateStartDate}
                 endDate={generateEndDate}
                 onDateChange={handleGenerateDateChange}
-                placeholder="Pilih periode"
+                placeholder="Pilih periode untuk perhitungan gaji"
+                className="w-full"
               />
             </div>
             
-            <div>
-              <Label className="text-sm font-medium">Departemen (Opsional)</Label>
+            <div className="space-y-3">
+              <Label className="text-base font-semibold text-foreground">
+                Filter Departemen (Opsional)
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Kosongkan untuk menghitung gaji semua departemen
+              </p>
               <Select value={filterDepartment} onValueChange={setFilterDepartment}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih departemen" />
+                <SelectTrigger className="h-11">
+                  <SelectValue placeholder="Pilih departemen atau kosongkan untuk semua" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">Semua Departemen</SelectItem>
@@ -568,19 +665,35 @@ export default function SalaryPageUpdated() {
                 </SelectContent>
               </Select>
             </div>
+            
+            {generateStartDate && generateEndDate && (
+              <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-2 w-2 bg-primary rounded-full"></div>
+                  <span className="text-sm font-medium">Periode yang dipilih:</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {format(generateStartDate, 'dd MMMM yyyy', { locale: id })} 
+                  {' - '}
+                  {format(generateEndDate, 'dd MMMM yyyy', { locale: id })}
+                </p>
+              </div>
+            )}
           </div>
           
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button
               variant="outline"
               onClick={() => setIsGeneratingOpen(false)}
               disabled={isGenerating}
+              className="min-w-[100px]"
             >
               Batal
             </Button>
             <Button
               onClick={handleGenerateSalaries}
               disabled={isGenerating || !generateStartDate || !generateEndDate}
+              className="min-w-[140px]"
             >
               {isGenerating ? (
                 <>
@@ -588,7 +701,10 @@ export default function SalaryPageUpdated() {
                   Menghitung...
                 </>
               ) : (
-                'Hitung Gaji'
+                <>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Hitung Gaji
+                </>
               )}
             </Button>
           </DialogFooter>
