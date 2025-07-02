@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import { 
@@ -12,9 +12,7 @@ import {
   Calendar,
   User,
   Clock,
-  FileText,
-  Download,
-  Trash2
+  FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,11 +120,7 @@ export default function EmployeePermissionPage() {
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedPermission, setSelectedPermission] = useState<EmployeePermission | null>(null);
-  
-  // PDF ref
-  const detailRef = useRef<HTMLDivElement>(null);
   
   // Form states
   const [selectedEmployee, setSelectedEmployee] = useState("");
@@ -180,48 +174,18 @@ export default function EmployeePermissionPage() {
   useEffect(() => {
     const fetchEmployees = async () => {
       try {
-        console.log('Fetching employees from /api/employees-public...');
-        
         const response = await fetch('/api/employees-public', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
           cache: "no-store"
         });
         
-        console.log('Employees response status:', response.status);
-        
         if (response.ok) {
           const result = await response.json();
-          console.log('Employees data:', result);
-          
-          // Check if result has employees array
-          if (result.employees && Array.isArray(result.employees)) {
-            const employeesList = result.employees.map((emp: any) => ({
-              id: emp.id,
-              employeeId: emp.employeeId,
-              name: emp.name,
-              department: emp.department,
-              position: emp.position
-            }));
-            
-            setEmployees(employeesList);
-            console.log('Employees set successfully:', employeesList.length);
-          } else {
-            console.warn('Unexpected employees data structure:', result);
-            setEmployees([]);
-          }
+          setEmployees(result.employees || []);
         } else {
-          const errorText = await response.text();
-          console.error("Failed to fetch employees:", response.status, errorText);
-          setEmployees([]);
-          toast.error(`Gagal mengambil data karyawan: ${response.status}`);
+          console.error("Failed to fetch employees");
         }
       } catch (error) {
         console.error("Error fetching employees:", error);
-        setEmployees([]);
-        toast.error("Terjadi kesalahan saat mengambil data karyawan");
       }
     };
     
@@ -272,23 +236,8 @@ export default function EmployeePermissionPage() {
       return;
     }
     
-    // Validasi tanggal
-    if (new Date(endDate) < new Date(startDate)) {
-      toast.error("Tanggal selesai tidak boleh lebih awal dari tanggal mulai");
-      return;
-    }
-    
     try {
       setIsSubmitting(true);
-      
-      console.log('Submitting permission with data:', {
-        employeeId: selectedEmployee,
-        type: permissionType,
-        startDate,
-        endDate,
-        reason,
-        otherDetails
-      });
       
       const response = await fetch('/api/employee-permissions', {
         method: 'POST',
@@ -305,27 +254,15 @@ export default function EmployeePermissionPage() {
         }),
       });
       
-      console.log('Permission submission response status:', response.status);
-      
       const result = await response.json();
-      console.log('Permission submission result:', result);
       
       if (result.success) {
-        toast.success(result.message || "Pengajuan izin/cuti berhasil");
+        toast.success(result.message);
         setPermissions(prev => [result.data, ...prev]);
         setIsSubmitDialogOpen(false);
         resetForm();
       } else {
-        const errorMessage = result.error || "Gagal mengajukan izin/cuti";
-        console.error('Permission submission failed:', result);
-        toast.error(errorMessage);
-        
-        // Show detailed error if available
-        if (result.details && Array.isArray(result.details)) {
-          result.details.forEach((detail: any) => {
-            toast.error(`${detail.field}: ${detail.message}`);
-          });
-        }
+        toast.error(result.error || "Gagal mengajukan izin/cuti");
       }
     } catch (error) {
       console.error("Error submitting permission:", error);
@@ -430,329 +367,6 @@ export default function EmployeePermissionPage() {
     }
   };
   
-  // Export to PDF dengan format sesuai template Surat Peringatan
-  const handleExportPDF = async () => {
-    if (!selectedPermission) return;
-    
-    try {
-      toast.info("Sedang mempersiapkan PDF...");
-      
-      // Dynamic import for client-side only  
-      const jsPDF = await import('jspdf').then(mod => mod.default);
-      
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 20;
-      const contentWidth = pageWidth - (margin * 2);
-      let yPosition = margin;
-      
-      // Header dengan logo dan company info (mirip template)
-      // Logo placeholder (kotak abu-abu dengan inisial SSS)
-      pdf.setFillColor(220, 220, 220);
-      pdf.rect(margin, yPosition, 30, 20, 'F');
-      pdf.setTextColor(0, 0, 0);
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('SSS', margin + 12, yPosition + 12);
-      
-      // Company name dan alamat (sejajar dengan logo)
-      pdf.setTextColor(0, 0, 0);
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('PT SEKAWAN SAHABAT SEJATI', margin + 40, yPosition + 8);
-      
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text('Jl. Raya Kalibening No.15, Kalibening, Kec. Diwek,', margin + 40, yPosition + 14);
-      pdf.text('Kabupaten Jombang, Jawa Timur 61471', margin + 40, yPosition + 18);
-      
-      // Line separator (ganda seperti template)
-      yPosition += 25;
-      pdf.setLineWidth(0.5);
-      pdf.line(margin, yPosition, pageWidth - margin, yPosition);
-      pdf.setLineWidth(1.2);
-      pdf.line(margin, yPosition + 2, pageWidth - margin, yPosition + 2);
-      
-      yPosition += 15;
-      
-      // Title - SURAT PERMOHONAN IZIN/CUTI (bold dan besar)
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      const title = 'SURAT PERMOHONAN IZIN/CUTI';
-      const titleWidth = pdf.getTextWidth(title);
-      pdf.text(title, (pageWidth - titleWidth) / 2, yPosition);
-      
-      yPosition += 15;
-      
-      // Tabel header info (mirip template tapi untuk izin)
-      const headerTableY = yPosition;
-      const leftColWidth = 50;
-      const rightColWidth = contentWidth - leftColWidth;
-      
-      // Outer border
-      pdf.setLineWidth(0.5);
-      pdf.rect(margin, headerTableY, contentWidth, 32);
-      
-      // Vertical line di tengah
-      pdf.line(margin + leftColWidth, headerTableY, margin + leftColWidth, headerTableY + 32);
-      
-      // Horizontal lines
-      pdf.line(margin, headerTableY + 8, pageWidth - margin, headerTableY + 8);
-      pdf.line(margin, headerTableY + 16, pageWidth - margin, headerTableY + 16);
-      pdf.line(margin, headerTableY + 24, pageWidth - margin, headerTableY + 24);
-      
-      // Header table content
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'bold');
-      
-      // Left column labels
-      pdf.text('TINGKAT:', margin + 2, headerTableY + 6);
-      pdf.text('No. Surat:', margin + 2, headerTableY + 14);
-      pdf.text('Tanggal:', margin + 2, headerTableY + 22);
-      pdf.text('Kepada:', margin + 2, headerTableY + 30);
-      
-      // Right column values
-      pdf.setFont('helvetica', 'normal');
-      pdf.text('Permohonan Izin/Cuti', margin + leftColWidth + 2, headerTableY + 6);
-      
-      const docNumber = `${selectedPermission.typeLabel.toUpperCase()}/${format(new Date(), 'yyyy/MM/dd')}/${selectedPermission.id.slice(-4)}`;
-      pdf.text(docNumber, margin + leftColWidth + 2, headerTableY + 14);
-      
-      const today = format(new Date(), 'dd MMMM yyyy');
-      pdf.text(today, margin + leftColWidth + 2, headerTableY + 22);
-      
-      pdf.text('HRD PT. Sekawan Sahabat Sejati', margin + leftColWidth + 2, headerTableY + 30);
-      
-      yPosition = headerTableY + 40;
-      
-      // Data Karyawan table (format seperti template)
-      const empTableY = yPosition;
-      const empTableHeight = 48;
-      
-      // Outer border
-      pdf.rect(margin, empTableY, contentWidth, empTableHeight);
-      
-      // Vertical line di tengah
-      pdf.line(margin + leftColWidth, empTableY, margin + leftColWidth, empTableY + empTableHeight);
-      
-      // Horizontal lines untuk baris
-      const rowHeight = 8;
-      for (let i = 1; i < 6; i++) {
-        pdf.line(margin, empTableY + (i * rowHeight), pageWidth - margin, empTableY + (i * rowHeight));
-      }
-      
-      // Employee data
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
-      
-      const empData = [
-        ['Nama Lengkap:', selectedPermission.employee.name],
-        ['NPK/NIK:', selectedPermission.employee.employeeId || '-'],
-        ['Jabatan:', selectedPermission.employee.position || '-'],
-        ['Bagian/Departemen:', selectedPermission.employee.department || '-'],
-        ['Jenis Izin:', selectedPermission.typeLabel],
-        ['Status:', selectedPermission.statusLabel]
-      ];
-      
-      empData.forEach((row, index) => {
-        const yPos = empTableY + ((index + 1) * rowHeight) - 2;
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(row[0], margin + 2, yPos);
-        pdf.setFont('helvetica', 'normal');
-        pdf.text(row[1], margin + leftColWidth + 2, yPos);
-      });
-      
-      yPosition = empTableY + empTableHeight + 15;
-      
-      // Detail Permohonan section
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('DETAIL PERMOHONAN IZIN/CUTI', margin, yPosition);
-      yPosition += 8;
-      
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
-      
-      // Format tanggal dengan durasi
-      const startDate = formatDate(selectedPermission.startDate);
-      const endDate = formatDate(selectedPermission.endDate);
-      const duration = selectedPermission.duration;
-      
-      pdf.text(`Tanggal mulai: ${startDate}`, margin, yPosition);
-      yPosition += 6;
-      pdf.text(`Tanggal selesai: ${endDate}`, margin, yPosition);
-      yPosition += 6;
-      pdf.text(`Durasi: ${duration} hari`, margin, yPosition);
-      yPosition += 10;
-      
-      // Alasan permohonan
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('ALASAN PERMOHONAN:', margin, yPosition);
-      yPosition += 6;
-      
-      pdf.setFont('helvetica', 'normal');
-      const reasonLines = pdf.splitTextToSize(selectedPermission.reason, contentWidth - 10);
-      reasonLines.forEach((line: string) => {
-        pdf.text(line, margin, yPosition);
-        yPosition += 5;
-      });
-      
-      // Detail tambahan jika ada
-      if (selectedPermission.otherDetails) {
-        yPosition += 5;
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('KETERANGAN TAMBAHAN:', margin, yPosition);
-        yPosition += 6;
-        
-        pdf.setFont('helvetica', 'normal');
-        const detailLines = pdf.splitTextToSize(selectedPermission.otherDetails, contentWidth - 10);
-        detailLines.forEach((line: string) => {
-          pdf.text(line, margin, yPosition);
-          yPosition += 5;
-        });
-      }
-      
-      yPosition += 15;
-      
-      // Status persetujuan (jika ada)
-      if (selectedPermission.approvedBy) {
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('STATUS PERSETUJUAN:', margin, yPosition);
-        yPosition += 6;
-        
-        pdf.setFont('helvetica', 'normal');
-        const approvalStatus = selectedPermission.status === 'APPROVED' ? 'DISETUJUI' : 'DITOLAK';
-        pdf.text(`Status: ${approvalStatus}`, margin, yPosition);
-        yPosition += 5;
-        pdf.text(`Oleh: ${selectedPermission.approvedBy}`, margin, yPosition);
-        yPosition += 5;
-        
-        if (selectedPermission.approvedAt) {
-          pdf.text(`Tanggal: ${formatDateTime(selectedPermission.approvedAt)}`, margin, yPosition);
-          yPosition += 5;
-        }
-        
-        if (selectedPermission.rejectionReason) {
-          yPosition += 3;
-          pdf.text(`Alasan penolakan: ${selectedPermission.rejectionReason}`, margin, yPosition);
-          yPosition += 5;
-        }
-        
-        yPosition += 15;
-      }
-      
-      // Check if need new page for signatures
-      if (yPosition > pageHeight - 80) {
-        pdf.addPage();
-        yPosition = margin;
-      }
-      
-      // Signature section (4 kolom seperti template)
-      const signatureY = yPosition;
-      const colWidth = contentWidth / 4;
-      
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
-      
-      // Column headers
-      const signatureHeaders = [
-        'Pemohon',
-        'Mengetahui,\nSupervisor',
-        'Disetujui,\nKepala Bagian',
-        'Diketahui,\nHRD'
-      ];
-      
-      signatureHeaders.forEach((header, index) => {
-        const x = margin + (index * colWidth);
-        const headerLines = header.split('\n');
-        
-        headerLines.forEach((line, lineIndex) => {
-          pdf.text(line, x + 5, signatureY + 5 + (lineIndex * 5));
-        });
-      });
-      
-      // Signature boxes and lines
-      pdf.setLineWidth(0.3);
-      for (let i = 0; i < 4; i++) {
-        const x = margin + (i * colWidth);
-        
-        // Box untuk signature
-        pdf.rect(x, signatureY + 15, colWidth - 5, 25);
-        
-        // Line untuk tanda tangan
-        pdf.line(x + 5, signatureY + 35, x + colWidth - 10, signatureY + 35);
-        
-        // Label di bawah
-        if (i === 0) {
-          pdf.text(selectedPermission.employee.name, x + 5, signatureY + 50);
-        } else {
-          pdf.text('(...............................)', x + 5, signatureY + 50);
-        }
-      }
-      
-      yPosition = signatureY + 65;
-      
-      // Catatan kaki
-      if (yPosition > pageHeight - 25) {
-        pdf.addPage();
-        yPosition = margin;
-      }
-      
-      pdf.setFontSize(8);
-      pdf.setFont('helvetica', 'italic');
-      pdf.text('Catatan: Surat permohonan ini harus dikembalikan ke HRD setelah disetujui.', margin, yPosition);
-      
-      // Footer
-      yPosition = pageHeight - 15;
-      pdf.setFontSize(7);
-      pdf.setFont('helvetica', 'italic');
-      const footerText = `Dokumen dibuat secara otomatis pada ${formatDateTime(new Date().toISOString())} | PT. Sekawan Sahabat Sejati`;
-      const footerWidth = pdf.getTextWidth(footerText);
-      pdf.text(footerText, (pageWidth - footerWidth) / 2, yPosition);
-      
-      // Save PDF dengan naming yang sesuai
-      const typePrefix = selectedPermission.type === 'SICK_LEAVE' ? 'SAKIT' : 
-                        selectedPermission.type === 'ANNUAL_LEAVE' ? 'CUTI' : 'IZIN';
-      const fileName = `SURAT_${typePrefix}_${selectedPermission.employee.employeeId}_${format(new Date(selectedPermission.startDate), 'yyyyMMdd')}.pdf`;
-      pdf.save(fileName);
-      
-      toast.success("PDF berhasil diunduh");
-    } catch (error) {
-      console.error("Error generating PDF:", error);
-      toast.error("Gagal menggenerate PDF: " + (error instanceof Error ? error.message : 'Unknown error'));
-    }
-  };
-  
-  // Delete permission
-  const handleDeletePermission = async () => {
-    if (!selectedPermission) return;
-    
-    try {
-      setIsSubmitting(true);
-      
-      const response = await fetch(`/api/employee-permissions/${selectedPermission.id}`, {
-        method: 'DELETE',
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        toast.success("Izin berhasil dihapus");
-        setPermissions(prev => prev.filter(p => p.id !== selectedPermission.id));
-        setIsDeleteDialogOpen(false);
-        setIsDetailDialogOpen(false);
-      } else {
-        toast.error(result.error || "Gagal menghapus izin");
-      }
-    } catch (error) {
-      console.error("Error deleting permission:", error);
-      toast.error("Terjadi kesalahan saat menghapus izin");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-  
   // Get status badge variant
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
@@ -819,24 +433,13 @@ export default function EmployeePermissionPage() {
                     <SelectValue placeholder="Pilih karyawan" />
                   </SelectTrigger>
                   <SelectContent>
-                    {employees.length === 0 ? (
-                      <SelectItem value="" disabled>
-                        Tidak ada data karyawan
+                    {employees.map((employee) => (
+                      <SelectItem key={employee.id} value={employee.id}>
+                        {employee.name} ({employee.employeeId}) - {employee.department?.name || 'Tidak Ada Departemen'}
                       </SelectItem>
-                    ) : (
-                      employees.map((employee) => (
-                        <SelectItem key={employee.id} value={employee.id}>
-                          {employee.name} ({employee.employeeId}) - {employee.department?.name || 'Tidak Ada Departemen'}
-                        </SelectItem>
-                      ))
-                    )}
+                    ))}
                   </SelectContent>
                 </Select>
-                {employees.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Memuat data karyawan...
-                  </p>
-                )}
               </div>
               
               <div className="grid gap-2">
@@ -904,10 +507,7 @@ export default function EmployeePermissionPage() {
               >
                 Batal
               </Button>
-              <Button 
-                onClick={handleSubmitPermission} 
-                disabled={isSubmitting || !selectedEmployee || !reason.trim()}
-              >
+              <Button onClick={handleSubmitPermission} disabled={isSubmitting}>
                 {isSubmitting ? "Mengajukan..." : "Ajukan Izin"}
               </Button>
             </DialogFooter>
@@ -997,7 +597,7 @@ export default function EmployeePermissionPage() {
                   <div className="text-center">
                     <FileText className="h-8 w-8 text-muted-foreground mx-auto" />
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {permissions.length === 0 ? "Belum ada data izin/cuti yang diajukan" : "Tidak ada data yang sesuai dengan filter"}
+                      {permissions.length === 0 ? "Tidak ada token autentikasi. Silakan login ulang." : "Tidak ada data yang sesuai dengan filter"}
                     </p>
                   </div>
                 </div>
@@ -1125,7 +725,7 @@ export default function EmployeePermissionPage() {
             <DialogTitle>Detail Izin/Cuti</DialogTitle>
           </DialogHeader>
           {selectedPermission && (
-            <div ref={detailRef} className="grid gap-4 py-4">
+            <div className="grid gap-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-muted-foreground">Karyawan</Label>
@@ -1142,19 +742,19 @@ export default function EmployeePermissionPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-muted-foreground">Jenis Izin</Label>
-                  <div className="mt-1">
+                  <p className="mt-1">
                     <Badge variant={getTypeBadgeVariant(selectedPermission.type)}>
                       {selectedPermission.typeLabel}
                     </Badge>
-                  </div>
+                  </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-muted-foreground">Status</Label>
-                  <div className="mt-1">
+                  <p className="mt-1">
                     <Badge variant={getStatusBadgeVariant(selectedPermission.status)}>
                       {selectedPermission.statusLabel}
                     </Badge>
-                  </div>
+                  </p>
                 </div>
               </div>
               
@@ -1216,32 +816,10 @@ export default function EmployeePermissionPage() {
               </div>
             </div>
           )}
-          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
-            <div className="flex gap-2">
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  setIsDeleteDialogOpen(true);
-                }}
-                disabled={isSubmitting}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Hapus Izin
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                onClick={handleExportPDF}
-                disabled={isSubmitting}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Export PDF
-              </Button>
-              <Button variant="outline" onClick={() => setIsDetailDialogOpen(false)}>
-                Tutup
-              </Button>
-            </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDetailDialogOpen(false)}>
+              Tutup
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1324,53 +902,6 @@ export default function EmployeePermissionPage() {
               disabled={isSubmitting}
             >
               {isSubmitting ? "Memproses..." : "Tolak"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Hapus Izin/Cuti</DialogTitle>
-            <DialogDescription>
-              Apakah Anda yakin ingin menghapus izin/cuti untuk {selectedPermission?.employee.name}?
-              <br />
-              <span className="text-destructive font-medium">
-                Tindakan ini tidak dapat dibatalkan.
-              </span>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="bg-destructive/10 p-4 rounded-lg">
-              <div className="flex items-start gap-3">
-                <div className="text-destructive">
-                  <Trash2 className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="font-medium text-destructive">Konfirmasi Penghapusan</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Data izin/cuti yang dihapus tidak dapat dipulihkan. Pastikan Anda benar-benar ingin menghapus data ini.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsDeleteDialogOpen(false)}
-              disabled={isSubmitting}
-            >
-              Batal
-            </Button>
-            <Button 
-              variant="destructive"
-              onClick={handleDeletePermission} 
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Menghapus..." : "Hapus"}
             </Button>
           </DialogFooter>
         </DialogContent>
