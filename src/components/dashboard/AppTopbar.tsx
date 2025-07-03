@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Bell, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,13 +13,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
 import { useSupabase } from "@/providers/supabase-provider";
 import toast from "react-hot-toast";
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbSeparator,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb";
 
 export function AppTopbar() {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, signOut } = useSupabase();
   const [currentTime, setCurrentTime] = useState(new Date());
   
@@ -70,28 +77,56 @@ export function AppTopbar() {
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || "User";
   const userRole = user?.user_metadata?.role || "EMPLOYEE";
 
+  // Generate breadcrumbs
+  const segments = pathname.split("/").filter(Boolean);
+  const breadcrumbs = [] as React.ReactNode[];
+  let accumulated = "";
+  segments.forEach((seg, idx) => {
+    accumulated += `/${seg}`;
+    const label = seg.charAt(0).toUpperCase() + seg.slice(1).replace(/[-_]/g, " ");
+    if (idx === segments.length - 1) {
+      breadcrumbs.push(
+        <BreadcrumbItem key={accumulated}>
+          <BreadcrumbPage>{label}</BreadcrumbPage>
+        </BreadcrumbItem>
+      );
+    } else {
+      breadcrumbs.push(
+        <BreadcrumbItem key={accumulated}>
+          <BreadcrumbLink href={accumulated}>{label}</BreadcrumbLink>
+        </BreadcrumbItem>
+      );
+      breadcrumbs.push(<BreadcrumbSeparator key={`${accumulated}-sep`} />);
+    }
+  });
+
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-      <SidebarTrigger className="-ml-1" />
-      <Separator orientation="vertical" className="mr-2 h-4" />
-      
+    <header className="flex h-16 shrink-0 items-center gap-4 border-b border-gray-200 dark:border-gray-700 px-6 bg-white dark:bg-gray-800">
       <div className="flex-1">
-        <h1 className="text-lg font-semibold">Employee Management System</h1>
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
+            </BreadcrumbItem>
+            {segments.length > 0 && <BreadcrumbSeparator />}
+            {breadcrumbs}
+          </BreadcrumbList>
+        </Breadcrumb>
       </div>
       
       <div className="flex items-center gap-4">
         <Button
           variant="ghost"
           size="icon"
-          className="relative"
+          className="relative hover:bg-gray-100 dark:hover:bg-gray-700"
         >
           <Bell size={20} />
           <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
         </Button>
         
-        <div className="text-sm text-right">
-          <p className="font-medium">Waktu Sekarang</p>
-          <p className="text-muted-foreground">
+        <div className="text-sm text-right hidden sm:block">
+          <p className="font-medium text-gray-900 dark:text-white">Waktu Sekarang</p>
+          <p className="text-gray-500 dark:text-gray-400">
             {currentTime.toLocaleDateString("id-ID", {
               weekday: "long",
               day: "numeric",
@@ -103,7 +138,7 @@ export function AppTopbar() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+            <Button variant="ghost" className="relative h-10 w-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
               <Avatar>
                 <AvatarFallback className="bg-primary text-primary-foreground">
                   {userName ? getInitials(userName) : "U"}

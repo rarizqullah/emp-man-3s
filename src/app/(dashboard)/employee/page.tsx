@@ -9,7 +9,16 @@ import {
   Filter,
   Loader2,
   Users,
-  AlertTriangle
+  ChevronDown,
+  Clock,
+  AlertTriangle,
+  TrendingUp,
+  Building,
+  Database,
+  Mail,
+  Archive,
+  Trash2,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +41,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -45,6 +55,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 // Import modals
 import { AddEmployeeModal } from "@/components/employee/AddEmployeeModal";
@@ -52,7 +71,11 @@ import { WarningStatusModal } from "@/components/employee/WarningStatusModal";
 import { ShiftChangeModal } from "@/components/employee/ShiftChangeModal";
 import { DeleteEmployeeModal } from "@/components/employee/DeleteEmployeeModal";
 import { BulkShiftChangeModal } from "@/components/employee/BulkShiftChangeModal";
-import { EmployeeHistoryModal } from "@/components/employee/EmployeeHistoryModal";
+// High Priority Bulk Operations Modals
+import { BulkWarningStatusModal } from "@/components/employee/BulkWarningStatusModal";
+import { BulkDeleteModal } from "@/components/employee/BulkDeleteModal";
+import { EnhancedExportModal } from "@/components/employee/EnhancedExportModal";
+import { GroupAnalyticsModal } from "@/components/employee/GroupAnalyticsModal";
 
 // Type untuk form perubahan status SP
 interface WarningStatusFormValues {
@@ -135,14 +158,23 @@ export default function EmployeePage() {
   const [shiftModalOpen, setShiftModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [bulkShiftModalOpen, setBulkShiftModalOpen] = useState(false);
-  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  
+  // State untuk bulk operations - ENHANCED
+  const [bulkWarningModalOpen, setBulkWarningModalOpen] = useState(false);
+  const [bulkPositionModalOpen, setBulkPositionModalOpen] = useState(false);
+  const [bulkDepartmentModalOpen, setBulkDepartmentModalOpen] = useState(false);
+  const [bulkArchiveModalOpen, setBulkArchiveModalOpen] = useState(false);
+  const [bulkNotificationModalOpen, setBulkNotificationModalOpen] = useState(false);
+  const [enhancedExportModalOpen, setEnhancedExportModalOpen] = useState(false);
+  // High Priority Bulk Operations State
+  const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
+  const [groupAnalyticsModalOpen, setGroupAnalyticsModalOpen] = useState(false);
   
   // State untuk data dari API
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expiringContracts, setExpiringContracts] = useState<Employee[]>([]);
   
   // State untuk menyimpan data karyawan yang sedang diedit
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -157,11 +189,20 @@ export default function EmployeePage() {
   const [totalPages, setTotalPages] = useState(1);
   
   // Fetch data karyawan dari API dengan retry logic
-  const fetchEmployees = async (retryCount = 0) => {
+  const fetchEmployees = async (retryCount = 0, forceRefresh = false) => {
     const maxRetries = 3;
     
     try {
       setLoading(true);
+      
+      // Force refresh mode untuk setelah archive
+      if (forceRefresh) {
+        console.log('🔄 Force refreshing employee data...');
+        // Clear any existing state
+        setEmployees([]);
+        setSelectedEmployees([]);
+        setSelectAll(false);
+      }
       
       // Jika ini adalah retry kedua atau lebih, coba bersihkan koneksi database terlebih dahulu
       if (retryCount >= 1) {
@@ -186,8 +227,12 @@ export default function EmployeePage() {
       
       const response = await fetch('/api/employees', {
         headers: {
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'X-Timestamp': Date.now().toString(),
         },
+        cache: 'no-store'
       });
       
       if (!response.ok) {
@@ -207,7 +252,13 @@ export default function EmployeePage() {
       }
       
       const data = await response.json();
+      console.log(`📊 Fetched ${data.length} employees:`, data.map((emp: Employee) => `${emp.employeeId} - ${emp.user.name}`));
       setEmployees(data);
+      
+      // Reset pagination saat data berubah
+      setCurrentPage(1);
+      setSelectedEmployees([]);
+      setSelectAll(false);
       
       // Reset retry count on success
       if (retryCount > 0) {
@@ -274,100 +325,6 @@ export default function EmployeePage() {
     }
   };
 
-  // Check for expiring contracts
-  const checkExpiringContracts = (employeeData: Employee[]) => {
-    const today = new Date();
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(today.getDate() + 30);
-    
-    const expiring = employeeData.filter(emp => {
-      if (!emp.contractEndDate) return false;
-      const endDate = new Date(emp.contractEndDate);
-      return endDate <= thirtyDaysFromNow && endDate >= today;
-    });
-    
-    setExpiringContracts(expiring);
-    
-    if (expiring.length > 0) {
-      toast.warning(`${expiring.length} kontrak karyawan akan berakhir dalam 30 hari`, {
-        duration: 8000,
-        action: {
-          label: "Lihat Detail",
-          onClick: () => setHistoryModalOpen(true)
-        }
-      });
-    }
-  };
-
-  // Export to Excel function
-  const handleExportExcel = () => {
-    try {
-      // Prepare data for export
-      const exportData = filteredEmployees.map((emp, index) => ({
-        'No': index + 1,
-        'NIK': emp.employeeId,
-        'Nama Lengkap': emp.user.name,
-        'Email': emp.user.email,
-        'Jenis Kelamin': emp.gender === 'MALE' ? 'Laki-laki' : 'Perempuan',
-        'Alamat': emp.address || '-',
-        'Departemen': emp.department.name,
-        'Sub Departemen': emp.subDepartment?.name || '-',
-        'Posisi': emp.position?.name || '-',
-        'Level Posisi': emp.position?.level || '-',
-        'Shift': emp.shift.name,
-        'Tipe Shift': emp.shift.shiftType,
-        'Tipe Kontrak': emp.contractType === 'PERMANENT' ? 'Permanen' : 'Training',
-        'Nomor Kontrak': emp.contractNumber || '-',
-        'Tanggal Mulai Kontrak': new Date(emp.contractStartDate).toLocaleDateString('id-ID'),
-        'Tanggal Berakhir Kontrak': emp.contractEndDate ? new Date(emp.contractEndDate).toLocaleDateString('id-ID') : 'Permanen',
-        'Status SP': emp.warningStatus === 'NONE' ? 'Tidak Ada SP' : emp.warningStatus,
-        'Tanggal Dibuat': new Date(emp.createdAt).toLocaleDateString('id-ID'),
-        'Terakhir Diupdate': new Date(emp.updatedAt).toLocaleDateString('id-ID')
-      }));
-
-      // Create workbook and worksheet
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      const wb = XLSX.utils.book_new();
-      
-      // Set column widths
-      const colWidths = [
-        { wch: 5 },  // No
-        { wch: 15 }, // NIK
-        { wch: 25 }, // Nama
-        { wch: 30 }, // Email
-        { wch: 12 }, // Gender
-        { wch: 30 }, // Alamat
-        { wch: 20 }, // Departemen
-        { wch: 20 }, // Sub Departemen
-        { wch: 20 }, // Posisi
-        { wch: 12 }, // Level
-        { wch: 15 }, // Shift
-        { wch: 15 }, // Tipe Shift
-        { wch: 15 }, // Tipe Kontrak
-        { wch: 20 }, // Nomor Kontrak
-        { wch: 20 }, // Mulai Kontrak
-        { wch: 20 }, // Berakhir Kontrak
-        { wch: 15 }, // Status SP
-        { wch: 15 }, // Dibuat
-        { wch: 15 }  // Update
-      ];
-      ws['!cols'] = colWidths;
-      
-      XLSX.utils.book_append_sheet(wb, ws, 'Data Karyawan');
-      
-      // Generate filename with current date
-      const fileName = `Data_Karyawan_${new Date().toISOString().split('T')[0]}.xlsx`;
-      
-      // Save file
-      XLSX.writeFile(wb, fileName);
-      
-      toast.success(`Data berhasil diekspor ke ${fileName}`);
-    } catch (error) {
-      console.error('Export error:', error);
-      toast.error('Gagal mengekspor data ke Excel');
-    }
-  };
-
   // Handle multiple selection
   const handleSelectEmployee = (employeeId: string, checked: boolean) => {
     if (checked) {
@@ -393,6 +350,72 @@ export default function EmployeePage() {
       return;
     }
     setBulkShiftModalOpen(true);
+  };
+  
+  // Enhanced bulk operations handlers
+  const handleBulkWarningChange = () => {
+    if (selectedEmployees.length === 0) {
+      toast.error('Pilih minimal satu karyawan untuk mengubah status SP');
+      return;
+    }
+    setBulkWarningModalOpen(true);
+  };
+
+  const handleBulkPositionChange = () => {
+    if (selectedEmployees.length === 0) {
+      toast.error('Pilih minimal satu karyawan untuk mengubah posisi');
+      return;
+    }
+    setBulkPositionModalOpen(true);
+  };
+
+  const handleBulkDepartmentChange = () => {
+    if (selectedEmployees.length === 0) {
+      toast.error('Pilih minimal satu karyawan untuk pindah departemen');
+      return;
+    }
+    setBulkDepartmentModalOpen(true);
+  };
+
+  const handleBulkArchive = () => {
+    if (selectedEmployees.length === 0) {
+      toast.error('Pilih minimal satu karyawan untuk diarsipkan');
+      return;
+    }
+    setBulkArchiveModalOpen(true);
+  };
+
+  const handleBulkNotification = () => {
+    if (selectedEmployees.length === 0) {
+      toast.error('Pilih minimal satu karyawan untuk dikirim notifikasi');
+      return;
+    }
+    setBulkNotificationModalOpen(true);
+  };
+
+  const handleEnhancedExport = () => {
+    if (selectedEmployees.length === 0) {
+      toast.error('Pilih minimal satu karyawan untuk diekspor');
+      return;
+    }
+    setEnhancedExportModalOpen(true);
+  };
+
+  // High Priority Bulk Operations Handlers
+  const handleBulkDelete = () => {
+    if (selectedEmployees.length === 0) {
+      toast.error('Pilih minimal satu karyawan untuk dihapus permanen');
+      return;
+    }
+    setBulkDeleteModalOpen(true);
+  };
+
+  const handleGroupAnalytics = () => {
+    if (selectedEmployees.length === 0) {
+      toast.error('Pilih minimal satu karyawan untuk melihat analytics');
+      return;
+    }
+    setGroupAnalyticsModalOpen(true);
   };
   
   // Memuat data saat komponen dimount
@@ -431,7 +454,7 @@ export default function EmployeePage() {
     }
   }, [filteredEmployees.length, itemsPerPage, currentPage]);
 
-  // Update checkExpiringContracts call in fetchEmployees
+  // Check for expiring contracts when employees data is loaded
   useEffect(() => {
     if (employees.length > 0) {
       checkExpiringContracts(employees);
@@ -650,6 +673,94 @@ export default function EmployeePage() {
     }
   };
   
+  // Check for expiring contracts - simplified notification without history modal
+  const checkExpiringContracts = (employeeData: Employee[]) => {
+    const today = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(today.getDate() + 30);
+    
+    const expiring = employeeData.filter(emp => {
+      if (!emp.contractEndDate) return false;
+      const endDate = new Date(emp.contractEndDate);
+      return endDate <= thirtyDaysFromNow && endDate >= today;
+    });
+    
+    if (expiring.length > 0) {
+      toast.warning(`${expiring.length} kontrak karyawan akan berakhir dalam 30 hari`, {
+        duration: 8000
+      });
+    }
+  };
+
+  // Export to Excel function
+  const handleExportExcel = () => {
+    try {
+      // Prepare data for export
+      const exportData = filteredEmployees.map((emp, index) => ({
+        'No': index + 1,
+        'NIK': emp.employeeId,
+        'Nama Lengkap': emp.user.name,
+        'Email': emp.user.email,
+        'Jenis Kelamin': emp.gender === 'MALE' ? 'Laki-laki' : 'Perempuan',
+        'Alamat': emp.address || '-',
+        'Departemen': emp.department.name,
+        'Sub Departemen': emp.subDepartment?.name || '-',
+        'Posisi': emp.position?.name || '-',
+        'Level Posisi': emp.position?.level || '-',
+        'Shift': emp.shift.name,
+        'Tipe Shift': emp.shift.shiftType,
+        'Tipe Kontrak': emp.contractType === 'PERMANENT' ? 'Permanen' : 'Training',
+        'Nomor Kontrak': emp.contractNumber || '-',
+        'Tanggal Mulai Kontrak': new Date(emp.contractStartDate).toLocaleDateString('id-ID'),
+        'Tanggal Berakhir Kontrak': emp.contractEndDate ? new Date(emp.contractEndDate).toLocaleDateString('id-ID') : 'Permanen',
+        'Status SP': emp.warningStatus === 'NONE' ? 'Tidak Ada SP' : emp.warningStatus,
+        'Tanggal Dibuat': new Date(emp.createdAt).toLocaleDateString('id-ID'),
+        'Terakhir Diupdate': new Date(emp.updatedAt).toLocaleDateString('id-ID')
+      }));
+
+      // Create workbook and worksheet
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 5 },  // No
+        { wch: 15 }, // NIK
+        { wch: 25 }, // Nama
+        { wch: 30 }, // Email
+        { wch: 12 }, // Gender
+        { wch: 30 }, // Alamat
+        { wch: 20 }, // Departemen
+        { wch: 20 }, // Sub Departemen
+        { wch: 20 }, // Posisi
+        { wch: 12 }, // Level
+        { wch: 15 }, // Shift
+        { wch: 15 }, // Tipe Shift
+        { wch: 15 }, // Tipe Kontrak
+        { wch: 20 }, // Nomor Kontrak
+        { wch: 20 }, // Mulai Kontrak
+        { wch: 20 }, // Berakhir Kontrak
+        { wch: 15 }, // Status SP
+        { wch: 15 }, // Dibuat
+        { wch: 15 }  // Update
+      ];
+      ws['!cols'] = colWidths;
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'Data Karyawan');
+      
+      // Generate filename with current date
+      const fileName = `Data_Karyawan_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // Save file
+      XLSX.writeFile(wb, fileName);
+      
+      toast.success(`Data berhasil diekspor ke ${fileName}`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Gagal mengekspor data ke Excel');
+    }
+  };
+  
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -657,7 +768,7 @@ export default function EmployeePage() {
           <h1 className="typography-h1">Manajemen Karyawan</h1>
           <p className="typography-muted mt-2">Kelola data karyawan dan kontrak karyawan</p>
         </div>
-        <Button onClick={() => setAddModalOpen(true)}>
+        <Button onClick={() => setAddModalOpen(true)} className="bg-slate-900 hover:bg-slate-800 text-white">
           <UserPlus className="mr-2 h-4 w-4" />
           Tambah Karyawan
         </Button>
@@ -732,19 +843,90 @@ export default function EmployeePage() {
             <div className="flex gap-2">
               {selectedEmployees.length > 0 && (
                 <>
-                  <Button variant="outline" onClick={handleBulkShiftChange}>
+                  {/* HR Operations Group */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="text-slate-700 border-slate-200 hover:bg-slate-50" size="sm">
                     <Users className="mr-2 h-4 w-4" />
-                    Ubah Shift ({selectedEmployees.length})
+                        Operasi HR ({selectedEmployees.length})
+                        <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
-                  <Button variant="outline" onClick={() => setHistoryModalOpen(true)}>
-                    <AlertTriangle className="mr-2 h-4 w-4" />
-                    Riwayat
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-56">
+                      <DropdownMenuItem onClick={handleBulkShiftChange}>
+                        <Clock className="mr-2 h-4 w-4 text-slate-600" />
+                        Ubah Shift
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleBulkWarningChange}>
+                        <AlertTriangle className="mr-2 h-4 w-4 text-slate-600" />
+                        Ubah Status SP
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleBulkPositionChange}>
+                        <TrendingUp className="mr-2 h-4 w-4 text-slate-600" />
+                        Ubah Posisi
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleBulkDepartmentChange}>
+                        <Building className="mr-2 h-4 w-4 text-slate-600" />
+                        Pindah Departemen
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Data Management Group */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="text-slate-700 border-slate-200 hover:bg-slate-50" size="sm">
+                        <Database className="mr-2 h-4 w-4" />
+                        Data Management ({selectedEmployees.length})
+                        <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-56">
+                      <DropdownMenuItem onClick={handleEnhancedExport}>
+                        <FileDown className="mr-2 h-4 w-4 text-slate-600" />
+                        Enhanced Export
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleGroupAnalytics}>
+                        <TrendingUp className="mr-2 h-4 w-4 text-slate-600" />
+                        Group Analytics
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleBulkNotification}>
+                        <Mail className="mr-2 h-4 w-4 text-slate-600" />
+                        Kirim Notifikasi
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handleBulkArchive} className="text-slate-600">
+                        <Archive className="mr-2 h-4 w-4" />
+                        Arsipkan Karyawan
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleBulkDelete} className="text-slate-700 hover:text-red-600">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Hapus Permanen
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </>
               )}
-              <Button variant="outline" onClick={handleExportExcel}>
+              
+              {/* Regular Export - Always Available */}
+              <Button variant="outline" className="text-slate-700 border-slate-200 hover:bg-slate-50" size="sm" onClick={handleExportExcel}>
                 <FileDown className="mr-2 h-4 w-4" />
-                Export Excel
+                Export Semua
+              </Button>
+              
+              {/* Refresh Button */}
+              <Button 
+                variant="outline" 
+                className="text-slate-700 border-slate-200 hover:bg-slate-50"
+                onClick={() => {
+                  console.log('🔄 Manual refresh triggered');
+                  fetchEmployees(0, true);
+                  toast.info("🔄 Memperbarui data karyawan...");
+                }}
+                size="sm"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
               </Button>
             </div>
           </div>
@@ -921,7 +1103,7 @@ export default function EmployeePage() {
           onOpenChange={setDeleteModalOpen}
           employeeId={selectedEmployee.id}
           employeeName={selectedEmployee.user.name}
-          onSuccess={fetchEmployees}
+          onSuccess={() => fetchEmployees(0, true)}
         />
       )}
 
@@ -931,17 +1113,122 @@ export default function EmployeePage() {
         onOpenChange={setBulkShiftModalOpen}
         selectedEmployeeIds={selectedEmployees}
         onSuccess={() => {
-          fetchEmployees();
+          fetchEmployees(0, true);
           setSelectedEmployees([]);
           setSelectAll(false);
         }}
       />
 
-      {/* Modal untuk employee history */}
-      <EmployeeHistoryModal
-        open={historyModalOpen}
-        onOpenChange={setHistoryModalOpen}
-        expiringContracts={expiringContracts}
+      {/* Enhanced Bulk Operations Modals */}
+      
+      {/* Bulk Warning Status Modal */}
+      <BulkWarningStatusModal
+        isOpen={bulkWarningModalOpen}
+        onClose={() => setBulkWarningModalOpen(false)}
+        selectedEmployees={selectedEmployees}
+        employeeNames={selectedEmployees.map(id => {
+          const emp = employees.find(e => e.id === id);
+          return emp?.user.name || 'Unknown';
+        })}
+        onSuccess={() => {
+          fetchEmployees(0, true);
+          setSelectedEmployees([]);
+          setSelectAll(false);
+        }}
+      />
+
+      {/* Bulk Position Change Modal */}
+      <AlertDialog open={bulkPositionModalOpen} onOpenChange={setBulkPositionModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ubah Posisi - {selectedEmployees.length} Karyawan</AlertDialogTitle>
+            <AlertDialogDescription>
+              Fitur ini akan segera tersedia. Anda dapat mengubah posisi/jabatan multiple karyawan sekaligus.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Tutup</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Department Transfer Modal */}
+      <AlertDialog open={bulkDepartmentModalOpen} onOpenChange={setBulkDepartmentModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pindah Departemen - {selectedEmployees.length} Karyawan</AlertDialogTitle>
+            <AlertDialogDescription>
+              Fitur ini akan segera tersedia. Anda dapat memindahkan multiple karyawan ke departemen lain sekaligus.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Tutup</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Archive Modal */}
+      <AlertDialog open={bulkArchiveModalOpen} onOpenChange={setBulkArchiveModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Arsipkan Karyawan - {selectedEmployees.length} Karyawan</AlertDialogTitle>
+            <AlertDialogDescription>
+              Fitur ini akan segera tersedia. Anda dapat mengarsipkan multiple karyawan sekaligus.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Tutup</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Notification Modal */}
+      <AlertDialog open={bulkNotificationModalOpen} onOpenChange={setBulkNotificationModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Kirim Notifikasi - {selectedEmployees.length} Karyawan</AlertDialogTitle>
+            <AlertDialogDescription>
+              Fitur ini akan segera tersedia. Anda dapat mengirim notifikasi email/SMS ke multiple karyawan sekaligus.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Tutup</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Enhanced Export Modal */}
+      <EnhancedExportModal
+        isOpen={enhancedExportModalOpen}
+        onClose={() => setEnhancedExportModalOpen(false)}
+        selectedEmployees={selectedEmployees}
+        allEmployees={employees}
+      />
+
+      {/* High Priority Bulk Operations Modals */}
+      
+      {/* Bulk Delete Modal */}
+      <BulkDeleteModal
+        isOpen={bulkDeleteModalOpen}
+        onClose={() => setBulkDeleteModalOpen(false)}
+        selectedEmployees={selectedEmployees}
+        employeeNames={selectedEmployees.map(id => {
+          const emp = employees.find(e => e.id === id);
+          return emp?.user.name || 'Unknown';
+        })}
+        onSuccess={() => {
+          fetchEmployees(0, true);
+          setSelectedEmployees([]);
+          setSelectAll(false);
+        }}
+      />
+
+      {/* Group Analytics Modal */}
+      <GroupAnalyticsModal
+        isOpen={groupAnalyticsModalOpen}
+        onClose={() => setGroupAnalyticsModalOpen(false)}
+        selectedEmployees={selectedEmployees}
+        allEmployees={employees}
       />
     </div>
   );

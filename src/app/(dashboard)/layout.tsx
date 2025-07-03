@@ -7,8 +7,6 @@ import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Toaster } from "react-hot-toast";
 import { useSupabase } from "@/providers/supabase-provider";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-
 // Buat context untuk mengelola status autentikasi global
 interface SessionContextType {
   isStayOnPage: boolean;
@@ -174,9 +172,9 @@ export default function DashboardLayout({
     }
   };
 
-  // Navigasi handling (sidebar akan tertutup otomatis di mobile dengan SidebarProvider)
+  // Navigasi handling
   useEffect(() => {
-    // Sidebar provider akan menangani mobile behavior secara otomatis
+    // Handle navigation if needed
   }, [pathname]);
 
   // Render loading state
@@ -206,17 +204,17 @@ export default function DashboardLayout({
   // Layout utama dashboard
   return (
     <SessionManagementProvider>
-      <SidebarProvider>
+      <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
         <AppSidebar />
-        <SidebarInset>
+        <div className="flex flex-col flex-1 overflow-hidden">
           <AppTopbar />
-          <main className="flex-1 overflow-y-auto p-4">
+          <main className="flex-1 overflow-y-auto p-6">
             {/* Info Banner jika ada masalah autentikasi */}
             <SessionWarningBanner />
             {children}
           </main>
-        </SidebarInset>
-      </SidebarProvider>
+        </div>
+      </div>
       <Toaster />
     </SessionManagementProvider>
   );

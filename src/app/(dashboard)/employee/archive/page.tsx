@@ -241,27 +241,27 @@ export default function EmployeeArchivePage() {
       
       const exportData = employees.map((emp, index) => ({
         'No': index + 1,
-        'NIK': emp.employeeId,
-        'Nama Lengkap': emp.user.name,
-        'Email': emp.user.email,
+        'NIK': emp.employeeId || '-',
+        'Nama Lengkap': emp.user?.name || '-',
+        'Email': emp.user?.email || '-',
         'Jenis Kelamin': emp.gender === 'MALE' ? 'Laki-laki' : 'Perempuan',
         'Alamat': emp.address || '-',
-        'Departemen': emp.department.name,
+        'Departemen': emp.department?.name || '-',
         'Sub Departemen': emp.subDepartment?.name || '-',
         'Posisi': emp.position?.name || '-',
         'Level Posisi': emp.position?.level || '-',
-        'Shift': emp.shift.name,
-        'Tipe Shift': emp.shift.shiftType,
+        'Shift': emp.shift?.name || '-',
+        'Tipe Shift': emp.shift?.shiftType || '-',
         'Tipe Kontrak': emp.contractType === 'PERMANENT' ? 'Permanen' : 'Training',
         'Nomor Kontrak': emp.contractNumber || '-',
-        'Tanggal Mulai Kontrak': new Date(emp.contractStartDate).toLocaleDateString('id-ID'),
+        'Tanggal Mulai Kontrak': emp.contractStartDate ? new Date(emp.contractStartDate).toLocaleDateString('id-ID') : '-',
         'Tanggal Berakhir Kontrak': emp.contractEndDate ? new Date(emp.contractEndDate).toLocaleDateString('id-ID') : 'Permanen',
-        'Status SP': emp.warningStatus === 'NONE' ? 'Tidak Ada SP' : emp.warningStatus,
-        'Tanggal Dihapus': new Date(emp.deletedAt).toLocaleDateString('id-ID'),
+        'Status SP': emp.warningStatus === 'NONE' ? 'Tidak Ada SP' : (emp.warningStatus || 'Tidak Diketahui'),
+        'Tanggal Dihapus': emp.deletedAt ? new Date(emp.deletedAt).toLocaleDateString('id-ID') : '-',
         'Dihapus Oleh': emp.deletedBy || '-',
         'Alasan Penghapusan': emp.deletionReason || '-',
-        'Tanggal Dibuat': new Date(emp.createdAt).toLocaleDateString('id-ID'),
-        'Terakhir Diupdate': new Date(emp.updatedAt).toLocaleDateString('id-ID')
+        'Tanggal Dibuat': emp.createdAt ? new Date(emp.createdAt).toLocaleDateString('id-ID') : '-',
+        'Terakhir Diupdate': emp.updatedAt ? new Date(emp.updatedAt).toLocaleDateString('id-ID') : '-'
       }));
 
       const ws = XLSX.utils.json_to_sheet(exportData);
@@ -652,19 +652,19 @@ export default function EmployeeArchivePage() {
                           <Checkbox
                             checked={selectedEmployees.includes(employee.id)}
                             onChange={(e) => handleSelectEmployee(employee.id, e.target.checked)}
-                            aria-label={`Select ${employee.user.name}`}
+                            aria-label={`Select ${employee.user?.name || 'Employee'}`}
                           />
                         </TableCell>
-                        <TableCell className="px-4 py-4 font-medium">{employee.employeeId}</TableCell>
+                        <TableCell className="px-4 py-4 font-medium">{employee.employeeId || '-'}</TableCell>
                         <TableCell className="px-4 py-4">
-                          <div className="font-medium">{employee.user.name}</div>
+                          <div className="font-medium">{employee.user?.name || '-'}</div>
                           <div className="text-xs text-muted-foreground">
                             {employee.gender === "MALE" ? "Laki-laki" : "Perempuan"}
                           </div>
                         </TableCell>
-                        <TableCell className="px-4 py-4">{employee.user.email}</TableCell>
+                        <TableCell className="px-4 py-4">{employee.user?.email || '-'}</TableCell>
                         <TableCell className="px-4 py-4">
-                          <div>{employee.department.name}</div>
+                          <div>{employee.department?.name || '-'}</div>
                           {employee.subDepartment && (
                             <div className="text-xs text-muted-foreground">
                               {employee.subDepartment.name}
@@ -680,13 +680,13 @@ export default function EmployeeArchivePage() {
                               : `Training: ${employee.contractNumber || '-'}`}
                           </div>
                         </TableCell>
-                        <TableCell className="px-4 py-4">{employee.shift.name}</TableCell>
+                        <TableCell className="px-4 py-4">{employee.shift?.name || '-'}</TableCell>
                         <TableCell className="px-4 py-4">
                           {getWarningStatusBadge(employee.warningStatus)}
                         </TableCell>
                         <TableCell className="px-4 py-4">
                           <div className="text-sm">
-                            {new Date(employee.deletedAt).toLocaleDateString('id-ID')}
+                            {employee.deletedAt ? new Date(employee.deletedAt).toLocaleDateString('id-ID') : '-'}
                           </div>
                           {employee.deletedBy && (
                             <div className="text-xs text-muted-foreground">
@@ -753,7 +753,7 @@ export default function EmployeeArchivePage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Pulihkan Karyawan</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin memulihkan karyawan <strong>{selectedEmployee?.user.name}</strong>? 
+              Apakah Anda yakin ingin memulihkan karyawan <strong>{selectedEmployee?.user?.name || 'Unknown'}</strong>? 
               Karyawan ini akan dikembalikan ke daftar karyawan aktif.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -774,7 +774,7 @@ export default function EmployeeArchivePage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Permanen Karyawan</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus permanen karyawan <strong>{selectedEmployee?.user.name}</strong>? 
+              Apakah Anda yakin ingin menghapus permanen karyawan <strong>{selectedEmployee?.user?.name || 'Unknown'}</strong>? 
               Tindakan ini tidak dapat dibatalkan dan semua data akan hilang selamanya.
             </AlertDialogDescription>
           </AlertDialogHeader>
