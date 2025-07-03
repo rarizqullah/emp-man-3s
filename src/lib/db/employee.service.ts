@@ -52,8 +52,11 @@ export async function getAllEmployees() {
     // Validasi koneksi dengan $connect()
     await prisma.$connect();
 
-    // Gunakan select fields yang spesifik untuk mengurangi beban query
+    // Gunakan select fields yang spesifik untuk mengurangi beban query - hanya karyawan aktif
     const employees = await prisma.employee.findMany({
+      where: {
+        deletedAt: null // Filter hanya karyawan yang tidak diarsipkan
+      },
       select: {
         id: true,
         employeeId: true,
@@ -138,8 +141,11 @@ export async function getAllEmployees() {
           await prisma.$disconnect();
           await prisma.$connect();
           
-          // Retry query dengan timeout yang lebih pendek
+          // Retry query dengan timeout yang lebih pendek - hanya karyawan aktif
           return await prisma.employee.findMany({
+            where: {
+              deletedAt: null // Filter hanya karyawan yang tidak diarsipkan
+            },
             select: {
               id: true,
               employeeId: true,

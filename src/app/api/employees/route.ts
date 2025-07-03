@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
       try {
         const employees = await prisma.employee.findMany({
           where: {
+            deletedAt: null, // Filter hanya karyawan aktif yang tidak diarsipkan
             OR: [
               { employeeId: { contains: search, mode: 'insensitive' } },
               { user: { name: { contains: search, mode: 'insensitive' } } },
@@ -128,6 +129,7 @@ export async function GET(request: NextRequest) {
           
           const retryEmployees = await prisma.employee.findMany({
             where: {
+              deletedAt: null, // Filter hanya karyawan aktif yang tidak diarsipkan
               OR: [
                 { employeeId: { contains: search, mode: 'insensitive' } },
                 { user: { name: { contains: search, mode: 'insensitive' } } },
@@ -201,6 +203,7 @@ export async function GET(request: NextRequest) {
       try {
         const employees = await prisma.employee.findMany({
           where: {
+            deletedAt: null, // Filter hanya karyawan aktif yang tidak diarsipkan
             faceData: {
               not: null
             }
@@ -275,6 +278,7 @@ export async function GET(request: NextRequest) {
           
           const retryEmployees = await prisma.employee.findMany({
             where: {
+              deletedAt: null, // Filter hanya karyawan aktif yang tidak diarsipkan
               faceData: {
                 not: null
               }

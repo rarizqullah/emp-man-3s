@@ -260,6 +260,7 @@ export function ShiftChangeModal({
                   <FormControl>
                     <Input
                       type="date"
+                      className="w-full"
                       value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
                       onChange={(e) => {
                         field.onChange(e.target.value ? new Date(e.target.value) : null);

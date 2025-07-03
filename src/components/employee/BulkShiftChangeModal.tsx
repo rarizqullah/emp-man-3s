@@ -343,7 +343,11 @@ export function BulkShiftChangeModal({
                 <FormItem>
                   <FormLabel>Tanggal Efektif</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} />
+                    <Input 
+                      type="date" 
+                      className="w-full"
+                      {...field} 
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

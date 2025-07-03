@@ -4,7 +4,6 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
-  ChevronDown, 
   LayoutDashboard, 
   Users, 
   Clock, 
@@ -19,41 +18,126 @@ import {
   Tag,
   Calendar,
   Archive,
-  UserCog
+  UserCog,
+  ChevronDown
 } from "lucide-react";
+import { Sidebar, SidebarBody, SidebarLink, useSidebar } from "@/components/ui/sidebar";
+import { motion, AnimatePresence } from "motion/react";
+import { cn } from "@/lib/utils";
 
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
-} from "@/components/ui/sidebar";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-
-// Type untuk nav items
-interface NavItem {
+interface MenuItem {
   title: string;
   url: string;
   icon: React.ComponentType<{ className?: string }>;
-  isActive?: boolean;
   items?: {
     title: string;
     url: string;
+    icon?: React.ComponentType<{ className?: string }>;
   }[];
 }
+
+interface ExpandableMenuProps {
+  item: MenuItem;
+  isActive: boolean;
+  isGroupActive: boolean;
+}
+
+const ExpandableMenu = ({ item, isActive, isGroupActive }: ExpandableMenuProps) => {
+  const { open, pinned } = useSidebar();
+  const pathname = usePathname();
+  const [expanded, setExpanded] = React.useState(isGroupActive);
+  const isExpanded = open || pinned;
+
+  React.useEffect(() => {
+    setExpanded(isGroupActive);
+  }, [isGroupActive]);
+
+  if (!item.items) {
+    return (
+      <SidebarLink
+        link={{
+          label: item.title,
+          href: item.url,
+          icon: <item.icon className={cn("w-5 h-5", isActive ? "text-primary" : "text-gray-600")} />
+        }}
+        className={cn(
+          "mb-1",
+          isActive ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"
+        )}
+      />
+    );
+  }
+
+  return (
+    <div className="mb-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={cn(
+          "w-full flex items-center justify-start gap-3 py-2 px-2 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors",
+          isGroupActive ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"
+        )}
+      >
+        <div className="flex-shrink-0">
+          <item.icon className={cn("w-5 h-5", isGroupActive ? "text-primary" : "text-gray-600")} />
+        </div>
+        
+        <motion.span
+          animate={{
+            display: isExpanded ? "inline-block" : "none",
+            opacity: isExpanded ? 1 : 0,
+          }}
+          className="text-sm font-medium flex-1 text-left"
+        >
+          {item.title}
+        </motion.span>
+        
+        <motion.div
+          animate={{
+            display: isExpanded ? "block" : "none",
+            opacity: isExpanded ? 1 : 0,
+            rotate: expanded ? 180 : 0,
+          }}
+          transition={{ duration: 0.2 }}
+        >
+          <ChevronDown className="w-4 h-4" />
+        </motion.div>
+      </button>
+
+      <AnimatePresence>
+        {expanded && isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="ml-8 mt-1 space-y-1">
+              {item.items.map((subItem) => {
+                const subActive = pathname === subItem.url || pathname.startsWith(subItem.url + "/");
+                return (
+                  <Link
+                    key={subItem.title}
+                    href={subItem.url}
+                    className={cn(
+                      "flex items-center gap-2 py-2 px-3 rounded-md text-sm transition-colors",
+                      subActive 
+                        ? "bg-primary/10 text-primary font-medium" 
+                        : "text-gray-600 hover:bg-gray-50"
+                    )}
+                  >
+                    {subItem.icon && <subItem.icon className="w-4 h-4" />}
+                    <span>{subItem.title}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -69,7 +153,7 @@ export function AppSidebar() {
   };
 
   // Menu items utama
-  const mainNavItems: NavItem[] = [
+  const mainNavItems: MenuItem[] = [
     {
       title: "Dashboard",
       url: "/dashboard",
@@ -83,10 +167,12 @@ export function AppSidebar() {
         {
           title: "Manajemen Karyawan",
           url: "/employee",
+          icon: UserCog,
         },
         {
           title: "Arsip Karyawan",
           url: "/employee/archive",
+          icon: Archive,
         }
       ]
     },
@@ -146,126 +232,101 @@ export function AppSidebar() {
     },
   ];
 
-  return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <div className="flex items-center gap-2">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <Building2 className="size-4" />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate typography-large">EMS System</span>
-                  <span className="truncate typography-subtle">Employee Management</span>
-                </div>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
+  const configurationItem: MenuItem = {
+    title: "Pengaturan",
+    url: "/configuration",
+    icon: Settings,
+    items: configItems,
+  };
 
-      <SidebarContent>
-        {/* Main Navigation Group */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Menu Utama</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  {item.items ? (
-                    // Menu with submenu (dropdown)
-                    <Collapsible defaultOpen={isGroupActive([item.url])}>
-                      <CollapsibleTrigger asChild>
-                        <SidebarMenuButton
-                          tooltip={item.title}
-                          isActive={isGroupActive([item.url])}
-                        >
-                          <item.icon className="size-4" />
-                          <span>{item.title}</span>
-                          <ChevronDown className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
-                        </SidebarMenuButton>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <SidebarMenuSub>
-                          {item.items.map((subItem) => (
-                            <SidebarMenuSubItem key={subItem.title}>
-                              <SidebarMenuSubButton asChild isActive={isActive(subItem.url)}>
-                                <Link href={subItem.url}>
-                                  {subItem.title === "Manajemen Karyawan" && <UserCog className="size-4" />}
-                                  {subItem.title === "Arsip Karyawan" && <Archive className="size-4" />}
-                                  <span>{subItem.title}</span>
-                                </Link>
-                              </SidebarMenuSubButton>
-                            </SidebarMenuSubItem>
-                          ))}
-                        </SidebarMenuSub>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ) : (
-                    // Regular menu item
-                    <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                      <Link href={item.url}>
-                        <item.icon className="size-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  )}
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {/* Configuration Group */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Konfigurasi</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <Collapsible defaultOpen={isGroupActive(["/configuration"])}>
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip="Konfigurasi"
-                      isActive={isGroupActive(["/configuration"])}
-                    >
-                      <Settings className="size-4" />
-                      <span>Pengaturan</span>
-                      <ChevronDown className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      {configItems.map((item) => (
-                        <SidebarMenuSubItem key={item.title}>
-                          <SidebarMenuSubButton asChild isActive={isActive(item.url)}>
-                            <Link href={item.url}>
-                              <item.icon className="size-4" />
-                              <span>{item.title}</span>
-                            </Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <div className="flex flex-col items-center gap-1 p-2 text-xs text-muted-foreground">
-              <div className="font-medium">EMS System v1.0.0</div>
-              <div>© 2024 Hak Cipta Dilindungi</div>
-            </div>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
+      return (
+    <Sidebar>
+      <SidebarBody className="justify-between gap-10 aceternity-sidebar sidebar-content">
+        <SidebarInner
+          mainNavItems={mainNavItems}
+          configurationItem={configurationItem}
+          isActive={isActive}
+          isGroupActive={isGroupActive}
+        />
+      </SidebarBody>
     </Sidebar>
+  );
+}
+
+interface SidebarInnerProps {
+  mainNavItems: MenuItem[];
+  configurationItem: MenuItem;
+  isActive: (url: string) => boolean;
+  isGroupActive: (urls: string[]) => boolean;
+}
+
+function SidebarInner({ mainNavItems, configurationItem, isActive, isGroupActive }: SidebarInnerProps) {
+  const { open, pinned } = useSidebar();
+  const isExpanded = open || pinned;
+
+  return (
+    <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6 h-14">
+        <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
+          <img src="/logo.ico" alt="Logo" className="w-8 h-8 object-contain" />
+        </div>
+        <motion.div
+          animate={{
+            display: isExpanded ? "block" : "none",
+            opacity: isExpanded ? 1 : 0,
+          }}
+          className="flex flex-col min-w-0"
+        >
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-white truncate">EMS System</h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Employee Management</p>
+        </motion.div>
+      </div>
+
+      {/* Main Navigation Section */}
+      <div className="space-y-1">
+        <motion.div
+          animate={{
+            display: isExpanded ? "block" : "none",
+            opacity: isExpanded ? 1 : 0,
+          }}
+          className="mb-4"
+        >
+          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-2">
+            Platform
+          </h3>
+        </motion.div>
+
+        {mainNavItems.map((item) => (
+          <ExpandableMenu
+                        key={item.title}
+            item={item}
+            isActive={isActive(item.url)}
+            isGroupActive={isGroupActive([item.url])}
+          />
+        ))}
+      </div>
+
+      {/* Configuration Section */}
+      <div className="space-y-1 mt-8">
+        <motion.div
+          animate={{
+            display: isExpanded ? "block" : "none",
+            opacity: isExpanded ? 1 : 0,
+          }}
+          className="mb-4"
+        >
+          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-2">
+            Configuration
+          </h3>
+        </motion.div>
+
+        <ExpandableMenu
+          item={configurationItem}
+          isActive={false}
+          isGroupActive={isGroupActive(['/configuration'])}
+        />
+      </div>
+    </div>
   );
 } 

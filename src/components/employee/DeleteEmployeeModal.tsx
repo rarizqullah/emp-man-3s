@@ -134,12 +134,22 @@ export function DeleteEmployeeModal({
         }
         
         if (result.success) {
-          console.log('Employee deleted successfully:', result);
+          console.log('✅ Employee archived successfully:', result);
           toast.success("Karyawan berhasil diarsipkan", {
             description: retryAttempt > 0 ? `Berhasil setelah ${retryAttempt + 1} percobaan` : undefined
           });
-          onSuccess();
+          
+          // Close modal first
           onOpenChange(false);
+          
+          // Show immediate feedback
+          toast.info("🔄 Memperbarui daftar karyawan...", { duration: 2000 });
+          
+          // Delay refresh to ensure database has processed the change
+          setTimeout(() => {
+            console.log('🔄 Refreshing employee list after archive...');
+            onSuccess();
+          }, 500);
         } else {
           throw new Error(result.error || "Gagal menghapus karyawan");
         }
