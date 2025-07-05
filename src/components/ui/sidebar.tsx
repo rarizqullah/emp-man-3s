@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import React, { useState, createContext, useContext } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { IconMenu2, IconX, IconPin, IconPinnedOff } from "@tabler/icons-react";
+import Link from "next/link";
 
 interface Links {
   label: string;
@@ -104,7 +105,7 @@ export const DesktopSidebar = ({
     <>
       <motion.div
         className={cn(
-          "h-full px-4 py-4 hidden md:flex md:flex-col bg-white dark:bg-neutral-800 w-[280px] shrink-0 border-r border-neutral-200 dark:border-neutral-700",
+          "h-full px-4 py-2 hidden md:flex md:flex-col bg-white dark:bg-neutral-800 w-[280px] shrink-0 border-r border-neutral-200 dark:border-neutral-700",
           className
         )}
         animate={{
@@ -114,8 +115,8 @@ export const DesktopSidebar = ({
         onMouseLeave={handleMouseLeave}
         {...props}
       >
-        {/* Pin/Unpin Button */}
-        <div className="flex justify-end mb-2">
+        {/* Pin/Unpin Button - dengan reduced margin */}
+        <div className="flex justify-end mb-1">
           <motion.button
             onClick={() => setPinned(!pinned)}
             className={cn(
@@ -219,7 +220,7 @@ export const SidebarLink = ({
   const isExpanded = open || pinned;
   
   return (
-    <a
+    <Link
       href={link.href}
       className={cn(
         "flex items-center justify-start gap-3 group/sidebar py-2 px-2 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors",
@@ -241,6 +242,6 @@ export const SidebarLink = ({
         {link.label}
       </motion.span>
       {children}
-    </a>
+    </Link>
   );
 };

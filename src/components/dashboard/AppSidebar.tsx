@@ -241,7 +241,7 @@ export function AppSidebar() {
 
       return (
     <Sidebar>
-      <SidebarBody className="justify-between gap-10 aceternity-sidebar sidebar-content">
+      <SidebarBody className="justify-between gap-0 aceternity-sidebar sidebar-content">
         <SidebarInner
           mainNavItems={mainNavItems}
           configurationItem={configurationItem}
@@ -266,8 +266,8 @@ function SidebarInner({ mainNavItems, configurationItem, isActive, isGroupActive
 
   return (
     <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6 h-14">
+      {/* Header - dengan reduced spacing */}
+      <div className="flex items-center gap-3 mb-4 h-12">
         <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
           <img src="/logo.ico" alt="Logo" className="w-8 h-8 object-contain" />
         </div>
@@ -278,8 +278,8 @@ function SidebarInner({ mainNavItems, configurationItem, isActive, isGroupActive
           }}
           className="flex flex-col min-w-0"
         >
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-white truncate">EMS System</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Employee Management</p>
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-white truncate">EMS</h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">PT. Sekawan Sahabat Sejati</p>
         </motion.div>
       </div>
 
@@ -299,7 +299,7 @@ function SidebarInner({ mainNavItems, configurationItem, isActive, isGroupActive
 
         {mainNavItems.map((item) => (
           <ExpandableMenu
-                        key={item.title}
+            key={item.title}
             item={item}
             isActive={isActive(item.url)}
             isGroupActive={isGroupActive([item.url])}

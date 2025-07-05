@@ -21,7 +21,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { DateRangePicker } from "@/components/salary/date-range-picker";
 import { SalaryDatePicker } from "@/components/salary/salary-date-picker";
 import { ExportMenu } from "@/components/salary/export-menu";
 import { SalarySlipPDF } from "@/components/salary/salary-slip-pdf";
@@ -298,7 +297,7 @@ export default function SalaryPageUpdated() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Penggajian</h1>
+          <h1 className="typography-h1">Penggajian</h1>
           <p className="text-muted-foreground">
             Kelola data gaji dan pembayaran karyawan
           </p>

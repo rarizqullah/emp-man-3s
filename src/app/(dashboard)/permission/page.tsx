@@ -784,10 +784,10 @@ export default function EmployeePermissionPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Kelola Izin & Cuti</h1>
+          <h1 className="typography-h1">Kelola Izin & Cuti</h1>
           <p className="text-muted-foreground">
             Lihat dan kelola semua izin yang telah diajukan
           </p>
