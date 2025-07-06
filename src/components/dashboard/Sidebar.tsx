@@ -16,8 +16,7 @@ import {
   UserCheck,
   ShiftIcon,
   DollarSign,
-  Gift,
-  Tag
+  Gift
 } from "lucide-react";
 
 import {
@@ -123,14 +122,9 @@ export function AppSidebar() {
       icon: DollarSign,
     },
     {
-      title: "Tipe Tunjangan",
-      url: "/configuration/allowance-types",
+      title: "Tunjangan",
+      url: "/configuration/allowances",
       icon: Gift,
-    },
-    {
-      title: "Nilai Tunjangan",
-      url: "/configuration/allowance-values",
-      icon: Tag,
     },
   ];
 
