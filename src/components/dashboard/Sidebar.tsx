@@ -16,8 +16,7 @@ import {
   UserCheck,
   ShiftIcon,
   DollarSign,
-  Gift,
-  Tag
+  Gift
 } from "lucide-react";
 
 import {
@@ -123,14 +122,9 @@ export function AppSidebar() {
       icon: DollarSign,
     },
     {
-      title: "Tipe Tunjangan",
-      url: "/configuration/allowance-types",
+      title: "Tunjangan",
+      url: "/configuration/allowances",
       icon: Gift,
-    },
-    {
-      title: "Nilai Tunjangan",
-      url: "/configuration/allowance-values",
-      icon: Tag,
     },
   ];
 
@@ -145,8 +139,8 @@ export function AppSidebar() {
                   <Building2 className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">EMS System</span>
-                  <span className="truncate text-xs">Employee Management</span>
+                  <span className="truncate font-semibold">Employee Management System</span>
+                  <span className="truncate text-xs">PT. Sekawan Sahabat Sejati</span>
                 </div>
               </div>
             </SidebarMenuButton>

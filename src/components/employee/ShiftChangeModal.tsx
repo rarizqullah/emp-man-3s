@@ -21,8 +21,7 @@ import {
   Select, 
   SelectContent, 
   SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+  SelectTrigger 
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,8 +233,23 @@ export function ShiftChangeModal({
                     disabled={isLoading || filteredShifts.length === 0}
                   >
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder={isLoading ? "Memuat shift..." : "Pilih shift baru"} />
+                      <SelectTrigger className="w-full border border-gray-300 rounded-md p-3 hover:border-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-left">
+                        <div className="flex items-center justify-between w-full">
+                          <div>
+                            {selectedShift ? (
+                              <>
+                                <span className="block text-sm font-semibold text-gray-900">{selectedShift.name}</span>
+                                <span className="block text-xs text-gray-500">
+                                  {`${formatTimeOnly(selectedShift.mainWorkStart || selectedShift.startTime)}${selectedShift.subDepartment?.name ? ` - ${selectedShift.subDepartment.name}` : ''}`}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="block text-sm font-semibold text-gray-900">
+                                {isLoading ? 'Memuat shift...' : 'Pilih shift baru'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>

@@ -54,11 +54,7 @@ export async function calculateEmployeeSalary(input: SalaryCalculationInput): Pr
       shift: true,
       employeeAllowances: {
         include: {
-          allowanceValue: {
-            include: {
-              allowanceType: true
-            }
-          }
+          allowance: true
         }
       }
     }
@@ -107,13 +103,23 @@ export async function calculateEmployeeSalary(input: SalaryCalculationInput): Pr
   // Hitung gaji lembur mingguan
   const weeklyOvertimeSalary = totalWeeklyOvertimeHours * salaryRate.weeklyOvertimeRate;
 
-  // Hitung total tunjangan
-  const totalAllowances = employee.employeeAllowances.reduce((total, empAllowance) => {
-    return total + empAllowance.allowanceValue.value;
+  // Filter tunjangan yang aktif
+  const activeAllowances = employee.employeeAllowances.filter(ea => 
+    ea.isActive && ea.allowance.isActive
+  );
+
+  // Hitung total tunjangan perusahaan (tambahan)
+  const totalCompanyAllowances = activeAllowances.reduce((total, empAllowance) => {
+    return total + (empAllowance.allowance.companyAmount || 0);
   }, 0);
 
-  // Hitung total gaji
-  const totalSalary = baseSalary + overtimeSalary + weeklyOvertimeSalary + totalAllowances;
+  // Hitung total potongan tunjangan karyawan (dikurangi dari gaji)
+  const totalEmployeeAllowanceDeductions = activeAllowances.reduce((total, empAllowance) => {
+    return total + (empAllowance.allowance.employeeAmount || 0);
+  }, 0);
+
+  // Hitung total gaji (gaji pokok + lembur + tunjangan perusahaan - potongan tunjangan karyawan)
+  const totalSalary = baseSalary + overtimeSalary + weeklyOvertimeSalary + totalCompanyAllowances - totalEmployeeAllowanceDeductions;
 
   return {
     employeeId,
@@ -125,12 +131,13 @@ export async function calculateEmployeeSalary(input: SalaryCalculationInput): Pr
     baseSalary: Math.round(baseSalary),
     overtimeSalary: Math.round(overtimeSalary),
     weeklyOvertimeSalary: Math.round(weeklyOvertimeSalary),
-    totalAllowances: Math.round(totalAllowances),
+    totalAllowances: Math.round(totalCompanyAllowances - totalEmployeeAllowanceDeductions),
     totalSalary: Math.round(totalSalary),
     employee,
-    allowances: employee.employeeAllowances.map(empAllowance => ({
-      type: empAllowance.allowanceValue.allowanceType.name,
-      value: empAllowance.allowanceValue.value
+    allowances: activeAllowances.map(empAllowance => ({
+      type: empAllowance.allowance.name,
+      value: empAllowance.allowance.companyAmount || 0,
+      deduction: empAllowance.allowance.employeeAmount || 0
     }))
   };
 }
