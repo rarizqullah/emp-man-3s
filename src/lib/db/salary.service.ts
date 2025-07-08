@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 import { ContractType, PaymentStatus } from '@prisma/client';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTokenFromRequest, verifyToken } from '@/lib/jwt-client';
-import { prisma } from "@/lib/db/prisma";
+import { prisma } from '@/lib/db';
 import { PermissionStatus } from "@prisma/client";
 
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import { 
   Dialog, 
   DialogContent, 
@@ -1229,9 +1230,11 @@ export function AddEmployeeModal({
                       
                       {faceImage && (
                         <div className="relative w-full max-w-md mx-auto">
-                          <img 
+                          <Image 
                             src={faceImage} 
                             alt="Face preview" 
+                            width={400}
+                            height={300}
                             className="w-full h-auto border rounded-md" 
                             style={{ transform: 'scaleX(-1)' }} // Mirror effect
                           />

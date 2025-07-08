@@ -58,6 +58,15 @@ model Employee {
   shiftHistory       ShiftHistory[]
   warningHistory     WarningHistory[]
 
+  // Indexes untuk optimasi query
+  @@index([departmentId])
+  @@index([subDepartmentId])
+  @@index([positionId])
+  @@index([shiftId])
+  @@index([contractType])
+  @@index([warningStatus])
+  @@index([deletedAt])
+  @@index([contractEndDate])
   @@map("employees")
 }
 
@@ -149,6 +158,13 @@ model Attendance {
   latenessMessage      String?
   employee             Employee         @relation(fields: [employeeId], references: [id])
 
+  // Indexes untuk optimasi query absensi
+  @@index([employeeId])
+  @@index([attendanceDate])
+  @@index([employeeId, attendanceDate])
+  @@index([status])
+  @@index([isLate])
+  @@index([isAutoCutOff])
   @@map("attendances")
 }
 
@@ -170,6 +186,12 @@ model Salary {
   updatedAt            DateTime      @updatedAt
   employee             Employee      @relation(fields: [employeeId], references: [id])
 
+  // Indexes untuk optimasi query gaji
+  @@index([employeeId])
+  @@index([periodStart])
+  @@index([periodEnd])
+  @@index([paymentStatus])
+  @@index([employeeId, periodStart])
   @@map("salaries")
 }
 
@@ -236,6 +258,13 @@ model Permission {
   approvedBy      User?            @relation("ApprovedPermissions", fields: [approvedById], references: [id])
   user            User             @relation("UserPermissions", fields: [userId], references: [id], onDelete: Cascade)
 
+  // Indexes untuk optimasi query permission
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([approvedById])
   @@map("permissions")
 }
 

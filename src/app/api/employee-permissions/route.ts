@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { ensureDatabaseConnection, prisma } from '@/lib/db/prisma';
+import { ensureDatabaseConnection, prisma } from '@/lib/db';
 import { PermissionStatus, PermissionType } from '@prisma/client';
 
 // Schema validasi untuk permission karyawan

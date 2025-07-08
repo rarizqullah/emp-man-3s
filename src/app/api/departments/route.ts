@@ -5,6 +5,14 @@ import {
   createDepartment,
   searchDepartments
 } from '@/lib/db/department.service';
+import { withCache, invalidateCache } from '@/lib/utils/cache';
+import { logger, measurePerformance } from '@/lib/utils/logger';
+import { optimizedLogger } from '@/lib/utils/log-optimizer';
+import { safeResponse, safeErrorResponse } from '@/lib/utils/stream-handler';
+
+// Cache untuk 5 menit karena departemen jarang berubah
+export const revalidate = 300;
+export const dynamic = 'force-dynamic'; // Untuk user-specific data
 
 // Schema validasi untuk pembuatan departemen
 const departmentCreateSchema = z.object({
@@ -17,19 +25,41 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const search = url.searchParams.get('search');
     
-    if (search) {
-      const departments = await searchDepartments(search);
-      return NextResponse.json(departments);
-    }
+    // Optimized logging - no full data payload
+    optimizedLogger.debug('GET /api/departments', { search: search || 'none' });
     
-    const departments = await getAllDepartments();
-    return NextResponse.json(departments);
+    const startTime = Date.now();
+    const departments = await (async () => {
+      if (search) {
+        return await withCache(
+          `departments:search:${search}`,
+          () => searchDepartments(search),
+          180, // 3 minutes cache for search
+          '/api/departments'
+        );
+      }
+      
+      return await withCache(
+        'departments:all',
+        () => getAllDepartments(),
+        300, // 5 minutes cache for all departments
+        '/api/departments'
+      );
+    })();
+    
+    const duration = Date.now() - startTime;
+    optimizedLogger.performance(`Get departments${search ? ' (search)' : ''}`, duration, { 
+      count: departments.length,
+      search: search || null
+    });
+    
+    const response = safeResponse(departments);
+    // Cache di browser untuk 2 menit
+    response.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=300');
+    return response;
   } catch (error) {
-    console.error("Error fetching departments:", error);
-    return NextResponse.json(
-      { error: "Terjadi kesalahan saat mengambil data departemen" },
-      { status: 500 }
-    );
+    logger.error("Error fetching departments:", error);
+    return safeErrorResponse("Terjadi kesalahan saat mengambil data departemen", 500);
   }
 }
 
@@ -48,29 +78,24 @@ export async function POST(request: Request) {
     );
     
     if (exactMatch) {
-      return NextResponse.json(
-        { error: "Departemen dengan nama tersebut sudah ada" },
-        { status: 400 }
-      );
+      return safeErrorResponse("Departemen dengan nama tersebut sudah ada", 400);
     }
     
     // Buat departemen baru
     const department = await createDepartment(validatedData);
     
-    return NextResponse.json(department, { status: 201 });
+    // Invalidate cache after creating new department
+    invalidateCache.departments();
+    logger.info('Department cache invalidated after creation');
+    
+    return safeResponse(department, { status: 201 });
   } catch (error) {
     console.error('Gagal membuat departemen baru:', error);
     
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Validasi gagal", details: error.errors },
-        { status: 400 }
-      );
+      return safeErrorResponse("Validasi gagal", 400, { details: error.errors });
     }
     
-    return NextResponse.json(
-      { error: "Terjadi kesalahan saat membuat departemen" },
-      { status: 500 }
-    );
+    return safeErrorResponse("Terjadi kesalahan saat membuat departemen", 500);
   }
 } 

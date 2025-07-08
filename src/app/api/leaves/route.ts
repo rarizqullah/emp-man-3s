@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTokenFromRequest, verifyToken } from '@/lib/jwt-client';
 import { z } from 'zod';
-import { prisma } from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 import { PermissionStatus, PermissionType, Prisma } from '@prisma/client';
 
 // Schema validasi untuk pembuatan permission

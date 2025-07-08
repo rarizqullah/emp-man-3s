@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import prisma from '@/lib/db/prisma'; // Menggunakan import default
+import { prisma } from '@/lib/db'; // Menggunakan named import
 import { Role, ContractType, WarningStatus, Gender } from '@prisma/client';
-import { ensureDatabaseConnection } from '@/lib/db/prisma'; // Tambahkan import ini
+import { ensureDatabaseConnection } from '@/lib/db'; // Tambahkan import ini
 import crypto from 'crypto';
 
 // Schema validasi untuk membuat karyawan dan user secara bersamaan

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import * as allowanceService from '@/lib/db/allowance.service';
+import { logger, measurePerformance } from '@/lib/utils/logger';
+
+// Cache untuk 5 menit karena allowances jarang berubah
+export const revalidate = 300;
 
 // Schema validasi untuk membuat allowance baru
 const allowanceCreateSchema = z.object({
@@ -17,23 +21,27 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search');
     
-    console.log(`📋 GET request untuk allowances, search: ${search || 'none'}`);
+    logger.api('GET', '/api/allowances', { search: search || 'none' });
     
-    let allowances;
+    const allowances = await measurePerformance(
+      search ? `Search allowances: "${search}"` : 'Get all allowances',
+      async () => {
     if (search) {
-      allowances = await allowanceService.searchAllowances(search);
-      console.log(`🔍 Search hasil: ${allowances.length} items`);
+          return await allowanceService.searchAllowances(search);
     } else {
-      allowances = await allowanceService.getAllAllowances();
-      console.log(`📊 Total allowances: ${allowances.length} items`);
+          return await allowanceService.getAllAllowances();
+        }
     }
+    );
     
-    // Log untuk debugging
-    console.log(`✅ Returning allowances data:`, allowances.map(a => ({ id: a.id, name: a.name, isActive: a.isActive })));
+    logger.success(`Returning ${allowances.length} allowances`);
     
-    return NextResponse.json(allowances);
+    const response = NextResponse.json(allowances);
+    // Cache di browser untuk 2 menit
+    response.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=300');
+    return response;
   } catch (error) {
-    console.error('❌ Gagal mengambil data tunjangan:', error);
+    logger.error('Gagal mengambil data tunjangan:', error);
     return NextResponse.json(
       { 
         error: 'Terjadi kesalahan saat mengambil data tunjangan',

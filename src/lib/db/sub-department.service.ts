@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 
 // Tipe data untuk parameter sub-department baru
 export interface SubDepartmentCreateInput {
