@@ -9,7 +9,6 @@ CREATE TABLE "allowances" (
     "companyAmount" DOUBLE PRECISION,
     "employeePercentage" DOUBLE PRECISION,
     "employeeAmount" DOUBLE PRECISION,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -35,9 +34,9 @@ DROP TABLE "allowance_types";
 DROP TABLE "allowance_values";
 
 -- AlterTable
-ALTER TABLE "employee_allowances" DROP COLUMN "allowanceValueId",
-ADD COLUMN     "allowanceId" TEXT NOT NULL,
-ADD COLUMN     "isActive" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "employee_allowances" DROP COLUMN "allowanceValueId";
+ALTER TABLE "employee_allowances" ADD "allowanceId" TEXT NOT NULL;
+ALTER TABLE "employee_allowances" ADD "isActive" BIT NOT NULL DEFAULT 1;
 
 -- AddForeignKey
 ALTER TABLE "employee_allowances" ADD CONSTRAINT "employee_allowances_allowanceId_fkey" FOREIGN KEY ("allowanceId") REFERENCES "allowances"("id") ON DELETE CASCADE ON UPDATE CASCADE;
