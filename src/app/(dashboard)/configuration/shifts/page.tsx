@@ -4,14 +4,12 @@ import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { format } from 'date-fns'
-import { id } from 'date-fns/locale'
 import { useToast } from '@/components/ui/use-toast'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Search, Trash2, Clock } from 'lucide-react'
 import {
   Form,
   FormControl,
@@ -72,10 +70,11 @@ interface Shift {
       name: string
     }
   } | null
-  mainWorkStart: string
-  mainWorkEnd: string
+  mainWorkStart: string | null
+  mainWorkEnd: string | null
   lunchBreakStart: string | null
   lunchBreakEnd: string | null
+  workingDays: string[]
   regularOvertimeStart: string | null
   regularOvertimeEnd: string | null
   weeklyOvertimeStart: string | null
@@ -88,13 +87,18 @@ interface Shift {
 }
 
 // Formatter untuk menampilkan waktu
-const formatTime = (dateString: string) => {
+const formatTime = (dateString: string | null) => {
+  if (!dateString) return '-';
+  
   try {
-    const date = new Date(dateString)
-    return format(date, 'HH:mm', { locale: id })
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('id-ID', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false 
+    });
   } catch {
-    // Ignore error dan return placeholder
-    return '-'
+    return '-';
   }
 }
 
@@ -108,20 +112,31 @@ const formatShiftType = (type: 'NON_SHIFT' | 'SHIFT_A' | 'SHIFT_B') => {
   return types[type] || type
 }
 
-// Schema validasi untuk form shift
+// Schema validasi untuk form shift - dimodifikasi untuk Non-Shift
 const shiftFormSchema = z.object({
   name: z.string().min(1, { message: "Nama shift wajib diisi" }),
   shiftType: z.enum(['NON_SHIFT', 'SHIFT_A', 'SHIFT_B']),
   subDepartmentId: z.string().min(1, { message: "Sub-departemen wajib dipilih" }),
-  mainWorkStart: z.string().min(1, { message: "Waktu mulai kerja wajib diisi" }),
-  mainWorkEnd: z.string().min(1, { message: "Waktu akhir kerja wajib diisi" }),
-  lunchBreakStart: z.string().optional().nullable(),
-  lunchBreakEnd: z.string().optional().nullable(),
-  regularOvertimeStart: z.string().optional().nullable(),
-  regularOvertimeEnd: z.string().optional().nullable(),
-  weeklyOvertimeStart: z.string().optional().nullable(),
-  weeklyOvertimeEnd: z.string().optional().nullable(),
-})
+  mainWorkStart: z.string().optional(),
+  mainWorkEnd: z.string().optional(),
+  lunchBreakStart: z.string().optional(),
+  lunchBreakEnd: z.string().optional(),
+  workingDays: z.array(z.string()).default([]),
+  regularOvertimeStart: z.string().optional(),
+  regularOvertimeEnd: z.string().optional(),
+  weeklyOvertimeStart: z.string().optional(),
+  weeklyOvertimeEnd: z.string().optional(),
+}).refine((data) => {
+  // Untuk tipe shift selain NON_SHIFT, mainWorkStart dan mainWorkEnd wajib diisi
+  if (data.shiftType !== 'NON_SHIFT') {
+    return data.mainWorkStart && data.mainWorkStart.trim() !== '' && 
+           data.mainWorkEnd && data.mainWorkEnd.trim() !== '';
+  }
+  return true;
+}, {
+  message: "Jam kerja wajib diisi untuk tipe shift ini",
+  path: ["mainWorkStart"]
+});
 
 // Tipe data untuk form shift
 type ShiftFormValues = z.infer<typeof shiftFormSchema>
@@ -148,12 +163,32 @@ export default function ShiftsPage() {
       mainWorkEnd: '',
       lunchBreakStart: '',
       lunchBreakEnd: '',
+      workingDays: [],
       regularOvertimeStart: '',
       regularOvertimeEnd: '',
       weeklyOvertimeStart: '',
       weeklyOvertimeEnd: '',
     }
   })
+  
+  // Watch untuk perubahan shiftType
+  const watchedShiftType = form.watch('shiftType')
+  
+  // Effect untuk membersihkan field yang tidak diperlukan saat tipe shift berubah
+  useEffect(() => {
+    if (watchedShiftType === 'NON_SHIFT') {
+      // Reset semua field waktu ke nilai kosong untuk NON_SHIFT
+      form.setValue('mainWorkStart', '')
+      form.setValue('mainWorkEnd', '')
+      form.setValue('lunchBreakStart', '')
+      form.setValue('lunchBreakEnd', '')
+      form.setValue('workingDays', [])
+      form.setValue('regularOvertimeStart', '')
+      form.setValue('regularOvertimeEnd', '')
+      form.setValue('weeklyOvertimeStart', '')
+      form.setValue('weeklyOvertimeEnd', '')
+    }
+  }, [watchedShiftType, form])
   
   const { toast } = useToast()
   
@@ -242,13 +277,13 @@ export default function ShiftsPage() {
   
   // Helper untuk menangani nilai input waktu
   const handleTimeInputValue = (value: string | null | undefined): string => {
-    if (!value) return '';
+    if (!value || value === 'undefined') return '';
     return value;
   }
   
   // Format waktu untuk API
   const formatTimeToISO = (timeString: string | null | undefined) => {
-    if (!timeString) return null;
+    if (!timeString || timeString.trim() === '') return null;
     
     const [hours, minutes] = timeString.split(':').map(Number);
     
@@ -265,17 +300,48 @@ export default function ShiftsPage() {
   // Menangani submit form tambah shift
   const handleAddShiftSubmit = async (data: ShiftFormValues) => {
     try {
-      // Konversi waktu untuk API
-      const payload = {
-        ...data,
-        mainWorkStart: formatTimeToISO(data.mainWorkStart),
-        mainWorkEnd: formatTimeToISO(data.mainWorkEnd),
-        lunchBreakStart: formatTimeToISO(data.lunchBreakStart || null),
-        lunchBreakEnd: formatTimeToISO(data.lunchBreakEnd || null),
-        regularOvertimeStart: formatTimeToISO(data.regularOvertimeStart || null),
-        regularOvertimeEnd: formatTimeToISO(data.regularOvertimeEnd || null),
-        weeklyOvertimeStart: formatTimeToISO(data.weeklyOvertimeStart || null),
-        weeklyOvertimeEnd: formatTimeToISO(data.weeklyOvertimeEnd || null),
+      // Konversi waktu untuk API berdasarkan tipe shift
+      const payload: {
+        name: string;
+        shiftType: 'NON_SHIFT' | 'SHIFT_A' | 'SHIFT_B';
+        subDepartmentId: string;
+        mainWorkStart?: string | null;
+        mainWorkEnd?: string | null;
+        lunchBreakStart?: string | null;
+        lunchBreakEnd?: string | null;
+        workingDays?: string[];
+        regularOvertimeStart?: string | null;
+        regularOvertimeEnd?: string | null;
+        weeklyOvertimeStart?: string | null;
+        weeklyOvertimeEnd?: string | null;
+      } = {
+        name: data.name,
+        shiftType: data.shiftType,
+        subDepartmentId: data.subDepartmentId,
+      }
+      
+      // Hanya tambahkan field waktu jika bukan NON_SHIFT
+      if (data.shiftType !== 'NON_SHIFT') {
+        payload.mainWorkStart = formatTimeToISO(data.mainWorkStart)
+        payload.mainWorkEnd = formatTimeToISO(data.mainWorkEnd)
+        payload.lunchBreakStart = formatTimeToISO(data.lunchBreakStart)
+        payload.lunchBreakEnd = formatTimeToISO(data.lunchBreakEnd)
+        payload.workingDays = data.workingDays || []
+        payload.regularOvertimeStart = formatTimeToISO(data.regularOvertimeStart)
+        payload.regularOvertimeEnd = formatTimeToISO(data.regularOvertimeEnd)
+        payload.weeklyOvertimeStart = formatTimeToISO(data.weeklyOvertimeStart)
+        payload.weeklyOvertimeEnd = formatTimeToISO(data.weeklyOvertimeEnd)
+      } else {
+        // Untuk NON_SHIFT, set field waktu ke null
+        payload.mainWorkStart = null
+        payload.mainWorkEnd = null
+        payload.lunchBreakStart = null
+        payload.lunchBreakEnd = null
+        payload.workingDays = []
+        payload.regularOvertimeStart = null
+        payload.regularOvertimeEnd = null
+        payload.weeklyOvertimeStart = null
+        payload.weeklyOvertimeEnd = null
       }
       
       const response = await fetch('/api/shifts', {
@@ -312,21 +378,34 @@ export default function ShiftsPage() {
   const handleEditShift = (shift: Shift) => {
     setCurrentShift(shift)
     
-    // Format tanggal untuk input time
-    const mainWorkStart = formatTime(shift.mainWorkStart)
-    const mainWorkEnd = formatTime(shift.mainWorkEnd)
+    // Helper function untuk konversi time ke format HH:mm untuk input
+    const formatTimeForInput = (dateString: string | null): string => {
+      if (!dateString) return '';
+      
+      try {
+        const date = new Date(dateString);
+        return date.toLocaleTimeString('en-US', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: false 
+        });
+      } catch {
+        return '';
+      }
+    }
     
     form.setValue('name', shift.name)
     form.setValue('shiftType', shift.shiftType)
     form.setValue('subDepartmentId', shift.subDepartmentId || '')
-    form.setValue('mainWorkStart', mainWorkStart)
-    form.setValue('mainWorkEnd', mainWorkEnd)
-    form.setValue('lunchBreakStart', handleTimeInputValue(shift.lunchBreakStart ? formatTime(shift.lunchBreakStart) : null))
-    form.setValue('lunchBreakEnd', handleTimeInputValue(shift.lunchBreakEnd ? formatTime(shift.lunchBreakEnd) : null))
-    form.setValue('regularOvertimeStart', handleTimeInputValue(shift.regularOvertimeStart ? formatTime(shift.regularOvertimeStart) : null))
-    form.setValue('regularOvertimeEnd', handleTimeInputValue(shift.regularOvertimeEnd ? formatTime(shift.regularOvertimeEnd) : null))
-    form.setValue('weeklyOvertimeStart', handleTimeInputValue(shift.weeklyOvertimeStart ? formatTime(shift.weeklyOvertimeStart) : null))
-    form.setValue('weeklyOvertimeEnd', handleTimeInputValue(shift.weeklyOvertimeEnd ? formatTime(shift.weeklyOvertimeEnd) : null))
+    form.setValue('mainWorkStart', formatTimeForInput(shift.mainWorkStart))
+    form.setValue('mainWorkEnd', formatTimeForInput(shift.mainWorkEnd))
+    form.setValue('lunchBreakStart', formatTimeForInput(shift.lunchBreakStart))
+    form.setValue('lunchBreakEnd', formatTimeForInput(shift.lunchBreakEnd))
+    form.setValue('workingDays', shift.workingDays || [])
+    form.setValue('regularOvertimeStart', formatTimeForInput(shift.regularOvertimeStart))
+    form.setValue('regularOvertimeEnd', formatTimeForInput(shift.regularOvertimeEnd))
+    form.setValue('weeklyOvertimeStart', formatTimeForInput(shift.weeklyOvertimeStart))
+    form.setValue('weeklyOvertimeEnd', formatTimeForInput(shift.weeklyOvertimeEnd))
     
     setIsEditDialogOpen(true)
   }
@@ -336,17 +415,48 @@ export default function ShiftsPage() {
     if (!currentShift) return
     
     try {
-      // Konversi waktu untuk API
-      const payload = {
-        ...data,
-        mainWorkStart: formatTimeToISO(data.mainWorkStart),
-        mainWorkEnd: formatTimeToISO(data.mainWorkEnd),
-        lunchBreakStart: formatTimeToISO(data.lunchBreakStart || null),
-        lunchBreakEnd: formatTimeToISO(data.lunchBreakEnd || null),
-        regularOvertimeStart: formatTimeToISO(data.regularOvertimeStart || null),
-        regularOvertimeEnd: formatTimeToISO(data.regularOvertimeEnd || null),
-        weeklyOvertimeStart: formatTimeToISO(data.weeklyOvertimeStart || null),
-        weeklyOvertimeEnd: formatTimeToISO(data.weeklyOvertimeEnd || null),
+      // Konversi waktu untuk API berdasarkan tipe shift
+      const payload: {
+        name: string;
+        shiftType: 'NON_SHIFT' | 'SHIFT_A' | 'SHIFT_B';
+        subDepartmentId: string;
+        mainWorkStart?: string | null;
+        mainWorkEnd?: string | null;
+        lunchBreakStart?: string | null;
+        lunchBreakEnd?: string | null;
+        workingDays?: string[];
+        regularOvertimeStart?: string | null;
+        regularOvertimeEnd?: string | null;
+        weeklyOvertimeStart?: string | null;
+        weeklyOvertimeEnd?: string | null;
+      } = {
+        name: data.name,
+        shiftType: data.shiftType,
+        subDepartmentId: data.subDepartmentId,
+      }
+      
+      // Hanya tambahkan field waktu jika bukan NON_SHIFT
+      if (data.shiftType !== 'NON_SHIFT') {
+        payload.mainWorkStart = formatTimeToISO(data.mainWorkStart)
+        payload.mainWorkEnd = formatTimeToISO(data.mainWorkEnd)
+        payload.lunchBreakStart = formatTimeToISO(data.lunchBreakStart)
+        payload.lunchBreakEnd = formatTimeToISO(data.lunchBreakEnd)
+        payload.workingDays = data.workingDays || []
+        payload.regularOvertimeStart = formatTimeToISO(data.regularOvertimeStart)
+        payload.regularOvertimeEnd = formatTimeToISO(data.regularOvertimeEnd)
+        payload.weeklyOvertimeStart = formatTimeToISO(data.weeklyOvertimeStart)
+        payload.weeklyOvertimeEnd = formatTimeToISO(data.weeklyOvertimeEnd)
+      } else {
+        // Untuk NON_SHIFT, set field waktu ke null
+        payload.mainWorkStart = null
+        payload.mainWorkEnd = null
+        payload.lunchBreakStart = null
+        payload.lunchBreakEnd = null
+        payload.workingDays = []
+        payload.regularOvertimeStart = null
+        payload.regularOvertimeEnd = null
+        payload.weeklyOvertimeStart = null
+        payload.weeklyOvertimeEnd = null
       }
       
       const response = await fetch(`/api/shifts/${currentShift.id}`, {
@@ -417,20 +527,102 @@ export default function ShiftsPage() {
     }
   }
   
+  // Fungsi untuk memperbarui jam istirahat shift yang kosong
+  const handleUpdateBreakTimes = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/shifts/update-break-times', {
+        method: 'POST',
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Gagal memperbarui jam istirahat')
+      }
+      
+      const result = await response.json()
+      
+      // Refresh data shift
+      await fetchShifts()
+      
+      toast.success(`Berhasil memperbarui ${result.updates?.length || 0} shift dengan jam istirahat`)
+    } catch (error: unknown) {
+      console.error('Error:', error)
+      if (error instanceof Error) {
+        toast.error(error.message || 'Gagal memperbarui jam istirahat')
+      } else {
+        toast.error('Gagal memperbarui jam istirahat')
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Fungsi untuk memperbarui hari kerja shift yang kosong
+  const handleUpdateWorkingDays = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/shifts/update-working-days', {
+        method: 'POST',
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Gagal memperbarui hari kerja')
+      }
+      
+      const result = await response.json()
+      
+      // Refresh data shift
+      await fetchShifts()
+      
+      toast.success(`Berhasil memperbarui ${result.updates?.length || 0} shift dengan hari kerja default`)
+    } catch (error: unknown) {
+      console.error('Error:', error)
+      if (error instanceof Error) {
+        toast.error(error.message || 'Gagal memperbarui hari kerja')
+      } else {
+        toast.error('Gagal memperbarui hari kerja')
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+  
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <div className="space-y-1">
-            <CardTitle>Konfigurasi Shift</CardTitle>
-            <CardDescription>
-              Kelola pengaturan shift untuk berbagai sub-departemen
-            </CardDescription>
-          </div>
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="typography-h1">Konfigurasi Shift</h1>
+          <p className="typography-muted mt-2">Kelola pengaturan shift untuk berbagai sub-departemen</p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={handleUpdateBreakTimes}
+            disabled={isLoading}
+          >
+            <Clock className="mr-2 h-4 w-4" />
+            Perbaiki Jam Istirahat
+          </Button>
+          <Button 
+            variant="outline"
+            onClick={handleUpdateWorkingDays}
+            disabled={isLoading}
+          >
+            <Clock className="mr-2 h-4 w-4" />
+            Set Hari Kerja
+          </Button>
           <Button onClick={() => setIsAddDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Tambah Shift
           </Button>
+        </div>
+      </div>
+      
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="typography-h3">Daftar Shift</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center space-x-2 mb-4">
@@ -485,6 +677,7 @@ export default function ShiftsPage() {
                     <TableHead>Departemen</TableHead>
                     <TableHead>Jam Kerja Pokok</TableHead>
                     <TableHead>Jam Istirahat</TableHead>
+                    <TableHead>Hari Kerja</TableHead>
                     <TableHead>Jam Lembur Reguler</TableHead>
                     <TableHead>Jam Lembur Mingguan</TableHead>
                     <TableHead className="text-right">Aksi</TableHead>
@@ -498,11 +691,18 @@ export default function ShiftsPage() {
                       <TableCell>{shift.subDepartment?.name || '-'}</TableCell>
                       <TableCell>{shift.subDepartment?.department?.name || '-'}</TableCell>
                       <TableCell>
-                        {formatTime(shift.mainWorkStart)} - {formatTime(shift.mainWorkEnd)}
+                        {shift.mainWorkStart && shift.mainWorkEnd ? 
+                          `${formatTime(shift.mainWorkStart)} - ${formatTime(shift.mainWorkEnd)}` : 
+                          '-'}
                       </TableCell>
                       <TableCell>
                         {shift.lunchBreakStart && shift.lunchBreakEnd ? 
                           `${formatTime(shift.lunchBreakStart)} - ${formatTime(shift.lunchBreakEnd)}` : 
+                          '-'}
+                      </TableCell>
+                      <TableCell>
+                        {shift.workingDays && shift.workingDays.length > 0 ? 
+                          shift.workingDays.join(', ') : 
                           '-'}
                       </TableCell>
                       <TableCell>
@@ -623,169 +823,207 @@ export default function ShiftsPage() {
                 />
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="mainWorkStart"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Mulai Kerja</FormLabel>
-                      <FormControl>
-                        <Input type="time" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="mainWorkEnd"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Selesai Kerja</FormLabel>
-                      <FormControl>
-                        <Input type="time" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="lunchBreakStart"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Mulai Istirahat</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="lunchBreakEnd"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Selesai Istirahat</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="regularOvertimeStart"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Mulai Lembur Reguler</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="regularOvertimeEnd"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Selesai Lembur Reguler</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="weeklyOvertimeStart"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Mulai Lembur Mingguan</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="weeklyOvertimeEnd"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Selesai Lembur Mingguan</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              {/* Tampilkan field jam kerja hanya jika bukan NON_SHIFT */}
+              {watchedShiftType !== 'NON_SHIFT' && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="mainWorkStart"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Mulai Kerja</FormLabel>
+                          <FormControl>
+                            <Input type="time" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="mainWorkEnd"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Selesai Kerja</FormLabel>
+                          <FormControl>
+                            <Input type="time" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="lunchBreakStart"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Mulai Istirahat</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="lunchBreakEnd"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Selesai Istirahat</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <FormField
+                    control={form.control}
+                    name="workingDays"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Hari Kerja</FormLabel>
+                        <FormControl>
+                          <div className="grid grid-cols-7 gap-2">
+                            {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map((day) => (
+                              <label key={day} className="flex items-center space-x-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={field.value?.includes(day) || false}
+                                  onChange={(e) => {
+                                    const currentValue = field.value || [];
+                                    if (e.target.checked) {
+                                      field.onChange([...currentValue, day]);
+                                    } else {
+                                      field.onChange(currentValue.filter((d: string) => d !== day));
+                                    }
+                                  }}
+                                  className="rounded border-gray-300"
+                                />
+                                <span className="text-xs">{day}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="regularOvertimeStart"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Mulai Lembur Reguler</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="regularOvertimeEnd"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Selesai Lembur Reguler</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="weeklyOvertimeStart"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Mulai Lembur Mingguan</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="weeklyOvertimeEnd"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Selesai Lembur Mingguan</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </>
+              )}
               
               <DialogFooter>
                 <Button 
@@ -880,169 +1118,207 @@ export default function ShiftsPage() {
                 />
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="mainWorkStart"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Mulai Kerja</FormLabel>
-                      <FormControl>
-                        <Input type="time" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="mainWorkEnd"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Selesai Kerja</FormLabel>
-                      <FormControl>
-                        <Input type="time" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="lunchBreakStart"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Mulai Istirahat</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="lunchBreakEnd"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Selesai Istirahat</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="regularOvertimeStart"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Mulai Lembur Reguler</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="regularOvertimeEnd"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Selesai Lembur Reguler</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="weeklyOvertimeStart"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Mulai Lembur Mingguan</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="weeklyOvertimeEnd"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jam Selesai Lembur Mingguan</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={handleTimeInputValue(field.value)}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={field.disabled}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              {/* Tampilkan field jam kerja hanya jika bukan NON_SHIFT */}
+              {watchedShiftType !== 'NON_SHIFT' && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="mainWorkStart"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Mulai Kerja</FormLabel>
+                          <FormControl>
+                            <Input type="time" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="mainWorkEnd"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Selesai Kerja</FormLabel>
+                          <FormControl>
+                            <Input type="time" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="lunchBreakStart"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Mulai Istirahat</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="lunchBreakEnd"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Selesai Istirahat</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <FormField
+                    control={form.control}
+                    name="workingDays"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Hari Kerja</FormLabel>
+                        <FormControl>
+                          <div className="grid grid-cols-7 gap-2">
+                            {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map((day) => (
+                              <label key={day} className="flex items-center space-x-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={field.value?.includes(day) || false}
+                                  onChange={(e) => {
+                                    const currentValue = field.value || [];
+                                    if (e.target.checked) {
+                                      field.onChange([...currentValue, day]);
+                                    } else {
+                                      field.onChange(currentValue.filter((d: string) => d !== day));
+                                    }
+                                  }}
+                                  className="rounded border-gray-300"
+                                />
+                                <span className="text-xs">{day}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="regularOvertimeStart"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Mulai Lembur Reguler</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="regularOvertimeEnd"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Selesai Lembur Reguler</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="weeklyOvertimeStart"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Mulai Lembur Mingguan</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="weeklyOvertimeEnd"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Jam Selesai Lembur Mingguan</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={handleTimeInputValue(field.value)}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              disabled={field.disabled}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </>
+              )}
               
               <DialogFooter>
                 <Button 

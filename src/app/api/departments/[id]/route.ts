@@ -15,10 +15,8 @@ const departmentUpdateSchema = z.object({
 });
 
 // Fungsi untuk mendapatkan departemen berdasarkan ID
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id;
     
@@ -42,10 +40,8 @@ export async function GET(
 }
 
 // Fungsi untuk memperbarui departemen
-export async function PUT(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id;
     const data = await request.json();
@@ -98,10 +94,8 @@ export async function PUT(
 }
 
 // Fungsi untuk menghapus departemen
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id;
     

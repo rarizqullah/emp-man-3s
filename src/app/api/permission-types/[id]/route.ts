@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import * as z from "zod"
 import { ZodError } from "zod"
 import { PermissionType } from "@prisma/client"
-import { prisma } from "@/lib/db/prisma"
+import { prisma } from '@/lib/db';
 
 // Skema validasi untuk pembaruan jenis izin
 const updatePermissionTypeSchema = z.object({
@@ -14,10 +14,8 @@ const updatePermissionTypeSchema = z.object({
 /**
  * GET: Mendapatkan detail jenis izin berdasarkan ID
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id
     
@@ -71,10 +69,8 @@ export async function GET(
 /**
  * PUT: Memperbarui jenis izin berdasarkan ID
  */
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id
     
@@ -136,10 +132,8 @@ export async function PUT(
 /**
  * DELETE: Menghapus jenis izin berdasarkan ID
  */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id
     

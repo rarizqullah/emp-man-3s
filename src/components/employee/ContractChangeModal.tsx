@@ -4,8 +4,7 @@ import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { format } from "date-fns";
-import { CalendarIcon, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -34,13 +33,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
 
 // Schema validasi untuk form
 const contractChangeSchema = z.object({
@@ -48,10 +40,10 @@ const contractChangeSchema = z.object({
     required_error: "Silakan pilih tipe kontrak",
   }),
   contractNumber: z.string().optional().nullable(),
-  startDate: z.date({
+  startDate: z.string({
     required_error: "Tanggal mulai kontrak harus diisi",
   }),
-  endDate: z.date().optional().nullable(),
+  endDate: z.string().optional().nullable(),
   status: z.string({
     required_error: "Status kontrak harus dipilih",
   }),
@@ -88,8 +80,8 @@ export function ContractChangeModal({
     defaultValues: {
       contractType: currentContractType === "Permanen" ? "PERMANENT" : "TRAINING",
       contractNumber: "",
-      startDate: new Date(),
-      endDate: null,
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: "",
       status: "ACTIVE",
       notes: "",
     },
@@ -102,44 +94,42 @@ export function ContractChangeModal({
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      setIsSubmitting(true);
-      
-      // Jika ada handler onSubmit dari parent
-      if (onSubmit) {
-        await onSubmit(data, employeeId);
-      } else {
-        // Default behavior - langsung kirim ke API
-        const response = await fetch(`/api/employees/${employeeId}/contract-status`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(data),
-        });
+      // Konversi string date ke Date object untuk API
+      const formattedData = {
+        ...data,
+        startDate: new Date(data.startDate),
+        endDate: data.endDate ? new Date(data.endDate) : null,
+      };
 
-        const result = await response.json();
-        
-        if (!response.ok) {
-          throw new Error(result.error || "Gagal mengubah kontrak");
-        }
-        
-        toast.success("Kontrak berhasil diubah");
+      if (onSubmit) {
+        await onSubmit(formattedData as any, employeeId);
       }
-      
+
       // Reset form dan tutup modal
       form.reset();
       onOpenChange(false);
+      toast.success("Kontrak berhasil diperbarui");
     } catch (error) {
-      console.error("Error changing contract:", error);
-      toast.error(error instanceof Error ? error.message : "Terjadi kesalahan saat mengubah kontrak");
+      console.error("Error updating contract:", error);
+      const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat mengubah kontrak";
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Reset form saat modal dibuka/ditutup
+  const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen) {
+      form.reset();
+    }
+    onOpenChange(isOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Ubah Kontrak Karyawan</DialogTitle>
@@ -193,91 +183,50 @@ export function ContractChangeModal({
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="startDate"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Tanggal Mulai</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? (
-                              format(field.value, "dd/MM/yyyy")
-                            ) : (
-                              <span>Pilih tanggal</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          disabled={(date) =>
-                            date < new Date("2000-01-01")
-                          }
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="endDate"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Tanggal Berakhir</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? (
-                              format(field.value, "dd/MM/yyyy")
-                            ) : (
-                              <span>Pilih tanggal (opsional)</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value || undefined}
-                          onSelect={field.onChange}
-                          disabled={(date) =>
-                            date < (form.getValues("startDate") || new Date())
-                          }
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <div className="col-span-2">
+              <div className="mb-4">
+                <p className="text-sm text-muted-foreground mb-1">
+                  <strong>Petunjuk:</strong> Masukkan tanggal dengan format YYYY-MM-DD (contoh: 2024-05-15)
+                </p>
+              </div>
             </div>
+
+            <FormField
+              control={form.control}
+              name="startDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tanggal Mulai</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="date"
+                      placeholder="YYYY-MM-DD"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="endDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tanggal Berakhir (Opsional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="date"
+                      placeholder="YYYY-MM-DD"
+                      {...field}
+                      value={field.value || ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

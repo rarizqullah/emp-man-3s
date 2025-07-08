@@ -11,10 +11,11 @@ const shiftUpdateSchema = z.object({
   name: z.string().min(1, "Nama shift wajib diisi").optional(),
   shiftType: z.enum(['NON_SHIFT', 'SHIFT_A', 'SHIFT_B']).optional(),
   subDepartmentId: z.string().uuid().optional().nullable(),
-  mainWorkStart: z.string().or(z.date()).optional(),
-  mainWorkEnd: z.string().or(z.date()).optional(),
+  mainWorkStart: z.string().or(z.date()).optional().nullable(),
+  mainWorkEnd: z.string().or(z.date()).optional().nullable(),
   lunchBreakStart: z.string().or(z.date()).optional().nullable(),
   lunchBreakEnd: z.string().or(z.date()).optional().nullable(),
+  workingDays: z.array(z.string()).optional(),
   regularOvertimeStart: z.string().or(z.date()).optional().nullable(),
   regularOvertimeEnd: z.string().or(z.date()).optional().nullable(),
   weeklyOvertimeStart: z.string().or(z.date()).optional().nullable(),
@@ -22,10 +23,8 @@ const shiftUpdateSchema = z.object({
 });
 
 // GET: Mendapatkan shift berdasarkan ID
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const shift = await getShiftById(params.id);
     
@@ -47,10 +46,8 @@ export async function GET(
 }
 
 // PUT: Mengupdate shift berdasarkan ID
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const id = params.id;
     const data = await request.json();
@@ -66,10 +63,11 @@ export async function PUT(
       name?: string;
       shiftType?: 'NON_SHIFT' | 'SHIFT_A' | 'SHIFT_B';
       subDepartmentId?: string | null;
-      mainWorkStart?: Date;
-      mainWorkEnd?: Date;
+      mainWorkStart?: Date | null;
+      mainWorkEnd?: Date | null;
       lunchBreakStart?: Date | null;
       lunchBreakEnd?: Date | null;
+      workingDays?: string[];
       regularOvertimeStart?: Date | null;
       regularOvertimeEnd?: Date | null;
       weeklyOvertimeStart?: Date | null;
@@ -78,14 +76,19 @@ export async function PUT(
       name: validatedData.name,
       shiftType: validatedData.shiftType,
       subDepartmentId: validatedData.subDepartmentId === "" ? null : validatedData.subDepartmentId,
+      workingDays: validatedData.workingDays,
     };
     
     if (validatedData.mainWorkStart) {
       processedData.mainWorkStart = new Date(validatedData.mainWorkStart);
+    } else if (validatedData.mainWorkStart === null) {
+      processedData.mainWorkStart = null;
     }
     
     if (validatedData.mainWorkEnd) {
       processedData.mainWorkEnd = new Date(validatedData.mainWorkEnd);
+    } else if (validatedData.mainWorkEnd === null) {
+      processedData.mainWorkEnd = null;
     }
     
     if (validatedData.lunchBreakStart) {
@@ -148,10 +151,8 @@ export async function PUT(
 }
 
 // DELETE: Menghapus shift berdasarkan ID
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     // Periksa apakah shift ada
     const existingShift = await getShiftById(params.id);

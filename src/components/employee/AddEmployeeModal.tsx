@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import { 
   Dialog, 
   DialogContent, 
@@ -125,7 +126,7 @@ const defaultValues: EmployeeFormValues = {
 interface AddEmployeeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit?: (data: any) => void;
+  onSubmit?: (data: unknown) => void;
   departments?: Department[];
   positions?: Position[];
 }
@@ -167,6 +168,14 @@ export function AddEmployeeModal({
     defaultValues,
   });
 
+  // Fungsi untuk reset form dan state
+  const resetFormAndState = () => {
+    form.reset(defaultValues);
+    setFaceImage(null);
+    setActiveTab("personal");
+    stopCamera();
+  };
+
   // Fetch data dari API jika tidak ada data awal
   useEffect(() => {
     if (open) {
@@ -186,10 +195,7 @@ export function AddEmployeeModal({
       fetchShifts();
     } else {
       // Reset form saat modal ditutup
-      form.reset(defaultValues);
-      setFaceImage(null);
-      setActiveTab("personal");
-      stopCamera();
+      resetFormAndState();
     }
   }, [open, initialDepartments, initialPositions]);
 
@@ -248,20 +254,55 @@ export function AddEmployeeModal({
   };
 
   // Fetch shifts
-  const fetchShifts = async (subDepartmentId?: string) => {
+  const fetchShifts = async (subDepartmentId?: string, retryCount = 0) => {
     try {
       setLoading(prev => ({ ...prev, shifts: true }));
+      console.log(`Mengambil data shift (percobaan ${retryCount + 1})...`);
+      
       // Buat URL dengan parameter subDepartmentId jika tersedia
       let url = '/api/shifts';
       if (subDepartmentId) {
         url += `?subDepartmentId=${subDepartmentId}`;
       }
       
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        // Tambahkan timeout dan cache control
+        cache: 'no-cache',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
       if (!response.ok) {
-        throw new Error('Gagal mengambil data shift');
+        // Parse error response untuk mendapatkan informasi yang lebih detail
+        let errorMessage = 'Gagal mengambil data shift';
+        try {
+          const errorData = await response.json() as { error?: string; isConnectionError?: boolean };
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+          
+          // Jika error karena koneksi database dan masih ada retry
+          if (errorData.isConnectionError && retryCount < 2) {
+            console.log(`Koneksi database terputus, mencoba ulang dalam 3 detik... (${retryCount + 1}/3)`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            return fetchShifts(subDepartmentId, retryCount + 1);
+          }
+        } catch (parseError) {
+          console.error('Error parsing error response:', parseError);
+        }
+        
+        throw new Error(errorMessage);
       }
+      
       const data = await response.json();
+      
+      // Validasi data response
+      if (!Array.isArray(data)) {
+        throw new Error('Data shift tidak valid');
+      }
+      
+      console.log(`Berhasil mengambil ${data.length} shift`);
       setShifts(data);
       
       // Filter shifts jika ada subDepartmentId
@@ -270,14 +311,42 @@ export function AddEmployeeModal({
           (shift: Shift) => shift.subDepartmentId === subDepartmentId || shift.subDepartmentId === null
         );
         setFilteredShifts(filtered);
+        console.log(`Filtered ${filtered.length} shift untuk subDepartmentId: ${subDepartmentId}`);
       } else {
         // Jika tidak ada subDepartmentId, tampilkan shift yang tidak terkait dengan sub-departemen
         const filtered = data.filter((shift: Shift) => shift.subDepartmentId === null);
         setFilteredShifts(filtered);
+        console.log(`Filtered ${filtered.length} shift global`);
       }
     } catch (error) {
       console.error('Error fetching shifts:', error);
-      toast.error('Gagal mengambil data shift');
+      
+      // Jika masih ada retry untuk network error dan bukan connection error yang sudah dihandle
+      if (retryCount < 2 && error instanceof Error && 
+          (error.message.includes('fetch') || error.message.includes('network'))) {
+        console.log(`Network error, mencoba ulang dalam 2 detik... (${retryCount + 1}/3)`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return fetchShifts(subDepartmentId, retryCount + 1);
+      }
+      
+      const errorMessage = error instanceof Error ? error.message : 'Terjadi kesalahan saat mengambil data shift';
+      toast.error(errorMessage);
+      
+      // Set data dummy jika koneksi database bermasalah
+      const fallbackShifts: Shift[] = [
+        {
+          id: "fallback-1",
+          name: "Non-Shift (Fallback)",
+          shiftType: "NON_SHIFT",
+          subDepartmentId: null,
+          mainWorkStart: "08:00:00",
+          mainWorkEnd: "17:00:00",
+        }
+      ];
+      
+      console.log('Menggunakan data shift fallback');
+      setShifts(fallbackShifts);
+      setFilteredShifts(fallbackShifts);
     } finally {
       setLoading(prev => ({ ...prev, shifts: false }));
     }
@@ -366,6 +435,12 @@ export function AddEmployeeModal({
         return;
       }
       
+      // Validasi data posisi
+      if (!data.personalInfo.positionId) {
+        toast.error("Jabatan harus dipilih");
+        return;
+      }
+      
       // Validasi data wajah jika diperlukan
       if (!faceImage) {
         toast.warning("Data wajah belum diisi. Pastikan ini opsional untuk aplikasi Anda.");
@@ -378,7 +453,7 @@ export function AddEmployeeModal({
         email: data.personalInfo.email,
         phone: data.personalInfo.phone,
         idNumber: data.personalInfo.idNumber,
-        positionId: data.departmentInfo.positionId || data.personalInfo.positionId, // Ambil dari salah satu yang tersedia
+        positionId: data.personalInfo.positionId, // Ambil dari personalInfo
         gender: data.personalInfo.gender,
         address: data.personalInfo.address,
         
@@ -404,11 +479,8 @@ export function AddEmployeeModal({
         onSubmit(formattedData);
       }
       
-      // Reset form dan state setelah submit berhasil
-      form.reset();
-      setFaceImage(null);
-      setActiveTab("personal");
-      onOpenChange(false);
+      // Reset form setelah submit
+      resetFormAndState();
     } catch (error) {
       console.error("Error submitting form:", error);
       toast.error("Terjadi kesalahan saat menyimpan data karyawan");
@@ -1158,9 +1230,11 @@ export function AddEmployeeModal({
                       
                       {faceImage && (
                         <div className="relative w-full max-w-md mx-auto">
-                          <img 
+                          <Image 
                             src={faceImage} 
                             alt="Face preview" 
+                            width={400}
+                            height={300}
                             className="w-full h-auto border rounded-md" 
                             style={{ transform: 'scaleX(-1)' }} // Mirror effect
                           />

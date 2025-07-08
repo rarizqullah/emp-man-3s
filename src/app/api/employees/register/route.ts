@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import prisma from '@/lib/db/prisma'; // Menggunakan import default
+import { prisma } from '@/lib/db'; // Menggunakan named import
 import { Role, ContractType, WarningStatus, Gender } from '@prisma/client';
-import { ensureDatabaseConnection } from '@/lib/db/prisma'; // Tambahkan import ini
+import { ensureDatabaseConnection } from '@/lib/db'; // Tambahkan import ini
 import crypto from 'crypto';
-import { hash } from 'bcrypt';
 
 // Schema validasi untuk membuat karyawan dan user secara bersamaan
 const employeeRegisterSchema = z.object({
@@ -70,32 +69,43 @@ export async function POST(request: NextRequest) {
     });
     
     if (existingUser) {
+      console.log(`Email ${validatedData.email} sudah terdaftar`);
       return NextResponse.json(
-        { error: 'Email sudah terdaftar' },
+        { error: 'Email sudah terdaftar dalam sistem' },
         { status: 400 }
       );
     }
     
-    // Mulai transaksi untuk membuat user dan employee
+    // Cek apakah ID Number sudah terdaftar
+    const existingEmployee = await prisma.employee.findUnique({
+      where: { employeeId: validatedData.idNumber }
+    });
+    
+    if (existingEmployee) {
+      console.log(`ID Number ${validatedData.idNumber} sudah terdaftar`);
+      return NextResponse.json(
+        { error: 'Nomor identitas karyawan sudah terdaftar' },
+        { status: 400 }
+      );
+    }
+    
+    // Mulai transaksi untuk membuat user dan employee dengan timeout yang lebih besar
     try {
       const result = await prisma.$transaction(async (tx) => {
         // 1. Buat user baru
-        const password = `${validatedData.idNumber}@ems`; // Default password
-        const hashedPassword = await hash(password, 10);
-        
         const user = await tx.user.create({
           data: {
             name: validatedData.name,
             email: validatedData.email,
+            phone: validatedData.phone, // Tambahkan field phone
             authId: crypto.randomUUID(),
             role: Role.EMPLOYEE,
-            password: hashedPassword,
-          } as any, // Gunakan 'as any' untuk menghindari TypeScript error
+          },
         });
         
         console.log("User berhasil dibuat dengan ID:", user.id);
         
-        // 2. Buat karyawan baru
+        // 2. Buat karyawan baru (tanpa include untuk mengoptimalkan performance)
         const employee = await tx.employee.create({
           data: {
             userId: user.id,
@@ -113,34 +123,81 @@ export async function POST(request: NextRequest) {
             address: validatedData.address,
             faceData: validatedData.faceData,
           },
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              }
-            },
-            department: true,
-            subDepartment: true,
-            position: true,
-            shift: true,
-          }
         });
         
         console.log("Karyawan berhasil dibuat dengan ID:", employee.id);
         
-        return employee;
+        // Setelah employee berhasil dibuat, tambahkan riwayat kontrak dan shift otomatis
+        await tx.contractHistory.create({
+          data: {
+            employeeId: employee.id,
+            contractType: validatedData.contractType,
+            contractNumber: validatedData.contractNumber || null,
+            startDate: new Date(validatedData.contractStartDate),
+            endDate: validatedData.contractEndDate ? new Date(validatedData.contractEndDate) : null,
+            status: 'ACTIVE',
+            notes: 'Kontrak awal saat karyawan bergabung'
+          }
+        });
+
+        await tx.shiftHistory.create({
+          data: {
+            employeeId: employee.id,
+            shiftId: validatedData.shift,
+            startDate: new Date(validatedData.contractStartDate),
+            notes: 'Shift awal saat karyawan bergabung'
+          }
+        });
+
+        console.log('Initial history records created successfully');
+        
+        return { employeeId: employee.id, userId: user.id };
+      }, {
+        timeout: 15000, // Increase timeout to 15 seconds
       });
       
-      console.log("Transaksi berhasil, data karyawan:", result);
-      return NextResponse.json(result, { status: 201 });
+      // Fetch complete employee data with relations outside transaction (more efficient)
+      const employeeWithRelations = await prisma.employee.findUnique({
+        where: { id: result.employeeId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true, // Tambahkan field phone
+              role: true,
+            }
+          },
+          department: true,
+          subDepartment: true,
+          position: true,
+          shift: true,
+        }
+      });
+      
+      console.log("Transaksi berhasil, data karyawan:", employeeWithRelations);
+      return NextResponse.json(employeeWithRelations, { status: 201 });
     } catch (dbError) {
       console.error("Error database saat membuat karyawan:", dbError);
       
-      // Cek apakah error koneksi
+      // Cek apakah error koneksi atau timeout
       const errorMessage = String(dbError).toLowerCase();
+      
+      // Handle transaction timeout specifically
+      if (errorMessage.includes('transaction already closed') || 
+          errorMessage.includes('expired transaction') ||
+          errorMessage.includes('timeout')) {
+        return NextResponse.json(
+          { 
+            error: "Proses pendaftaran membutuhkan waktu terlalu lama. Silakan coba lagi.",
+            retryable: true
+          },
+          { status: 408 }
+        );
+      }
+      
+      // Handle connection errors
       if (
         errorMessage.includes('connection') &&
         (errorMessage.includes('reset') || 
@@ -148,7 +205,10 @@ export async function POST(request: NextRequest) {
          errorMessage.includes('timeout'))
       ) {
         return NextResponse.json(
-          { error: "Koneksi database terputus, silakan coba lagi" },
+          { 
+            error: "Koneksi database terputus, silakan coba lagi",
+            retryable: true
+          },
           { status: 503 }
         );
       }
@@ -158,8 +218,46 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Gagal mendaftarkan karyawan baru:', error);
     
+    // Tangani error Prisma yang spesifik
+    if (error instanceof Error) {
+      const errorMessage = error.message.toLowerCase();
+      
+      // Error duplicate key
+      if (errorMessage.includes('unique constraint') || errorMessage.includes('duplicate')) {
+        if (errorMessage.includes('email')) {
+          return NextResponse.json(
+            { error: 'Email sudah terdaftar dalam sistem' },
+            { status: 400 }
+          );
+        }
+        if (errorMessage.includes('employeeid')) {
+          return NextResponse.json(
+            { error: 'Nomor identitas karyawan sudah terdaftar' },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json(
+          { error: 'Data yang Anda masukkan sudah ada dalam sistem' },
+          { status: 400 }
+        );
+      }
+      
+      // Error foreign key constraint
+      if (errorMessage.includes('foreign key constraint')) {
+        return NextResponse.json(
+          { error: 'Data departemen, posisi, atau shift tidak valid' },
+          { status: 400 }
+        );
+      }
+      
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Terjadi kesalahan saat mendaftarkan karyawan' },
+      { error: 'Terjadi kesalahan saat mendaftarkan karyawan' },
       { status: 500 }
     );
   }

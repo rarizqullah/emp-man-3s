@@ -21,8 +21,7 @@ import {
   Select, 
   SelectContent, 
   SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+  SelectTrigger 
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,12 +53,14 @@ interface Shift {
   subDepartmentId: string | null;
   mainWorkStart?: string | null;
   mainWorkEnd?: string | null;
+  lunchBreakStart?: string | null;
+  lunchBreakEnd?: string | null;
   regularOvertimeStart?: string | null;
   regularOvertimeEnd?: string | null;
   weeklyOvertimeStart?: string | null;
   weeklyOvertimeEnd?: string | null;
-  workingDays?: string[] | null;
-  // Properti tambahan untuk tampilan detail
+  workingDays?: string[];
+  // Properti tambahan untuk tampilan detail (untuk backward compatibility)
   startTime?: string | null;
   endTime?: string | null;
   breakStartTime?: string | null;
@@ -169,33 +170,8 @@ export function ShiftChangeModal({
     try {
       setIsSubmitting(true);
       
-      // Update status shift karyawan
-      const updateShiftResponse = await fetch(`/api/employees/${employeeId}/shift-status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          shiftId: data.shift
-        }),
-      });
-      
-      const updateShiftData = await updateShiftResponse.json();
-      
-      if (!updateShiftResponse.ok) {
-        // Penanganan error yang lebih robust
-        let errorMessage = "Gagal memperbarui shift karyawan";
-        
-        if (updateShiftData && updateShiftData.message) {
-          errorMessage = updateShiftData.message;
-        }
-        
-        throw new Error(errorMessage);
-      }
-      
-      console.log("Shift karyawan berhasil diperbarui, menyimpan riwayat...");
-      
-      // Lanjutkan dengan menyimpan riwayat perubahan shift
+      // Kirim permintaan langsung ke fungsi onSubmit (handleChangeShift)
+      // Ini akan mengirim data ke endpoint shift-history
       await onSubmit(data, employeeId);
       
       form.reset();
@@ -257,8 +233,23 @@ export function ShiftChangeModal({
                     disabled={isLoading || filteredShifts.length === 0}
                   >
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder={isLoading ? "Memuat shift..." : "Pilih shift baru"} />
+                      <SelectTrigger className="w-full border border-gray-300 rounded-md p-3 hover:border-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-left">
+                        <div className="flex items-center justify-between w-full">
+                          <div>
+                            {selectedShift ? (
+                              <>
+                                <span className="block text-sm font-semibold text-gray-900">{selectedShift.name}</span>
+                                <span className="block text-xs text-gray-500">
+                                  {`${formatTimeOnly(selectedShift.mainWorkStart || selectedShift.startTime)}${selectedShift.subDepartment?.name ? ` - ${selectedShift.subDepartment.name}` : ''}`}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="block text-sm font-semibold text-gray-900">
+                                {isLoading ? 'Memuat shift...' : 'Pilih shift baru'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -283,6 +274,7 @@ export function ShiftChangeModal({
                   <FormControl>
                     <Input
                       type="date"
+                      className="w-full"
                       value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
                       onChange={(e) => {
                         field.onChange(e.target.value ? new Date(e.target.value) : null);
@@ -345,11 +337,22 @@ export function ShiftChangeModal({
                   </div>
                   <div>
                     <p className="text-sm font-medium">Jam Istirahat</p>
-                    <p className="text-sm">{formatTimeOnly(selectedShift.breakStartTime)} - {formatTimeOnly(selectedShift.breakEndTime)}</p>
+                    <p className="text-sm">
+                      {(selectedShift.lunchBreakStart && selectedShift.lunchBreakEnd) ? 
+                        `${formatTimeOnly(selectedShift.lunchBreakStart)} - ${formatTimeOnly(selectedShift.lunchBreakEnd)}` :
+                        (selectedShift.breakStartTime && selectedShift.breakEndTime) ?
+                          `${formatTimeOnly(selectedShift.breakStartTime)} - ${formatTimeOnly(selectedShift.breakEndTime)}` :
+                          '—'
+                      }
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium">Hari Kerja</p>
-                    <p className="text-sm">{selectedShift.workingDays ? selectedShift.workingDays.join(', ') : '—'}</p>
+                    <p className="text-sm">
+                      {selectedShift.workingDays && selectedShift.workingDays.length > 0 ? 
+                        selectedShift.workingDays.join(', ') : 
+                        'Senin - Jumat'}
+                    </p>
                   </div>
                 </div>
               )}

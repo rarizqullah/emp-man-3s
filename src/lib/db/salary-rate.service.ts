@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 import { ContractType } from '@prisma/client';
 
 // Tipe data untuk parameter salary rate baru

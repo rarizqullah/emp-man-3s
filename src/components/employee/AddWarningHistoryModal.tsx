@@ -76,44 +76,30 @@ export function AddWarningHistoryModal({
     try {
       console.log("Submitting warning history:", data);
       
-      // Tambahkan kode untuk memperbarui status peringatan karyawan
-      const updateEmployeeResponse = await fetch(`/api/employees/${employeeId}/warning-status`, {
+      // Gunakan endpoint warning-status untuk mengupdate status SP dan menambahkan riwayat
+      const response = await fetch(`/api/employees/${employeeId}/warning-status`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          warningStatus: data.warningStatus
+          warningStatus: data.warningStatus,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          reason: data.reason,
+          attachmentUrl: data.attachmentUrl || null
         }),
       });
 
-      const updateResult = await updateEmployeeResponse.json();
-      
-      if (!updateEmployeeResponse.ok) {
-        console.error("Failed to update employee warning status:", updateResult);
-        throw new Error(updateResult.message || "Gagal memperbarui status SP karyawan");
-      }
-
-      console.log("Employee warning status updated successfully:", updateResult);
-
-      // Tambahkan riwayat SP setelah berhasil memperbarui status karyawan
-      const response = await fetch(`/api/employees/${employeeId}/warning-history`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      });
-
-      const historyResult = await response.json();
+      const result = await response.json();
       
       if (!response.ok) {
-        console.error("Failed to add warning history:", historyResult);
-        throw new Error(historyResult.message || "Gagal menambahkan riwayat SP");
+        console.error("Failed to update warning status and history:", result);
+        throw new Error(result.message || "Gagal memperbarui status SP dan menambahkan riwayat");
       }
 
-      console.log("Warning history added successfully:", historyResult);
-      toast.success("Riwayat SP berhasil ditambahkan");
+      console.log("Warning status and history updated successfully:", result);
+      toast.success("Status SP dan riwayat berhasil diperbarui");
       form.reset();
       onSuccess();
       onClose();

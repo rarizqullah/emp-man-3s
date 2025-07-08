@@ -5,6 +5,7 @@ import {
   createPosition,
   searchPositions
 } from '@/lib/db/position.service';
+import { cacheHelpers, invalidateCache } from '@/lib/utils/cache';
 
 // Schema validasi untuk membuat jabatan baru
 const positionCreateSchema = z.object({
@@ -18,13 +19,24 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search');
     
+    let positions;
+    
     if (search) {
-      const positions = await searchPositions(search);
-      return NextResponse.json(positions);
+      positions = await cacheHelpers.dynamicData(
+        `positions:search:${search}`,
+        () => searchPositions(search)
+      );
+    } else {
+      positions = await cacheHelpers.staticData(
+        'positions:all',
+        () => getAllPositions()
+      );
     }
     
-    const positions = await getAllPositions();
-    return NextResponse.json(positions);
+    const response = NextResponse.json(positions);
+    // Cache di browser untuk 2 menit
+    response.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=300');
+    return response;
   } catch (error) {
     console.error('Gagal mengambil data jabatan:', error);
     return NextResponse.json(
@@ -43,6 +55,10 @@ export async function POST(request: NextRequest) {
     
     // Buat jabatan baru
     const position = await createPosition(validatedData);
+    
+    // Invalidate cache after creating new position
+    invalidateCache.positions();
+    console.log('Position cache invalidated after creation');
     
     return NextResponse.json(position, { status: 201 });
   } catch (error) {

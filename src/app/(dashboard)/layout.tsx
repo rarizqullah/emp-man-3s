@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, createContext, useContext } from "react";
-import { Sidebar } from "@/components/dashboard/Sidebar";
-import { Topbar } from "@/components/dashboard/Topbar";
+import { AppSidebar } from "@/components/dashboard/AppSidebar";
+import { AppTopbar } from "@/components/dashboard/AppTopbar";
 import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Toaster } from "react-hot-toast";
 import { useSupabase } from "@/providers/supabase-provider";
-
 // Buat context untuk mengelola status autentikasi global
 interface SessionContextType {
   isStayOnPage: boolean;
@@ -89,20 +88,8 @@ export default function DashboardLayout({
   const { user, isLoading } = useSupabase();
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const authChecked = React.useRef(false);
   const pathname = usePathname();
-
-  // Fungsi untuk menangani perubahan ukuran jendela
-  const handleResize = () => {
-    if (typeof window !== 'undefined') {
-      if (window.innerWidth < 768) {
-        setIsSidebarOpen(false);
-      } else {
-        setIsSidebarOpen(true);
-      }
-    }
-  };
 
   // Cek autentikasi saat komponen dimuat
   useEffect(() => {
@@ -111,15 +98,6 @@ export default function DashboardLayout({
 
     // Menggunakan data dari Supabase
     checkAuth();
-    
-    // Listener untuk resize window
-    handleResize();
-    
-    window.addEventListener("resize", handleResize);
-    
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
   }, [isLoading, user]);
 
   const checkAuth = () => {
@@ -194,11 +172,9 @@ export default function DashboardLayout({
     }
   };
 
-  // Tutup sidebar di mobile ketika navigasi
+  // Navigasi handling
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      setIsSidebarOpen(false);
-    }
+    // Handle navigation if needed
   }, [pathname]);
 
   // Render loading state
@@ -228,11 +204,11 @@ export default function DashboardLayout({
   // Layout utama dashboard
   return (
     <SessionManagementProvider>
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+      <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+        <AppSidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
-          <Topbar isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} />
-          <main className="flex-1 overflow-y-auto p-4">
+          <AppTopbar />
+          <main className="flex-1 overflow-y-auto p-6">
             {/* Info Banner jika ada masalah autentikasi */}
             <SessionWarningBanner />
             {children}
