@@ -1,4 +1,4 @@
-import prisma from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 import { ContractType, WarningStatus, Prisma } from '@prisma/client';
 
 // Define tipe data untuk update
@@ -10,7 +10,7 @@ type WarningHistoryUpdateInput = Prisma.WarningHistoryUpdateInput;
 export async function getContractHistoryByEmployeeId(employeeId: string) {
   try {
     // Pastikan koneksi database
-    const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+    const { ensureDatabaseConnection } = await import('@/lib/db');
     await ensureDatabaseConnection();
     
     const contractHistory = await prisma.contractHistory.findMany({
@@ -64,7 +64,7 @@ export async function createContractHistory(data: {
 export async function getShiftHistoryByEmployeeId(employeeId: string) {
   try {
     // Pastikan koneksi database
-    const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+    const { ensureDatabaseConnection } = await import('@/lib/db');
     await ensureDatabaseConnection();
     
     const shiftHistory = await prisma.shiftHistory.findMany({
@@ -132,7 +132,7 @@ export async function createShiftHistory(data: {
 export async function getWarningHistoryByEmployeeId(employeeId: string) {
   try {
     // Pastikan koneksi database
-    const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+    const { ensureDatabaseConnection } = await import('@/lib/db');
     await ensureDatabaseConnection();
     
     const warningHistory = await prisma.warningHistory.findMany({
@@ -254,4 +254,4 @@ export async function deleteWarningHistory(id: string) {
     console.error('Error deleting warning history:', error);
     throw error;
   }
-} 
+}

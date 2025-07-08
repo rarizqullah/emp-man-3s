@@ -329,16 +329,17 @@ export default function EmployeeArchivePage() {
   // Handle restore employee
   const handleRestoreEmployee = async (employeeId: string) => {
     try {
-      const response = await fetch(`/api/employees/archive/${employeeId}/restore`, {
+      const response = await fetch(`/api/employees/archive/${employeeId}`, {
         method: 'POST',
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Gagal memulihkan karyawan');
+        throw new Error(errorData.error || errorData.message || 'Gagal memulihkan karyawan');
       }
 
-      toast.success('Karyawan berhasil dipulihkan');
+      const result = await response.json();
+      toast.success(result.message || 'Karyawan berhasil dipulihkan');
       setRestoreDialogOpen(false);
       setSelectedEmployee(null);
       fetchArchivedEmployees();
@@ -358,10 +359,11 @@ export default function EmployeeArchivePage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Gagal menghapus permanen karyawan');
+        throw new Error(errorData.error || errorData.message || 'Gagal menghapus permanen karyawan');
       }
 
-      toast.success('Karyawan berhasil dihapus permanen');
+      const result = await response.json();
+      toast.success(result.message || 'Karyawan berhasil dihapus permanen');
       setPermanentDeleteDialogOpen(false);
       setSelectedEmployee(null);
       fetchArchivedEmployees();
@@ -396,14 +398,25 @@ export default function EmployeeArchivePage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || `Gagal ${action === 'restore' ? 'memulihkan' : 'menghapus'} karyawan`);
+        throw new Error(errorData.error || errorData.message || `Gagal ${action === 'restore' ? 'memulihkan' : 'menghapus'} karyawan`);
       }
 
-      const message = action === 'restore' 
+      const result = await response.json();
+      
+      // Use message from API response or fallback
+      const message = result.message || (action === 'restore' 
         ? `${selectedEmployees.length} karyawan berhasil dipulihkan`
-        : `${selectedEmployees.length} karyawan berhasil dihapus permanen`;
+        : `${selectedEmployees.length} karyawan berhasil dihapus permanen`);
 
       toast.success(message);
+      
+      // Show additional info if some employees were not found
+      if (result.data?.notFound?.length > 0) {
+        toast.warning(result.data.notFoundMessage, {
+          duration: 6000
+        });
+      }
+
       setBulkActionDialogOpen(false);
       setSelectedEmployees([]);
       setSelectAll(false);

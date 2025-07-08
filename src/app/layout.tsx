@@ -4,7 +4,12 @@ import { Inter } from 'next/font/google';
 import { Toaster } from '@/components/ui/toaster';
 import SupabaseProvider from '@/providers/supabase-provider';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ 
+  subsets: ['latin'],
+  display: 'swap',
+  preload: true,
+  fallback: ['system-ui', 'arial'],
+});
 
 export const metadata: Metadata = {
   title: 'Employee Management System',

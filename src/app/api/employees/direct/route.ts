@@ -120,6 +120,7 @@ export async function GET(request: Request) {
     }
   } catch (error) {
     console.error('Error fatal:', error);
+    // Pastikan hanya satu response yang dikirim
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

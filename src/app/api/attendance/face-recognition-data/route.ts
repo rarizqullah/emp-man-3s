@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { ensureDatabaseConnection } from '@/lib/db/prisma';
+import { ensureDatabaseConnection } from '@/lib/db';
 
 // Types for the response
 interface EmployeeWithFaceData {

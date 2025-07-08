@@ -40,7 +40,23 @@ import {
 } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
-import AttendanceFaceRecognition from '@/components/attendance/AttendanceFaceRecognition';
+import dynamic from 'next/dynamic';
+
+// Dynamic import untuk Face Recognition component (heavy component dengan TensorFlow.js)
+const AttendanceFaceRecognition = dynamic(
+  () => import('@/components/attendance/AttendanceFaceRecognition'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center p-8 border border-dashed border-gray-300 rounded-lg">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+          <p className="text-sm text-gray-600">Memuat face recognition...</p>
+        </div>
+      </div>
+    )
+  }
+);
 import {
   Select,
   SelectContent,
@@ -54,7 +70,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
-import * as XLSX from 'xlsx';
 
 import { 
   Dialog,
@@ -224,7 +239,7 @@ export default function AttendancePage() {
   }, [attendanceData]);
 
   // Fungsi untuk export data ke Excel
-  const handleExportToExcel = () => {
+  const handleExportToExcel = async () => {
     try {
       const dataToExport = filteredAttendance.map(attendance => ({
         'ID Karyawan': attendance.employeeId,
@@ -240,12 +255,15 @@ export default function AttendancePage() {
         'Status': attendance.status
       }));
 
-      const ws = XLSX.utils.json_to_sheet(dataToExport);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Presensi Hari Ini');
+      // Dynamic import untuk XLSX
+      const { utils, writeFile } = await import('xlsx');
+      
+      const ws = utils.json_to_sheet(dataToExport);
+      const wb = utils.book_new();
+      utils.book_append_sheet(wb, ws, 'Presensi Hari Ini');
       
       const fileName = `presensi-${format(date, 'yyyy-MM-dd')}.xlsx`;
-      XLSX.writeFile(wb, fileName);
+      writeFile(wb, fileName);
       
       toast.success('Data presensi berhasil diunduh');
     } catch (error) {

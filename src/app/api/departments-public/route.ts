@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ensureDatabaseConnection, prisma } from '@/lib/db/prisma';
+import { ensureDatabaseConnection, prisma } from '@/lib/db';
 
 // GET - Mendapatkan semua data departemen
 export async function GET(request: NextRequest) {

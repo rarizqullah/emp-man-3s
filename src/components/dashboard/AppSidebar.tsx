@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { 
   LayoutDashboard, 
@@ -263,7 +264,7 @@ function SidebarInner({ mainNavItems, configurationItem, isActive, isGroupActive
       {/* Header - dengan reduced spacing */}
       <div className="flex items-center gap-3 mb-4 h-12">
         <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
-          <img src="/logo.ico" alt="Logo" className="w-8 h-8 object-contain" />
+          <Image src="/logo.ico" alt="Logo" width={32} height={32} className="object-contain" />
         </div>
         <motion.div
           animate={{

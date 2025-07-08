@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 import { ContractType, PaymentStatus } from '@prisma/client';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
@@ -103,9 +103,9 @@ export async function calculateEmployeeSalary(input: SalaryCalculationInput): Pr
   // Hitung gaji lembur mingguan
   const weeklyOvertimeSalary = totalWeeklyOvertimeHours * salaryRate.weeklyOvertimeRate;
 
-  // Filter tunjangan yang aktif
+  // Filter tunjangan yang aktif (hanya check employee allowance active status)
   const activeAllowances = employee.employeeAllowances.filter(ea => 
-    ea.isActive && ea.allowance.isActive
+    ea.isActive
   );
 
   // Hitung total tunjangan perusahaan (tambahan)
@@ -308,11 +308,7 @@ export async function getSalaryById(id: string) {
           position: true,
           employeeAllowances: {
             include: {
-              allowanceValue: {
-                include: {
-                  allowanceType: true
-                }
-              }
+              allowance: true
             }
           }
         }
@@ -496,9 +492,9 @@ export async function exportSalarySlipPDF(salaryId: string) {
         amount: salary.weeklyOvertimeSalary
       }
     },
-    allowances: salary.employee.employeeAllowances?.map(empAllowance => ({
-      type: empAllowance.allowanceValue.allowanceType.name,
-      amount: empAllowance.allowanceValue.value
+    allowances: salary.employee.employeeAllowances?.map((empAllowance: any) => ({
+      type: empAllowance.allowance.name,
+      amount: empAllowance.allowance.companyAmount || 0
     })) || [],
     netSalary: salary.totalSalary,
     paymentStatus: salary.paymentStatus === PaymentStatus.PAID ? 'Dibayar' : 'Belum Dibayar',

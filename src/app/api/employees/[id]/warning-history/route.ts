@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     
     try {
       // Pastikan koneksi database
-      const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+      const { ensureDatabaseConnection } = await import('@/lib/db');
       await ensureDatabaseConnection();
       
       const warningHistory = await getWarningHistoryByEmployeeId(employeeId);

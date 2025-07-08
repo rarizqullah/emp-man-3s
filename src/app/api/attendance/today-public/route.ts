@@ -3,6 +3,9 @@ import { prisma } from '@/lib/db';
 import { startOfDay, endOfDay, isAfter, addMinutes } from 'date-fns';
 import { calculateWorkHours, calculateAutoTimeRecord } from '@/lib/utils/attendance-calculator';
 
+// Cache untuk 1 menit karena attendance berubah sering
+export const revalidate = 60;
+
 // Fungsi untuk menentukan status presensi berdasarkan jam kerja dan validasi
 function determineAttendanceStatus(attendance: any, shift: any) {
   if (!attendance.checkInTime) {

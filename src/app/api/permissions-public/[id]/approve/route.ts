@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ensureDatabaseConnection, prisma } from '@/lib/db/prisma';
+import { ensureDatabaseConnection, prisma } from '@/lib/db';
 
 export async function PUT(
   request: NextRequest,

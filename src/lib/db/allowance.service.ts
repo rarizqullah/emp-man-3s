@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 
 // Tipe data untuk parameter allowance baru
 export interface AllowanceCreateInput {
@@ -18,7 +18,6 @@ export interface AllowanceUpdateInput {
   umkAmount?: number | null;
   companyPercentage?: number | null;
   employeePercentage?: number | null;
-  isActive?: boolean;
 }
 
 /**
@@ -32,13 +31,22 @@ function calculateAmounts(umkAmount?: number | null, companyPercentage?: number 
 }
 
 /**
- * Mendapatkan semua data allowance aktif
+ * Mendapatkan semua data allowance dengan select yang dioptimalkan
  */
 export const getAllAllowances = async () => {
   return prisma.allowance.findMany({
-    where: { isActive: true },
-    orderBy: { name: 'asc' },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      applicableRule: true,
+      umkAmount: true,
+      companyPercentage: true,
+      companyAmount: true,
+      employeePercentage: true,
+      employeeAmount: true,
+      createdAt: true,
+      updatedAt: true,
       _count: {
         select: {
           employeeAllowances: {
@@ -48,7 +56,8 @@ export const getAllAllowances = async () => {
           }
         }
       }
-    }
+    },
+    orderBy: { name: 'asc' }
   });
 };
 
@@ -74,29 +83,24 @@ export const getAllowanceById = async (id: string) => {
 export const searchAllowances = async (searchTerm: string) => {
   return prisma.allowance.findMany({
     where: {
-      AND: [
-        { isActive: true },
+      OR: [
         {
-          OR: [
-            {
-              name: {
-                contains: searchTerm,
-                mode: 'insensitive'
-              }
-            },
-            {
-              description: {
-                contains: searchTerm,
-                mode: 'insensitive'
-              }
-            },
-            {
-              applicableRule: {
-                contains: searchTerm,
-                mode: 'insensitive'
-              }
-            }
-          ]
+          name: {
+            contains: searchTerm,
+            mode: 'insensitive'
+          }
+        },
+        {
+          description: {
+            contains: searchTerm,
+            mode: 'insensitive'
+          }
+        },
+        {
+          applicableRule: {
+            contains: searchTerm,
+            mode: 'insensitive'
+          }
         }
       ]
     },
@@ -198,10 +202,8 @@ export const checkAllowanceDuplicate = async (name: string, excludeId?: string) 
   const where: {
     name: { equals: string; mode: 'insensitive' };
     id?: { not: string };
-    isActive: boolean;
   } = {
-    name: { equals: name, mode: 'insensitive' },
-    isActive: true
+    name: { equals: name, mode: 'insensitive' }
   };
   
   if (excludeId) {
@@ -219,10 +221,7 @@ export const getEmployeeAllowances = async (employeeId: string) => {
   return prisma.employeeAllowance.findMany({
     where: {
       employeeId,
-      isActive: true,
-      allowance: {
-        isActive: true
-      }
+      isActive: true
     },
     include: {
       allowance: true
@@ -253,13 +252,15 @@ export const addAllowanceToEmployee = async (employeeId: string, allowanceId: st
 };
 
 /**
- * Menghapus allowance dari karyawan
+ * Menghapus allowance dari karyawan (soft delete)
  */
 export const removeAllowanceFromEmployee = async (employeeId: string, allowanceId: string) => {
-  return prisma.employeeAllowance.updateMany({
+  return prisma.employeeAllowance.update({
     where: {
-      employeeId,
-      allowanceId
+      employeeId_allowanceId: {
+        employeeId,
+        allowanceId
+      }
     },
     data: {
       isActive: false

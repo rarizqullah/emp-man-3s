@@ -4,6 +4,7 @@ import React, { useState, createContext, useContext } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { IconMenu2, IconX, IconPin, IconPinnedOff } from "@tabler/icons-react";
 import Link from "next/link";
+import Image from "next/image";
 
 interface Links {
   label: string;
@@ -159,7 +160,7 @@ export const MobileSidebar = ({
         <div className="flex justify-between items-center w-full">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 flex items-center justify-center">
-              <img src="/logo.ico" alt="Logo" className="w-8 h-8 object-contain" />
+              <Image src="/logo.ico" alt="Logo" width={32} height={32} className="object-contain" />
             </div>
             <span className="text-lg font-semibold text-gray-900 dark:text-white">EMS System</span>
           </div>
@@ -186,7 +187,7 @@ export const MobileSidebar = ({
               <div className="flex justify-between items-center mb-8">
                 <div className="flex items-center space-x-2">
                   <div className="w-8 h-8 flex items-center justify-center">
-                    <img src="/logo.ico" alt="Logo" className="w-8 h-8 object-contain" />
+                    <Image src="/logo.ico" alt="Logo" width={32} height={32} className="object-contain" />
                   </div>
                   <span className="text-lg font-semibold text-gray-900 dark:text-white">EMS System</span>
                 </div>

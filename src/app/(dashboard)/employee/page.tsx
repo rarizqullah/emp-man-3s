@@ -53,7 +53,6 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import * as XLSX from 'xlsx';
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import {
   AlertDialog,
@@ -193,7 +192,8 @@ export default function EmployeePage() {
     const maxRetries = 3;
     
     try {
-      setLoading(true);
+      // Loading state dikelola di level component untuk parallel fetch
+      if (forceRefresh) setLoading(true);
       
       // Force refresh mode untuk setelah archive
       if (forceRefresh) {
@@ -225,7 +225,13 @@ export default function EmployeePage() {
         }
       }
       
-      const response = await fetch('/api/employees', {
+      // Gunakan parameter pagination untuk initial load
+      const searchParams = new URLSearchParams({
+        take: '100', // Load lebih banyak untuk initial load
+        skip: '0'
+      });
+      
+      const response = await fetch(`/api/employees?${searchParams}`, {
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
@@ -251,9 +257,25 @@ export default function EmployeePage() {
         throw new Error(errorData.error || 'Gagal mengambil data karyawan');
       }
       
-      const data = await response.json();
-      console.log(`📊 Fetched ${data.length} employees:`, data.map((emp: Employee) => `${emp.employeeId} - ${emp.user.name}`));
-      setEmployees(data);
+      const responseData = await response.json();
+      
+      // Handle new pagination structure
+      const employeesData = responseData.data || responseData; // Support both old and new structure
+      const paginationInfo = responseData.pagination;
+      
+      // Optimized logging - hanya log summary, bukan data lengkap
+      console.log(`📊 Fetched ${employeesData.length} employees (first 3: ${employeesData.slice(0, 3).map((emp: Employee) => emp.employeeId).join(', ')})`);
+      
+      if (paginationInfo) {
+        console.log(`📄 Pagination:`, { 
+          total: paginationInfo.total, 
+          take: paginationInfo.take, 
+          skip: paginationInfo.skip,
+          hasMore: paginationInfo.hasMore 
+        });
+      }
+      
+      setEmployees(employeesData);
       
       // Reset pagination saat data berubah
       setCurrentPage(1);
@@ -289,7 +311,8 @@ export default function EmployeePage() {
       // Set data kosong ketika error
       setEmployees([]);
     } finally {
-      setLoading(false);
+      // Loading hanya di-reset jika force refresh
+      if (forceRefresh) setLoading(false);
     }
   };
   
@@ -418,11 +441,29 @@ export default function EmployeePage() {
     setGroupAnalyticsModalOpen(true);
   };
   
-  // Memuat data saat komponen dimount
+  // Memuat data saat komponen dimount dengan parallel loading
   useEffect(() => {
-    fetchEmployees();
-    fetchDepartments();
-    fetchPositions();
+    const loadAllData = async () => {
+      try {
+        setLoading(true);
+        // Load semua data secara parallel untuk performance optimal
+        await Promise.all([
+          fetchEmployees(),
+          fetchDepartments(),
+          fetchPositions()
+        ]);
+        console.log('✅ Semua data berhasil dimuat secara parallel');
+      } catch (error) {
+        console.error('❌ Error saat memuat data parallel:', error);
+        toast.error('Gagal memuat beberapa data. Mencoba refresh...', {
+          duration: 4000
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAllData();
   }, []);
   
   // Filter karyawan berdasarkan pencarian dan filter
@@ -692,8 +733,8 @@ export default function EmployeePage() {
     }
   };
 
-  // Export to Excel function
-  const handleExportExcel = () => {
+  // Export to Excel function dengan dynamic import
+  const handleExportExcel = async () => {
     try {
       // Prepare data for export
       const exportData = filteredEmployees.map((emp, index) => ({
@@ -718,9 +759,12 @@ export default function EmployeePage() {
         'Terakhir Diupdate': new Date(emp.updatedAt).toLocaleDateString('id-ID')
       }));
 
+      // Dynamic import untuk XLSX
+      const { utils, writeFile } = await import('xlsx');
+
       // Create workbook and worksheet
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      const wb = XLSX.utils.book_new();
+      const ws = utils.json_to_sheet(exportData);
+      const wb = utils.book_new();
       
       // Set column widths
       const colWidths = [
@@ -746,13 +790,13 @@ export default function EmployeePage() {
       ];
       ws['!cols'] = colWidths;
       
-      XLSX.utils.book_append_sheet(wb, ws, 'Data Karyawan');
+      utils.book_append_sheet(wb, ws, 'Data Karyawan');
       
       // Generate filename with current date
       const fileName = `Data_Karyawan_${new Date().toISOString().split('T')[0]}.xlsx`;
       
       // Save file
-      XLSX.writeFile(wb, fileName);
+      writeFile(wb, fileName);
       
       toast.success(`Data berhasil diekspor ke ${fileName}`);
     } catch (error) {

@@ -1,16 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db/prisma';
-// import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { prisma, ensureDatabaseConnection } from '@/lib/db';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Remove auth check temporarily for testing - same as main employees API
-    // TODO: Implement proper auth later if needed
+    // Ensure database connection
+    const dbConnected = await ensureDatabaseConnection();
+    if (!dbConnected) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Tidak dapat terhubung ke database',
+          retryable: true,
+          errorType: 'connection'
+        },
+        { status: 503 }
+      );
+    }
 
     const employeeId = params.id;
+
+    // Validate employee ID
+    if (!employeeId || typeof employeeId !== 'string' || employeeId.trim().length === 0) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'ID karyawan tidak valid',
+          retryable: false,
+          errorType: 'validation'
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`Attempting to restore employee with ID: ${employeeId}`);
 
     // Check if employee exists and is archived
     const employee = await prisma.employee.findFirst({
@@ -19,12 +44,26 @@ export async function POST(
         deletedAt: {
           not: null
         }
+      },
+      select: {
+        id: true,
+        employeeId: true,
+        user: {
+          select: {
+            name: true
+          }
+        }
       }
     });
 
     if (!employee) {
       return NextResponse.json(
-        { error: 'Karyawan tidak ditemukan atau tidak diarsipkan' },
+        { 
+          success: false,
+          error: 'Karyawan tidak ditemukan atau tidak diarsipkan',
+          retryable: false,
+          errorType: 'not_found'
+        },
         { status: 404 }
       );
     }
@@ -41,14 +80,36 @@ export async function POST(
       }
     });
 
+    console.log(`Successfully restored employee: ${employee.user?.name} (${employee.employeeId})`);
+
     return NextResponse.json({
-      message: 'Karyawan berhasil dipulihkan',
-      employee: restoredEmployee
+      success: true,
+      message: `Karyawan ${employee.user?.name || 'Unknown'} berhasil dipulihkan`,
+      data: {
+        employee: {
+          id: restoredEmployee.id,
+          employeeId: employee.employeeId,
+          name: employee.user?.name || 'Unknown'
+        }
+      }
     });
   } catch (error) {
     console.error('Error restoring employee:', error);
+    
+    // Enhanced error handling
+    const isConnectionError = (error as Error).message?.toLowerCase().includes('connection') ||
+                            (error as Error).message?.toLowerCase().includes('timeout') ||
+                            (error as Error).message?.toLowerCase().includes('p1017') ||
+                            (error as Error).message?.toLowerCase().includes('p1008');
+    
     return NextResponse.json(
-      { error: 'Gagal memulihkan karyawan' },
+      { 
+        success: false,
+        error: 'Gagal memulihkan karyawan',
+        details: (error as Error).message,
+        retryable: isConnectionError,
+        errorType: isConnectionError ? 'connection' : 'server'
+      },
       { status: 500 }
     );
   }
@@ -59,10 +120,36 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Remove auth check temporarily for testing - same as main employees API
-    // TODO: Implement proper auth later if needed
+    // Ensure database connection
+    const dbConnected = await ensureDatabaseConnection();
+    if (!dbConnected) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Tidak dapat terhubung ke database',
+          retryable: true,
+          errorType: 'connection'
+        },
+        { status: 503 }
+      );
+    }
 
     const employeeId = params.id;
+
+    // Validate employee ID
+    if (!employeeId || typeof employeeId !== 'string' || employeeId.trim().length === 0) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'ID karyawan tidak valid',
+          retryable: false,
+          errorType: 'validation'
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`Attempting to permanently delete employee with ID: ${employeeId}`);
 
     // Check if employee exists and is archived
     const employee = await prisma.employee.findFirst({
@@ -72,21 +159,34 @@ export async function DELETE(
           not: null
         }
       },
-      include: {
-        user: true
+      select: {
+        id: true,
+        employeeId: true,
+        userId: true,
+        user: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
       }
     });
 
     if (!employee) {
       return NextResponse.json(
-        { error: 'Karyawan tidak ditemukan atau tidak diarsipkan' },
+        { 
+          success: false,
+          error: 'Karyawan tidak ditemukan atau tidak diarsipkan',
+          retryable: false,
+          errorType: 'not_found'
+        },
         { status: 404 }
       );
     }
 
-    // Permanently delete employee and associated user
-    await prisma.$transaction(async (tx) => {
-      // Delete employee first (due to foreign key constraints)
+    // Permanently delete employee and associated user in transaction
+    const deleteResult = await prisma.$transaction(async (tx) => {
+      // Delete employee first (handles cascade for related data)
       await tx.employee.delete({
         where: { id: employeeId }
       });
@@ -95,16 +195,47 @@ export async function DELETE(
       await tx.user.delete({
         where: { id: employee.userId }
       });
+
+      return { success: true };
     });
 
+    console.log(`Successfully permanently deleted employee: ${employee.user?.name} (${employee.employeeId})`);
+
     return NextResponse.json({
-      message: 'Karyawan berhasil dihapus permanen'
+      success: true,
+      message: `Karyawan ${employee.user?.name || 'Unknown'} berhasil dihapus permanen`,
+      data: {
+        employee: {
+          id: employee.id,
+          employeeId: employee.employeeId,
+          name: employee.user?.name || 'Unknown'
+        }
+      }
     });
   } catch (error) {
     console.error('Error permanently deleting employee:', error);
+    
+    // Enhanced error handling
+    const isConnectionError = (error as Error).message?.toLowerCase().includes('connection') ||
+                            (error as Error).message?.toLowerCase().includes('timeout') ||
+                            (error as Error).message?.toLowerCase().includes('p1017') ||
+                            (error as Error).message?.toLowerCase().includes('p1008');
+
+    const isConstraintError = (error as Error).message?.toLowerCase().includes('foreign key') ||
+                            (error as Error).message?.toLowerCase().includes('constraint') ||
+                            (error as Error).message?.toLowerCase().includes('reference');
+    
     return NextResponse.json(
-      { error: 'Gagal menghapus permanen karyawan' },
-      { status: 500 }
+      { 
+        success: false,
+        error: isConstraintError 
+          ? 'Tidak dapat menghapus karyawan karena masih memiliki data terkait'
+          : 'Gagal menghapus permanen karyawan',
+        details: (error as Error).message,
+        retryable: isConnectionError && !isConstraintError,
+        errorType: isConstraintError ? 'constraint' : (isConnectionError ? 'connection' : 'server')
+      },
+      { status: isConstraintError ? 409 : 500 }
     );
   }
 }

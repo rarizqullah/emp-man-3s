@@ -11,7 +11,7 @@ import {
   updateEmployeeContract
 } from '@/lib/db/employee.service';
 import { ContractType, WarningStatus, Gender } from '@prisma/client';
-import { ensureDatabaseConnection, prisma } from "@/lib/db/prisma";
+import { ensureDatabaseConnection, prisma } from '@/lib/db';
 
 // Schema validasi untuk update employee - UPDATED untuk mendukung field user
 const employeeUpdateSchema = z.object({

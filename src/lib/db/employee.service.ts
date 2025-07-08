@@ -1,4 +1,4 @@
-import prisma from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 import { Prisma, ContractType, WarningStatus, Gender } from '@prisma/client';
 
 // Tipe data untuk parameter employee baru
@@ -42,7 +42,7 @@ export interface EmployeeUpdateInput {
 export async function getAllEmployees() {
   try {
     // Pastikan koneksi database tersedia
-    const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+    const { ensureDatabaseConnection } = await import('@/lib/db');
     const isConnected = await ensureDatabaseConnection();
     
     if (!isConnected) {
@@ -131,7 +131,7 @@ export async function getAllEmployees() {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       try {
-        const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+        const { ensureDatabaseConnection } = await import('@/lib/db');
         const reconnected = await ensureDatabaseConnection();
         
         if (reconnected) {
@@ -222,7 +222,7 @@ export async function getEmployeeById(id: string) {
       console.log(`Menjalankan query untuk karyawan dengan ID: ${id}`);
       
       // Memastikan koneksi database sebelum query dengan timeout yang diperpanjang
-      const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+      const { ensureDatabaseConnection } = await import('@/lib/db');
       
       // Extended connection timeout untuk stability
       const connectionResult = await Promise.race([
@@ -440,7 +440,7 @@ export async function getEmployeeById(id: string) {
           await new Promise(resolve => setTimeout(resolve, 2000));
           
           // Coba refresh koneksi database
-          const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+          const { ensureDatabaseConnection } = await import('@/lib/db');
           const reconnected = await ensureDatabaseConnection();
           
           if (reconnected) {

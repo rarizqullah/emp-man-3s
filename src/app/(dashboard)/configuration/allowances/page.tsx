@@ -668,7 +668,7 @@ export default function AllowancesPage() {
                     <FormItem>
                       <FormLabel>Persentase Perusahaan (%)</FormLabel>
                       <FormControl>
-                        <Input type="number" min="0" max="100" placeholder="0" {...field} />
+                        <Input type="number" min="0" max="100" step="0.01" placeholder="0" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -682,7 +682,7 @@ export default function AllowancesPage() {
                     <FormItem>
                       <FormLabel>Persentase Karyawan (%)</FormLabel>
                       <FormControl>
-                        <Input type="number" min="0" max="100" placeholder="0" {...field} />
+                        <Input type="number" min="0" max="100" step="0.01" placeholder="0" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -787,7 +787,7 @@ export default function AllowancesPage() {
                     <FormItem>
                       <FormLabel>Persentase Perusahaan (%)</FormLabel>
                       <FormControl>
-                        <Input type="number" min="0" max="100" placeholder="0" {...field} />
+                        <Input type="number" min="0" max="100" step="0.01" placeholder="0" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -801,7 +801,7 @@ export default function AllowancesPage() {
                     <FormItem>
                       <FormLabel>Persentase Karyawan (%)</FormLabel>
                       <FormControl>
-                        <Input type="number" min="0" max="100" placeholder="0" {...field} />
+                        <Input type="number" min="0" max="100" step="0.01" placeholder="0" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -884,6 +884,7 @@ export default function AllowancesPage() {
                           type="number" 
                           min="0" 
                           max="100" 
+                          step="0.01"
                           placeholder="0-100" 
                           {...field} 
                           value={field.value || ''}
@@ -905,6 +906,7 @@ export default function AllowancesPage() {
                           type="number" 
                           min="0" 
                           max="100" 
+                          step="0.01"
                           placeholder="0-100" 
                           {...field} 
                           value={field.value || ''}
