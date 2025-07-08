@@ -191,6 +191,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Ini seharusnya tidak pernah tercapai karena mode sudah divalidasi di atas
     return NextResponse.json(
       { error: 'Mode presensi tidak valid' },
       { status: 400 }

@@ -3,8 +3,8 @@
  * Jalankan dengan: bun src/scripts/test-auth-performance.ts
  */
 
-import { ensureDatabaseConnection, getDatabaseStats, safeQuery } from '@/lib/db/connection';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { ensureDatabaseConnection, getDatabaseStats } from '../lib/db/connection';
+import { createServerSupabaseClient } from '../lib/supabase/server';
 
 interface TestResult {
   scenario: string;
@@ -37,9 +37,25 @@ async function simulateAuthRequest(): Promise<{ success: boolean; responseTime: 
       new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Auth timeout')), 30000)
       )
-    ]);
+    ]) as { data: { user: object | null }, error: { message: string } | null };
+    
+    // Log auth result for performance analysis
+    console.log(`Auth request completed in ${Date.now() - startTime}ms:`, {
+      user: authResult.data?.user ? 'authenticated' : 'not authenticated',
+      error: authResult.error?.message || null
+    });
     
     const responseTime = Date.now() - startTime;
+    
+    // Validate auth result and use it to avoid unused variable warning
+    if (!authResult || typeof authResult !== 'object') {
+      throw new Error('Invalid auth response');
+    }
+    
+    // Log auth result untuk debugging (menghindari unused variable)
+    const authData = authResult as { data?: { user?: unknown } };
+    const hasUser = authData.data?.user ? 'authenticated' : 'unauthenticated';
+    console.debug(`Auth check completed: ${hasUser}`);
     
     return {
       success: true,
@@ -65,7 +81,7 @@ async function runPerformanceTest(
   
   const results: Awaited<ReturnType<typeof simulateAuthRequest>>[] = [];
   const errors: string[] = [];
-  const startTime = Date.now();
+  const testStartTime = Date.now();
   
   // Run requests dengan concurrency control
   const batches = Math.ceil(requestCount / concurrency);
@@ -88,7 +104,8 @@ async function runPerformanceTest(
     }
   }
   
-  console.log('\n   ✅ Test completed');
+  const totalDuration = Date.now() - testStartTime;
+  console.log(`\n   ✅ Test completed in ${totalDuration}ms`);
   
   // Calculate statistics
   const successResults = results.filter(r => r.success);

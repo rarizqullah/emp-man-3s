@@ -1,8 +1,7 @@
 import { createMiddlewareSupabaseClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { suppressStreamErrors } from '@/lib/utils/stream-handler';
-
+import '@/lib/global-error-handler'; // Initialize global error handling
 
 // JWT fallback untuk network failures
 interface JWTPayload {
@@ -12,14 +11,117 @@ interface JWTPayload {
   iat?: number;
 }
 
-// Initialize stream error suppression untuk development
-suppressStreamErrors();
+// Initialize stream error suppression sekali saja (bukan di setiap request)
+// Global flag untuk mencegah multiple initialization
+declare global {
+  // eslint-disable-next-line no-var
+  var __MIDDLEWARE_INITIALIZED__: boolean | undefined;
+}
 
-// Enhanced timeout configuration - lebih realistis
-const AUTH_TIMEOUT = 30000; // 30 detik - lebih generous untuk koneksi lambat
-const RETRY_ATTEMPTS = 3; // Tambah jadi 3 attempts
-const MAX_BACKOFF = 5000; // Max 5 detik backoff
-const MAX_NETWORK_RETRIES = 2; // Extra retries untuk network errors
+// Inisialisasi hanya sekali untuk seluruh aplikasi dengan lazy loading
+function initializeOnce() {
+  if (!globalThis.__MIDDLEWARE_INITIALIZED__) {
+    // Don't call suppressStreamErrors here since it's already called in global-error-handler
+    globalThis.__MIDDLEWARE_INITIALIZED__ = true;
+    // Only log once during initialization
+    if (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') {
+      console.log('🔧 Middleware initialized successfully');
+    }
+  }
+}
+
+// Initialize immediately but only once
+initializeOnce();
+
+// Enhanced circuit breaker untuk mencegah cascading failures
+class AuthCircuitBreaker {
+  private failureCount = 0;
+  private networkFailureCount = 0;
+  private lastFailureTime = 0;
+  private lastNetworkFailureTime = 0;
+  private isOpen = false;
+  private readonly failureThreshold = 3; // Open after 3 failures
+  private readonly networkFailureThreshold = 2; // Open faster for network errors
+  private readonly recoveryTimeout = 15000; // 15 second recovery time
+  private readonly networkRecoveryTimeout = 10000; // Faster recovery for network issues
+
+  shouldBypass(): boolean {
+    const now = Date.now();
+    
+    // Check for network-specific bypass
+    if (this.networkFailureCount >= this.networkFailureThreshold) {
+      if (now - this.lastNetworkFailureTime >= this.networkRecoveryTimeout) {
+        this.networkFailureCount = 0;
+        console.log('🔄 Network circuit breaker reset');
+        return false;
+      }
+      return true;
+    }
+    
+    // Check for general circuit breaker
+    if (!this.isOpen) return false;
+    
+    if (now - this.lastFailureTime >= this.recoveryTimeout) {
+      this.isOpen = false;
+      this.failureCount = 0;
+      console.log('🔄 Circuit breaker reset - attempting normal auth');
+      return false;
+    }
+    
+    return true;
+  }
+
+  recordFailure(isNetworkError: boolean = false): void {
+    const now = Date.now();
+    
+    if (isNetworkError) {
+      this.networkFailureCount++;
+      this.lastNetworkFailureTime = now;
+      console.warn(`🌐 Network failure recorded (${this.networkFailureCount}/${this.networkFailureThreshold})`);
+    }
+    
+    this.failureCount++;
+    this.lastFailureTime = now;
+    
+    if (this.failureCount >= this.failureThreshold) {
+      this.isOpen = true;
+      console.warn(`⚡ Circuit breaker opened after ${this.failureCount} failures - using fallback`);
+    }
+  }
+
+  recordSuccess(): void {
+    this.failureCount = 0;
+    this.networkFailureCount = 0;
+    this.isOpen = false;
+  }
+
+  // Health check method
+  getStatus() {
+    return {
+      isOpen: this.isOpen,
+      failureCount: this.failureCount,
+      networkFailureCount: this.networkFailureCount,
+      shouldBypass: this.shouldBypass()
+    };
+  }
+
+  // Reset method untuk exceptional cases
+  reset(): void {
+    this.failureCount = 0;
+    this.networkFailureCount = 0;
+    this.lastFailureTime = 0;
+    this.lastNetworkFailureTime = 0;
+    this.isOpen = false;
+    console.log('🔄 Circuit breaker manually reset');
+  }
+}
+
+const authCircuitBreaker = new AuthCircuitBreaker();
+
+// Optimized timeout configuration - lebih responsif
+const AUTH_TIMEOUT = 5000; // 5 detik - lebih agresif untuk mencegah long waits
+const FAST_AUTH_TIMEOUT = 2000; // 2 detik untuk checks cepat
+const MAX_AUTH_RETRIES = 2; // Maksimal 2 retry (total 3 attempts)
 
 // Tracking metrics untuk auth operations
 const authMetrics = {
@@ -34,7 +136,16 @@ const authMetrics = {
 
 // Performance logging - only in development or slow requests
 function logPerformanceMetrics() {
-  if (process.env.NODE_ENV === 'production') return;
+  // Safe environment check for Edge Runtime
+  let isProduction = false;
+  try {
+    isProduction = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
+  } catch {
+    // Edge Runtime fallback - assume not production
+    isProduction = false;
+  }
+  
+  if (isProduction) return;
   
   if (authMetrics.totalRequests > 0 && authMetrics.totalRequests % 100 === 0) {
     console.log('📊 Auth Performance Summary:', {
@@ -90,7 +201,7 @@ function parseSupabaseJWT(token: string): JWTPayload | null {
 // Helper untuk mengambil chunked cookies (sama seperti di supabase server)
 function getChunkedCookie(req: NextRequest, name: string): string | undefined {
   // Coba ambil cookie utama dulu
-  let mainCookie = req.cookies.get(name)?.value;
+  const mainCookie = req.cookies.get(name)?.value;
   if (mainCookie) {
     return mainCookie;
   }
@@ -118,8 +229,8 @@ function getChunkedCookie(req: NextRequest, name: string): string | undefined {
   return undefined;
 }
 
-// JWT fallback auth check
-function checkJWTFallback(req: NextRequest): { valid: boolean; user?: any } {
+// Enhanced JWT fallback auth check dengan circuit breaker
+function checkJWTFallback(req: NextRequest): { valid: boolean; user?: { id: string; email: string; role: string } } {
   try {
     const accessToken = getChunkedCookie(req, 'sb-access-token');
     
@@ -150,13 +261,13 @@ function checkJWTFallback(req: NextRequest): { valid: boolean; user?: any } {
   }
 }
 
-// Enhanced timeout helper dengan better error detection
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+// Enhanced timeout helper dengan better error detection dan retry limits
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string, attempt: number = 1): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
       const timeoutId = setTimeout(() => {
-        reject(new Error(`Auth timeout after ${timeoutMs}ms for ${operation}`));
+        reject(new Error(`${operation} timeout after ${timeoutMs}ms (attempt ${attempt})`));
       }, timeoutMs);
       
       // Cleanup timeout if promise resolves
@@ -165,121 +276,212 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: strin
   ]);
 }
 
-// Enhanced retry mechanism dengan progressive backoff dan network fallback
-async function retryAuthCheck(
-  authFunction: () => Promise<any>, 
+// Enhanced auth check dengan intelligent retry dan fast fallback
+async function enhancedAuthCheck(
+  authFunction: () => Promise<{ data: { user: { id: string; email?: string } | null }; error: { message: string } | null }>,
   pathname: string,
-  req: NextRequest,
-  maxAttempts: number = RETRY_ATTEMPTS
-): Promise<any> {
-  let lastError: Error | null = null;
-  const startTime = Date.now();
-  let networkRetryCount = 0;
-  
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  req: NextRequest
+): Promise<{ data: { user: { id: string; email?: string } | null }; error: { message: string } | null }> {
+  // IMMEDIATE JWT fallback check for faster response
+  const jwtFallback = checkJWTFallback(req);
+  if (jwtFallback.valid && authCircuitBreaker.shouldBypass()) {
+    console.log(`⚡ Circuit breaker open, using immediate JWT fallback for ${pathname}`);
+    return {
+      data: { user: jwtFallback.user || null },
+      error: null
+    };
+  }
+
+  let attempt = 1;
+  let totalDuration = 0;
+  const maxTotalDuration = 8000; // Reduced from 10s to 8s
+  const retryDelays = [0, 500, 1000]; // Faster retry delays
+
+  while (attempt <= MAX_AUTH_RETRIES) {
+    const attemptStart = Date.now();
+    
     try {
-      const operationName = `${pathname} (attempt ${attempt})`;
-      const result = await withTimeout(authFunction(), AUTH_TIMEOUT, operationName);
+      // Progressive timeout reduction for faster failures
+      const baseTimeout = Math.max(AUTH_TIMEOUT - (attempt - 1) * 1500, 2000);
+      console.log(`🔍 Auth attempt ${attempt}/${MAX_AUTH_RETRIES} for ${pathname} (timeout: ${baseTimeout}ms)`);
       
-      // Log successful auth after retry
-      if (attempt > 1) {
-        authMetrics.retryCount++;
-        console.log(`✅ Auth succeeded on attempt ${attempt} for ${pathname}`);
-      }
+      // Wrap auth function with additional error handling
+      const wrappedAuthFunction = async () => {
+        try {
+          return await authFunction();
+        } catch (error) {
+          const errorMsg = (error as Error).message || String(error);
+          
+          // Immediate detection of network errors
+          if (errorMsg.includes('fetch failed') || 
+              errorMsg.includes('Failed to fetch') ||
+              errorMsg.includes('network error') ||
+              errorMsg.includes('ENOTFOUND') ||
+              errorMsg.includes('ECONNRESET') ||
+              errorMsg.includes('ECONNREFUSED')) {
+            
+            console.log(`🌐 Network error detected immediately, trying JWT fallback before timeout...`);
+            
+            // Try JWT fallback immediately on network errors
+            if (jwtFallback.valid) {
+              console.log(`✅ Immediate JWT fallback successful for ${pathname}`);
+              authCircuitBreaker.recordFailure(true);
+              return {
+                data: { user: jwtFallback.user || null },
+                error: null
+              };
+            }
+          }
+          
+          throw error;
+        }
+      };
       
-      // Update metrics
-      const duration = Date.now() - startTime;
-      authMetrics.totalRequests++;
-      authMetrics.averageResponseTime = 
-        (authMetrics.averageResponseTime * (authMetrics.totalRequests - 1) + duration) / authMetrics.totalRequests;
+      const result = await withTimeout(wrappedAuthFunction(), baseTimeout, pathname, attempt);
+      
+      const attemptDuration = Date.now() - attemptStart;
+      console.log(`✅ Auth success on attempt ${attempt} after ${attemptDuration}ms for ${pathname}`);
+      
+      authCircuitBreaker.recordSuccess();
+      authMetrics.successfulAuthentications++;
+      authMetrics.responseTimes.push(attemptDuration);
       
       return result;
+      
     } catch (error) {
-      lastError = error as Error;
-      
-      // Categorize error type
+      const attemptDuration = Date.now() - attemptStart;
+      totalDuration += attemptDuration;
       const errorType = getErrorType(error as Error);
-      console.warn(`⚠️ Auth attempt ${attempt}/${maxAttempts} failed for ${pathname}:`, {
-        error: (error as Error).message,
-        type: errorType,
-        duration: Date.now() - startTime,
-        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL
-      });
       
-      // Update timeout metrics
-      if ((error as Error).message.includes('timeout')) {
+      console.warn(`⚠️ Auth attempt ${attempt}/${MAX_AUTH_RETRIES} failed for ${pathname}: {
+  error: '${(error as Error).message}',
+  type: '${errorType}',
+  duration: ${attemptDuration}ms,
+  totalDuration: ${totalDuration}ms
+}`);
+      
+      authMetrics.failedAuthentications++;
+      
+      // Record timeout metrics
+      if (errorType === 'timeout') {
         authMetrics.timeoutCount++;
       }
       
-      // Special handling untuk network errors dengan extra retries
-      if (errorType === 'network' && networkRetryCount < MAX_NETWORK_RETRIES) {
-        networkRetryCount++;
-        const networkBackoff = 2000 * networkRetryCount; // 2s, 4s untuk network
+      // For any error, try JWT fallback immediately if available
+      if (jwtFallback.valid && (errorType === 'network' || errorType === 'timeout' || attempt === MAX_AUTH_RETRIES)) {
+        console.log(`🔍 Using JWT fallback after ${errorType} error (attempt ${attempt})`);
+        authCircuitBreaker.recordFailure(errorType === 'network');
+        return {
+          data: { user: jwtFallback.user || null },
+          error: null
+        };
+      }
+      
+      // If total duration exceeded or last attempt, fail
+      if (attempt >= MAX_AUTH_RETRIES || totalDuration >= maxTotalDuration) {
+        console.error(`❌ All auth attempts failed for ${pathname} after ${totalDuration}ms`);
+        authCircuitBreaker.recordFailure(errorType === 'network');
         
-        console.log(`🌐 Network error detected, extra retry ${networkRetryCount}/${MAX_NETWORK_RETRIES} in ${networkBackoff}ms...`);
-        await new Promise(resolve => setTimeout(resolve, networkBackoff));
-        
-        // Coba JWT fallback sebelum retry
-        const fallbackResult = checkJWTFallback(req);
-        if (fallbackResult.valid) {
-          console.log(`🔄 Using JWT fallback for ${pathname} due to network issues`);
+        // Last chance JWT fallback
+        if (jwtFallback.valid) {
+          console.log(`✅ Final JWT fallback successful for ${pathname}`);
           return {
-            data: { user: fallbackResult.user },
+            data: { user: jwtFallback.user || null },
             error: null
           };
         }
         
-        // Reset attempt counter untuk network retry
-        attempt--;
-        continue;
+        throw new Error(`Auth failed after ${MAX_AUTH_RETRIES} attempts and ${totalDuration}ms for ${pathname}`);
       }
       
-      // Jika bukan attempt terakhir, tunggu sebelum retry
-      if (attempt < maxAttempts) {
-        // Progressive backoff dengan jitter untuk menghindari thundering herd
-        const baseBackoff = Math.min(1000 * Math.pow(2, attempt - 1), MAX_BACKOFF);
-        const jitter = Math.random() * 500; // 0-500ms random jitter
-        const backoffMs = baseBackoff + jitter;
-        
-        console.log(`🔄 Retrying auth for ${pathname} in ${Math.round(backoffMs)}ms...`);
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      // Record retry for metrics
+      authMetrics.retryCount++;
+      
+      // Smart delay based on error type
+      const delay = errorType === 'network' ? retryDelays[0] : retryDelays[attempt] || 1000;
+      if (delay > 0) {
+        console.log(`⏳ Waiting ${delay}ms before retry (error: ${errorType})...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        totalDuration += delay;
       }
+      
+      // For network errors, trigger circuit breaker faster
+      if (errorType === 'network') {
+        authCircuitBreaker.recordFailure(true);
+      }
+      
+      attempt++;
     }
   }
   
-  // Final JWT fallback jika semua attempts gagal
-  console.log(`🔍 All auth attempts failed for ${pathname}, trying JWT fallback...`);
-  const fallbackResult = checkJWTFallback(req);
-  if (fallbackResult.valid) {
-    console.log(`✅ JWT fallback successful for ${pathname}`);
-    authMetrics.totalRequests++;
-    return {
-      data: { user: fallbackResult.user },
-      error: null
-    };
-  }
-  
-  // Update final metrics
-  authMetrics.totalRequests++;
-  
-  // Jika semua attempts dan fallback gagal, throw error terakhir
-  throw lastError;
+  throw new Error(`Auth failed after ${MAX_AUTH_RETRIES} attempts for ${pathname}`);
 }
 
-// Error categorization untuk better handling
+// Enhanced error categorization untuk better handling
 function getErrorType(error: Error): string {
   const message = error.message.toLowerCase();
+  const errorString = String(error).toLowerCase();
+  const stack = error.stack?.toLowerCase() || '';
   
-  if (message.includes('timeout')) return 'timeout';
+  // Comprehensive timeout detection
+  if (message.includes('timeout') || 
+      message.includes('aborted') || 
+      message.includes('timed out') ||
+      message.includes('deadline exceeded')) {
+    return 'timeout';
+  }
+  
+  // Comprehensive network error detection for "fetch failed" and variants
   if (message.includes('fetch failed') || 
+      message.includes('failed to fetch') ||
+      message.includes('network error') || 
       message.includes('network') || 
       message.includes('fetch') ||
       message.includes('enotfound') ||
       message.includes('econnreset') ||
       message.includes('econnrefused') ||
-      message.includes('dns lookup')) return 'network';
-  if (message.includes('database') || message.includes('connection')) return 'database';
-  if (message.includes('auth')) return 'auth';
+      message.includes('econnaborted') ||
+      message.includes('dns lookup') ||
+      message.includes('connection refused') ||
+      message.includes('connection reset') ||
+      message.includes('connection aborted') ||
+      message.includes('service unavailable') ||
+      message.includes('bad gateway') ||
+      message.includes('gateway timeout') ||
+      message.includes('network is unreachable') ||
+      message.includes('no route to host') ||
+      message.includes('connection timed out') ||
+      errorString.includes('fetch failed') ||
+      errorString.includes('failed to fetch') ||
+      stack.includes('fetch failed') ||
+      stack.includes('network error')) {
+    return 'network';
+  }
+  
+  // Database specific errors
+  if (message.includes('database') || 
+      message.includes('connection') || 
+      message.includes('pool') ||
+      message.includes('postgres') ||
+      message.includes('supabase')) {
+    return 'database';
+  }
+  
+  // Auth specific errors
+  if (message.includes('auth') || 
+      message.includes('unauthorized') || 
+      message.includes('forbidden') ||
+      message.includes('invalid token') ||
+      message.includes('expired')) {
+    return 'auth';
+  }
+  
+  // Circuit breaker errors
+  if (message.includes('circuit breaker') || 
+      message.includes('circuit') ||
+      message.includes('breaker')) {
+    return 'circuit_breaker';
+  }
   
   return 'unknown';
 }
@@ -328,8 +530,8 @@ export async function middleware(request: NextRequest) {
         const res = NextResponse.next();
         const supabase = createMiddlewareSupabaseClient(request, res);
 
-        // Use enhanced retry mechanism untuk auth check
-        const userResult = await retryAuthCheck(
+        // Use enhanced auth check dengan circuit breaker
+        const userResult = await enhancedAuthCheck(
           () => supabase.auth.getUser(),
           request.nextUrl.pathname,
           request
@@ -338,12 +540,15 @@ export async function middleware(request: NextRequest) {
         
         // Log performance metrics
         const authDuration = Date.now() - startTime;
-        if (authDuration > 5000) { // Warning untuk > 5 detik
+        authMetrics.responseTimes.push(authDuration);
+        
+        if (authDuration > 3000) { // Warning untuk > 3 detik
           console.warn(`⚠️ Slow auth check: ${authDuration}ms for ${request.nextUrl.pathname}`);
         }
         
         // Log metrics periodically
         logPerformanceMetrics();
+        cleanupOldMetrics();
         
         // Jika tidak ada user atau error
         if (error || !user) {
@@ -356,21 +561,36 @@ export async function middleware(request: NextRequest) {
           return safeRedirect(loginUrl.toString(), 'auth_failed');
         }
         
+        authMetrics.successfulAuthentications++;
         return res;
+        
       } catch (error) {
         const authDuration = Date.now() - startTime;
         const errorType = getErrorType(error as Error);
         
-               console.error(`❌ Middleware auth error after ${authDuration}ms for ${request.nextUrl.pathname}:`, {
-           error: (error as Error).message,
-           type: errorType,
-           duration: authDuration
-         });
+        authMetrics.failedAuthentications++;
+        authMetrics.responseTimes.push(authDuration);
         
-        // Redirect ke login jika terjadi error atau timeout
+        console.error(`❌ Middleware auth error after ${authDuration}ms for ${request.nextUrl.pathname}:`, {
+          error: (error as Error).message,
+          type: errorType,
+          duration: authDuration,
+          stack: (error as Error).stack?.split('\n')[0] // First line of stack for debugging
+        });
+        
+        // Final attempt with JWT fallback for ANY error
+        console.log(`🔍 Final JWT fallback attempt for ${request.nextUrl.pathname}...`);
+        const fallbackResult = checkJWTFallback(request);
+        if (fallbackResult.valid) {
+          console.log(`✅ Final JWT fallback successful for protected route ${request.nextUrl.pathname}`);
+          return NextResponse.next();
+        }
+        
+        // Redirect ke login dengan error context
         const loginUrl = new URL('/login', request.url);
         loginUrl.searchParams.set('redirect_to', request.nextUrl.pathname);
         loginUrl.searchParams.set('error', errorType);
+        loginUrl.searchParams.set('message', encodeURIComponent((error as Error).message));
         return safeRedirect(loginUrl.toString(), 'middleware_error');
       }
     }
@@ -381,12 +601,12 @@ export async function middleware(request: NextRequest) {
         const res = NextResponse.next();
         const supabase = createMiddlewareSupabaseClient(request, res);
         
-        // Quick user check untuk redirect dengan retry - timeout lebih pendek untuk auth pages
-        const userResult = await retryAuthCheck(
-          () => supabase.auth.getUser(),
+        // Quick user check untuk redirect dengan fast auth - timeout lebih pendek untuk auth pages
+        const userResult = await withTimeout(
+          supabase.auth.getUser(),
+          FAST_AUTH_TIMEOUT, // 2 detik timeout untuk auth pages
           request.nextUrl.pathname,
-          request,
-          2 // Hanya 2 attempts untuk auth pages
+          1
         );
         const { data: { user } } = userResult;
         
@@ -399,11 +619,25 @@ export async function middleware(request: NextRequest) {
         
         return res;
       } catch (error) {
+        const errorType = getErrorType(error as Error);
+        
+        // For network errors on auth pages, try JWT fallback
+        if (errorType === 'network') {
+          console.log(`🌐 Network error on auth page ${request.nextUrl.pathname}, trying JWT fallback...`);
+          const fallbackResult = checkJWTFallback(request);
+          if (fallbackResult.valid) {
+            console.log(`✅ JWT fallback successful on auth page, redirecting to dashboard`);
+            const redirectTo = request.nextUrl.searchParams.get('redirect_to') || '/dashboard';
+            const redirectUrl = new URL(redirectTo, request.url);
+            return safeRedirect(redirectUrl.toString(), 'jwt_fallback_success');
+          }
+        }
+        
         // Continue to auth page if error - log but don't block
-               console.log(`ℹ️ Auth check failed for ${request.nextUrl.pathname}, continuing to auth page:`, {
-           error: (error as Error).message,
-           type: getErrorType(error as Error)
-         });
+        console.log(`ℹ️ Auth check failed for ${request.nextUrl.pathname}, continuing to auth page:`, {
+          error: (error as Error).message,
+          type: errorType
+        });
         return NextResponse.next();
       }
     }
@@ -443,7 +677,7 @@ if (typeof window === 'undefined' && typeof setInterval !== 'undefined') {
     setInterval(() => {
       cleanupOldMetrics();
     }, 300000); // Every 5 minutes
-  } catch (error) {
-    // Silently fail in Edge Runtime
+  } catch {
+    // Silently fail in Edge Runtime - circuit breaker akan handle cleanup
   }
 } 

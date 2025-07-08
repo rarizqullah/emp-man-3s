@@ -11,6 +11,9 @@
     "lint": "next lint",
     "test:api-gateway": "bun run src/scripts/test-api-gateway.ts",
     "test:gateway": "bun run src/scripts/test-api-gateway.ts",
+    "test:network-resilience": "node test-network-resilience.js",
+    "test:auth-timeout": "node test-auth-timeout-fix.js",
+    "monitor:auth": "bun run src/scripts/monitor-auth-performance.ts",
     "api-gateway:health": "curl -s http://localhost:3000/api/gateway/health | json_pp",
     "api-gateway:metrics": "curl -s http://localhost:3000/api/gateway/admin/metrics | json_pp"
   },
