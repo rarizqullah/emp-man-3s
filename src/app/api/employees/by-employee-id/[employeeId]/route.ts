@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEmployeeByEmployeeId } from '@/lib/db/employee.service';
-import { ensureDatabaseConnection } from "@/lib/db/prisma";
+import { ensureDatabaseConnection } from '@/lib/db';
 
 export async function GET(
   request: NextRequest,

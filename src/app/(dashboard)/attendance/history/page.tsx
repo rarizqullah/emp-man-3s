@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { id } from "date-fns/locale";
 import {
   Search,
   FileDown,
   Calendar as CalendarIcon,
-  RefreshCw
+  RefreshCw,
+  Filter
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,8 +37,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "react-hot-toast";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import * as XLSX from 'xlsx';
 
 // Tipe data untuk riwayat kehadiran
 interface AttendanceRecord {
@@ -93,6 +100,10 @@ export default function AttendanceHistoryPage() {
   const [filteredData, setFilteredData] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [departments, setDepartments] = useState<string[]>([]);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Fungsi untuk fetch data department
   const fetchDepartments = async () => {
@@ -112,7 +123,7 @@ export default function AttendanceHistoryPage() {
   };
 
   // Fungsi untuk fetch data attendance
-  const fetchAttendanceData = async () => {
+  const fetchAttendanceData = useCallback(async () => {
     setIsLoading(true);
     try {
       const monthStart = startOfMonth(date);
@@ -144,7 +155,7 @@ export default function AttendanceHistoryPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [date]);
 
   // Filter data berdasarkan parameter pencarian dan filter
   useEffect(() => {
@@ -164,12 +175,30 @@ export default function AttendanceHistoryPage() {
     });
 
     setFilteredData(filtered);
+    setCurrentPage(1); // Reset to first page when filters change
   }, [searchTerm, filterDepartment, filterStatus, filterLateness, attendanceData]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredData.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedData = filteredData.slice(startIndex, endIndex);
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // Handle page size change
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1); // Reset to first page
+  };
 
   // Fetch data saat komponen dimuat atau tanggal berubah
   useEffect(() => {
     fetchAttendanceData();
-  }, [date]);
+  }, [date, fetchAttendanceData]);
 
   // Fetch departments saat komponen dimuat
   useEffect(() => {
@@ -183,9 +212,66 @@ export default function AttendanceHistoryPage() {
 
   // Handler untuk ekspor data kehadiran
   const handleExportData = () => {
-    console.log("Mengekspor data kehadiran:", filteredData);
-    toast.success("Fitur ekspor akan segera tersedia");
-    // TODO: Implementasi ekspor data ke Excel/CSV
+    try {
+      const dataToExport = filteredData.map((record, index) => ({
+        'No': index + 1,
+        'Tanggal': formatDate(record.attendanceDate),
+        'ID Karyawan': record.employeeId,
+        'Nama': record.employeeName,
+        'Departemen': record.departmentName,
+        'Shift': record.shiftName,
+        'Jam Masuk': formatTime(record.checkInTime),
+        'Jam Keluar': formatTime(record.checkOutTime),
+        'Istirahat Mulai': formatTime(record.breakStartTime),
+        'Istirahat Selesai': formatTime(record.breakEndTime),
+        'Lembur Mulai': formatTime(record.overtimeStartTime),
+        'Lembur Selesai': formatTime(record.overtimeEndTime),
+        'Jam Kerja': record.mainWorkHours ? `${record.mainWorkHours.toFixed(2)}h` : '-',
+        'Lembur Reguler': record.regularOvertimeHours ? `${record.regularOvertimeHours.toFixed(2)}h` : '-',
+        'Lembur Mingguan': record.weeklyOvertimeHours ? `${record.weeklyOvertimeHours.toFixed(2)}h` : '-',
+        'Keterlambatan': record.isLate ? `${record.roundedMinutesLate || record.minutesLate}m` : '-',
+        'Status': record.status,
+        'Check-in Tervalidasi': record.isCheckInValidated ? 'Ya' : 'Tidak',
+        'Check-out Tervalidasi': record.isCheckOutValidated ? 'Ya' : 'Tidak'
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
+      const wb = XLSX.utils.book_new();
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 5 },   // No
+        { wch: 15 },  // Tanggal
+        { wch: 15 },  // ID
+        { wch: 25 },  // Nama
+        { wch: 20 },  // Departemen
+        { wch: 15 },  // Shift
+        { wch: 12 },  // Jam Masuk
+        { wch: 12 },  // Jam Keluar
+        { wch: 15 },  // Istirahat Mulai
+        { wch: 15 },  // Istirahat Selesai
+        { wch: 15 },  // Lembur Mulai
+        { wch: 15 },  // Lembur Selesai
+        { wch: 12 },  // Jam Kerja
+        { wch: 15 },  // Lembur Reguler
+        { wch: 15 },  // Lembur Mingguan
+        { wch: 15 },  // Keterlambatan
+        { wch: 12 },  // Status
+        { wch: 18 },  // Check-in Tervalidasi
+        { wch: 18 }   // Check-out Tervalidasi
+      ];
+      ws['!cols'] = colWidths;
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'Riwayat Kehadiran');
+      
+      const fileName = `Riwayat_Kehadiran_${format(date, 'yyyy-MM')}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      toast.success(`Data berhasil diekspor ke ${fileName}`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Gagal mengekspor data ke Excel');
+    }
   };
 
   // Fungsi untuk refresh data
@@ -209,8 +295,11 @@ export default function AttendanceHistoryPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Riwayat Kehadiran</h1>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="typography-h1">Riwayat Kehadiran</h1>
+          <p className="typography-muted mt-2">Lihat dan kelola riwayat kehadiran karyawan untuk bulan {format(date, "MMMM yyyy", { locale: id })}</p>
+        </div>
         <Button variant="outline" onClick={handleRefreshData} disabled={isLoading}>
           <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh Data
@@ -225,283 +314,249 @@ export default function AttendanceHistoryPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="mb-6 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4 items-end">
-              <div className="flex-1 max-w-md">
-                <Label className="mb-2 block text-sm font-semibold">Pencarian</Label>
-                <div className="relative">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Cari nama karyawan..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-8 h-10"
-                    disabled={isLoading}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label className="mb-2 block text-sm font-semibold">Periode</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-10 gap-1" disabled={isLoading}>
-                      <CalendarIcon className="h-4 w-4" />
-                      {format(date, "MMMM yyyy", { locale: id })}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={date}
-                      onSelect={(date) => date && setDate(date)}
-                      month={date}
-                      onMonthChange={handleMonthChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <Button variant="outline" onClick={handleExportData} disabled={isLoading} className="h-10">
-                <FileDown className="mr-2 h-4 w-4" />
-                Export Data
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <DropdownFilter
-                label="Departemen"
-                placeholder="Pilih departemen"
-                items={[
-                  { value: "all", label: "Semua" },
-                  ...departments.map(dept => ({ value: dept, label: dept }))
-                ]}
-                value={filterDepartment}
-                onChange={setFilterDepartment}
-                disabled={isLoading}
-              />
-
-              <DropdownFilter
-                label="Status"
-                placeholder="Pilih status"
-                items={[
-                  { value: "all", label: "Semua" },
-                  { value: "PRESENT", label: "Hadir" },
-                  { value: "LATE", label: "Terlambat" },
-                  { value: "ABSENT", label: "Tidak Hadir" },
-                ]}
-                value={filterStatus}
-                onChange={setFilterStatus}
-                disabled={isLoading}
-              />
-
-              <DropdownFilter
-                label="Keterlambatan"
-                placeholder="Pilih keterlambatan"
-                items={[
-                  { value: "all", label: "Semua" },
-                  { value: "late", label: "Terlambat" },
-                  { value: "ontime", label: "Tepat Waktu" },
-                ]}
-                value={filterLateness}
-                onChange={setFilterLateness}
-                disabled={isLoading}
-              />
-            </div>
+          {/* Summary info */}
+          <div className="mb-4 text-sm text-muted-foreground">
+            Menampilkan {startIndex + 1}-{Math.min(endIndex, filteredData.length)} dari {filteredData.length} data riwayat kehadiran
           </div>
 
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[90px] text-center">Tanggal</TableHead>
-                  <TableHead className="min-w-[120px] text-center">ID</TableHead>
-                  <TableHead className="min-w-[150px] text-center">Nama</TableHead>
-                  <TableHead className="min-w-[120px] text-center">Departemen</TableHead>
-                  <TableHead className="min-w-[100px] text-center">Shift</TableHead>
-                  <TableHead className="min-w-[80px] text-center">Masuk</TableHead>
-                  <TableHead className="min-w-[80px] text-center">Keluar</TableHead>
-                  <TableHead className="min-w-[90px] text-center">Istirahat<br/>Mulai</TableHead>
-                  <TableHead className="min-w-[90px] text-center">Istirahat<br/>Selesai</TableHead>
-                  <TableHead className="min-w-[90px] text-center">Lembur<br/>Mulai</TableHead>
-                  <TableHead className="min-w-[90px] text-center">Lembur<br/>Selesai</TableHead>
-                  <TableHead className="min-w-[80px] text-center">Jam<br/>Kerja</TableHead>
-                  <TableHead className="min-w-[80px] text-center">Lembur<br/>Reguler</TableHead>
-                  <TableHead className="min-w-[80px] text-center">Lembur<br/>Mingguan</TableHead>
-                  <TableHead className="min-w-[100px] text-center">Keterlambatan</TableHead>
-                  <TableHead className="min-w-[90px] text-center">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={16} className="text-center h-24">
-                      <div className="flex justify-center items-center">
-                        <RefreshCw className="h-6 w-6 animate-spin mr-2" />
-                        Memuat data riwayat kehadiran...
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : filteredData.length > 0 ? (
-                  filteredData.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell className="text-center">{formatDate(record.attendanceDate)}</TableCell>
-                      <TableCell className="text-center">{record.employeeId}</TableCell>
-                      <TableCell className="font-medium">{record.employeeName}</TableCell>
-                      <TableCell className="text-center">{record.departmentName}</TableCell>
-                      <TableCell className="text-center">{record.shiftName}</TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex flex-col items-center">
-                          <span>{formatTime(record.checkInTime)}</span>
-                          {record.isCheckInValidated && (
-                            <span className="text-xs text-green-600">✓ Tervalidasi</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex flex-col items-center">
-                          <span>{formatTime(record.checkOutTime)}</span>
-                          {record.isCheckOutValidated && (
-                            <span className="text-xs text-green-600">✓ Tervalidasi</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">{formatTime(record.breakStartTime)}</TableCell>
-                      <TableCell className="text-center">{formatTime(record.breakEndTime)}</TableCell>
-                      <TableCell className="text-center">{formatTime(record.overtimeStartTime)}</TableCell>
-                      <TableCell className="text-center">{formatTime(record.overtimeEndTime)}</TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-mono text-sm">
-                          {record.mainWorkHours ? `${record.mainWorkHours.toFixed(2)}h` : "-"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-mono text-sm">
-                          {record.regularOvertimeHours ? `${record.regularOvertimeHours.toFixed(2)}h` : "-"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-mono text-sm">
-                          {record.weeklyOvertimeHours ? `${record.weeklyOvertimeHours.toFixed(2)}h` : "-"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {record.isLate ? (
-                          <div className="flex flex-col items-center">
-                            <Badge variant="destructive" className="text-xs mb-1">
-                              Terlambat {record.roundedMinutesLate || record.minutesLate}m
-                            </Badge>
-                            {record.latenessMessage && (
-                              <span className="text-xs text-muted-foreground">
-                                {record.latenessMessage}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant={getStatusBadge(record.status).variant}>
-                          {getStatusBadge(record.status).label}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={16} className="text-center h-24">
-                      {attendanceData.length === 0 
-                        ? "Tidak ada data kehadiran untuk bulan ini" 
-                        : "Tidak ada data yang sesuai dengan filter pencarian"}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          
-          {!isLoading && filteredData.length > 0 && (
-            <div className="mt-4 space-y-3">
-              <div className="text-sm text-muted-foreground">
-              Menampilkan {filteredData.length} dari {attendanceData.length} data kehadiran
+          <div className="flex justify-between mb-4 gap-4">
+            <div className="flex items-center gap-2 flex-1">
+              <div className="relative max-w-sm">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cari karyawan..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                  disabled={isLoading}
+                />
               </div>
               
-              {/* Summary Statistics */}
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 p-4 bg-muted/50 rounded-lg">
-                <div className="text-center">
-                  <div className="text-lg font-semibold text-slate-700">
-                    {filteredData.filter(r => r.status === 'PRESENT').length}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" disabled={isLoading}>
+                    <Filter className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[200px]">
+                  <div className="p-2">
+                    <div className="mb-2">
+                      <label className="text-xs font-medium mb-1 block">Departemen</label>
+                      <Select 
+                        value={filterDepartment} 
+                        onValueChange={setFilterDepartment}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Semua" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Semua</SelectItem>
+                          {departments.map((dept) => (
+                            <SelectItem key={dept} value={dept}>
+                              {dept}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="mb-2">
+                      <label className="text-xs font-medium mb-1 block">Status</label>
+                      <Select 
+                        value={filterStatus} 
+                        onValueChange={setFilterStatus}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Semua" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Semua</SelectItem>
+                          <SelectItem value="PRESENT">Hadir</SelectItem>
+                          <SelectItem value="LATE">Terlambat</SelectItem>
+                          <SelectItem value="ABSENT">Tidak Hadir</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="mb-2">
+                      <label className="text-xs font-medium mb-1 block">Keterlambatan</label>
+                      <Select 
+                        value={filterLateness} 
+                        onValueChange={setFilterLateness}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Semua" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Semua</SelectItem>
+                          <SelectItem value="late">Terlambat</SelectItem>
+                          <SelectItem value="ontime">Tepat Waktu</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">Hadir</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-semibold text-slate-700">
-                    {filteredData.filter(r => r.isLate).length}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Terlambat</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-semibold text-slate-700">
-                    {filteredData.filter(r => r.status === 'ABSENT').length}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Tidak Hadir</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-semibold text-slate-700">
-                    {filteredData.filter(r => r.regularOvertimeHours && r.regularOvertimeHours > 0).length}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Ada Lembur</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-semibold text-slate-700">
-                    {filteredData.filter(r => r.isCheckInValidated && r.isCheckOutValidated).length}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Tervalidasi</div>
-                </div>
-              </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" disabled={isLoading}>
+                    <CalendarIcon className="h-4 w-4 mr-2" />
+                    {format(date, "MMMM yyyy", { locale: id })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={date}
+                    onSelect={(date) => date && setDate(date)}
+                    month={date}
+                    onMonthChange={handleMonthChange}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleRefreshData} disabled={isLoading}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Button variant="outline" onClick={handleExportData} disabled={isLoading}>
+                <FileDown className="mr-2 h-4 w-4" />
+                Export Excel
+              </Button>
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+              <span className="ml-2">Memuat data riwayat kehadiran...</span>
+            </div>
+          ) : (
+            <div className="rounded-md border bg-background shadow-sm">
+              <Table>
+                <TableHeader className="bg-muted/50 border-b">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Tanggal</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">ID</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Nama</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Departemen</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Shift</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Masuk</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Keluar</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Istirahat Mulai</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Istirahat Selesai</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Lembur Mulai</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Lembur Selesai</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Jam Kerja</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Lembur Reguler</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Lembur Mingguan</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Keterlambatan</TableHead>
+                    <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedData.length > 0 ? (
+                    paginatedData.map((record) => (
+                      <TableRow key={record.id} className="hover:bg-muted/50 transition-colors border-b last:border-b-0">
+                        <TableCell className="px-4 py-3 font-mono text-sm">{formatDate(record.attendanceDate)}</TableCell>
+                        <TableCell className="px-4 py-3 font-mono text-sm">{record.employeeId}</TableCell>
+                        <TableCell className="px-4 py-3 font-medium">{record.employeeName}</TableCell>
+                        <TableCell className="px-4 py-3">{record.departmentName}</TableCell>
+                        <TableCell className="px-4 py-3">{record.shiftName}</TableCell>
+                        <TableCell className="px-4 py-3 font-mono text-sm">
+                          <div className="flex flex-col">
+                            <span>{formatTime(record.checkInTime)}</span>
+                            {record.isCheckInValidated && (
+                              <span className="text-xs text-green-600">✓ Tervalidasi</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-4 py-3 font-mono text-sm">
+                          <div className="flex flex-col">
+                            <span>{formatTime(record.checkOutTime)}</span>
+                            {record.isCheckOutValidated && (
+                              <span className="text-xs text-green-600">✓ Tervalidasi</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-4 py-3 font-mono text-sm">{formatTime(record.breakStartTime)}</TableCell>
+                        <TableCell className="px-4 py-3 font-mono text-sm">{formatTime(record.breakEndTime)}</TableCell>
+                        <TableCell className="px-4 py-3 font-mono text-sm">{formatTime(record.overtimeStartTime)}</TableCell>
+                        <TableCell className="px-4 py-3 font-mono text-sm">{formatTime(record.overtimeEndTime)}</TableCell>
+                        <TableCell className="px-4 py-3 font-mono text-sm">
+                          {record.mainWorkHours ? `${record.mainWorkHours.toFixed(2)}h` : "-"}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 font-mono text-sm">
+                          {record.regularOvertimeHours ? `${record.regularOvertimeHours.toFixed(2)}h` : "-"}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 font-mono text-sm">
+                          {record.weeklyOvertimeHours ? `${record.weeklyOvertimeHours.toFixed(2)}h` : "-"}
+                        </TableCell>
+                        <TableCell className="px-4 py-3">
+                          {record.isLate ? (
+                            <div className="flex flex-col">
+                              <Badge variant="destructive" className="text-xs mb-1">
+                                Terlambat {record.roundedMinutesLate || record.minutesLate}m
+                              </Badge>
+                              {record.latenessMessage && (
+                                <span className="text-xs text-muted-foreground">
+                                  {record.latenessMessage}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-4 py-3">
+                          <Badge variant={getStatusBadge(record.status).variant}>
+                            {getStatusBadge(record.status).label}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={16} className="text-center h-24">
+                        <div className="flex flex-col items-center gap-2">
+                          <div>
+                            <p className="font-medium">Tidak ada data riwayat kehadiran</p>
+                            <p className="text-sm text-muted-foreground">
+                              {filteredData.length === 0 && attendanceData.length === 0
+                                ? "Tidak ada data kehadiran untuk bulan ini"
+                                : "Tidak ada data yang sesuai dengan filter pencarian"
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              <DataTablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredData.length}
+                itemsPerPage={pageSize}
+                onPageChange={handlePageChange}
+                onItemsPerPageChange={handlePageSizeChange}
+                itemName="data riwayat kehadiran"
+                showRowsPerPage={true}
+                showFirstLastButtons={true}
+                showPageNumbers={true}
+                className="border-t"
+              />
             </div>
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-// Komponen untuk dropdown filter
-interface DropdownFilterProps {
-  label: string;
-  placeholder: string;
-  items: { value: string; label: string }[];
-  value: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
-}
-
-function DropdownFilter({
-  label,
-  placeholder,
-  items,
-  value,
-  onChange,
-  disabled,
-}: DropdownFilterProps) {
-  return (
-    <div>
-      <Label className="mb-2 block text-sm font-semibold">{label}</Label>
-      <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger className="h-10">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {items.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
     </div>
   );
 } 

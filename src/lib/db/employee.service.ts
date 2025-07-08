@@ -1,5 +1,5 @@
-import prisma from '@/lib/db/prisma';
-import { Prisma, ContractType, WarningStatus } from '@prisma/client';
+import { prisma } from '@/lib/db';
+import { Prisma, ContractType, WarningStatus, Gender } from '@prisma/client';
 
 // Tipe data untuk parameter employee baru
 export interface EmployeeCreateInput {
@@ -16,16 +16,25 @@ export interface EmployeeCreateInput {
   faceData?: string;
 }
 
-// Tipe data untuk update employee
+// Tipe data untuk update employee - UPDATED untuk mendukung field user
 export interface EmployeeUpdateInput {
+  // User data - TAMBAHAN BARU
+  name?: string;
+  email?: string;
+  phone?: string | null;
+  
+  // Employee data (yang sudah ada)
   departmentId?: string;
   subDepartmentId?: string | null;
+  positionId?: string | null; // Tambahkan positionId yang hilang
   shiftId?: string;
   contractType?: ContractType;
   contractNumber?: string | null;
   contractStartDate?: Date;
   contractEndDate?: Date | null;
   warningStatus?: WarningStatus;
+  gender?: Gender; // Tambahkan gender yang hilang
+  address?: string | null; // Tambahkan address yang hilang
   faceData?: string | null;
 }
 
@@ -33,7 +42,7 @@ export interface EmployeeUpdateInput {
 export async function getAllEmployees() {
   try {
     // Pastikan koneksi database tersedia
-    const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+    const { ensureDatabaseConnection } = await import('@/lib/db');
     const isConnected = await ensureDatabaseConnection();
     
     if (!isConnected) {
@@ -43,8 +52,11 @@ export async function getAllEmployees() {
     // Validasi koneksi dengan $connect()
     await prisma.$connect();
 
-    // Gunakan select fields yang spesifik untuk mengurangi beban query
+    // Gunakan select fields yang spesifik untuk mengurangi beban query - hanya karyawan aktif
     const employees = await prisma.employee.findMany({
+      where: {
+        deletedAt: null // Filter hanya karyawan yang tidak diarsipkan
+      },
       select: {
         id: true,
         employeeId: true,
@@ -67,6 +79,7 @@ export async function getAllEmployees() {
             id: true,
             name: true,
             email: true,
+            phone: true,
             role: true,
           }
         },
@@ -118,7 +131,7 @@ export async function getAllEmployees() {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       try {
-        const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+        const { ensureDatabaseConnection } = await import('@/lib/db');
         const reconnected = await ensureDatabaseConnection();
         
         if (reconnected) {
@@ -128,8 +141,11 @@ export async function getAllEmployees() {
           await prisma.$disconnect();
           await prisma.$connect();
           
-          // Retry query dengan timeout yang lebih pendek
+          // Retry query dengan timeout yang lebih pendek - hanya karyawan aktif
           return await prisma.employee.findMany({
+            where: {
+              deletedAt: null // Filter hanya karyawan yang tidak diarsipkan
+            },
             select: {
               id: true,
               employeeId: true,
@@ -206,7 +222,7 @@ export async function getEmployeeById(id: string) {
       console.log(`Menjalankan query untuk karyawan dengan ID: ${id}`);
       
       // Memastikan koneksi database sebelum query dengan timeout yang diperpanjang
-      const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+      const { ensureDatabaseConnection } = await import('@/lib/db');
       
       // Extended connection timeout untuk stability
       const connectionResult = await Promise.race([
@@ -288,6 +304,7 @@ export async function getEmployeeById(id: string) {
                 id: true,
                 name: true,
                 email: true,
+                phone: true, // Tambahkan field phone
                 role: true
               }
             }
@@ -346,7 +363,7 @@ export async function getEmployeeById(id: string) {
                 subDepartment: { select: { id: true, name: true, departmentId: true } },
                 position: { select: { id: true, name: true, level: true } },
                 shift: { select: { id: true, name: true, shiftType: true } },
-                user: { select: { id: true, name: true, email: true, role: true } }
+                user: { select: { id: true, name: true, email: true, phone: true, role: true } }
               },
             }),
             new Promise((_, reject) => 
@@ -423,7 +440,7 @@ export async function getEmployeeById(id: string) {
           await new Promise(resolve => setTimeout(resolve, 2000));
           
           // Coba refresh koneksi database
-          const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
+          const { ensureDatabaseConnection } = await import('@/lib/db');
           const reconnected = await ensureDatabaseConnection();
           
           if (reconnected) {
@@ -547,57 +564,110 @@ export async function createEmployee(data: EmployeeCreateInput) {
 
 // Update karyawan
 export async function updateEmployee(id: string, data: EmployeeUpdateInput) {
-  const updateData: Prisma.EmployeeUpdateInput = {};
-
-  if (data.departmentId) {
-    updateData.department = { connect: { id: data.departmentId } };
-  }
-
-  if (data.subDepartmentId === null) {
-    updateData.subDepartment = { disconnect: true };
-  } else if (data.subDepartmentId) {
-    updateData.subDepartment = { connect: { id: data.subDepartmentId } };
-  }
-
-  if (data.shiftId) {
-    updateData.shift = { connect: { id: data.shiftId } };
-  }
-
-  if (data.contractType) {
-    updateData.contractType = data.contractType;
-  }
-
-  if (data.contractNumber !== undefined) {
-    updateData.contractNumber = data.contractNumber;
-  }
-
-  if (data.contractStartDate) {
-    updateData.contractStartDate = data.contractStartDate;
-  }
-
-  if (data.contractEndDate === null) {
-    updateData.contractEndDate = null;
-  } else if (data.contractEndDate) {
-    updateData.contractEndDate = data.contractEndDate;
-  }
-
-  if (data.warningStatus) {
-    updateData.warningStatus = data.warningStatus;
-  }
-
-  if (data.faceData !== undefined) {
-    updateData.faceData = data.faceData;
-  }
-
-  return prisma.employee.update({
-    where: { id },
-    data: updateData,
-    include: {
-      user: true,
-      department: true,
-      subDepartment: true,
-      shift: true,
-    },
+  // Gunakan transaction untuk update user dan employee secara terpisah
+  return await prisma.$transaction(async (tx) => {
+    // 1. Get employee dengan user data
+    const employee = await tx.employee.findUnique({
+      where: { id },
+      include: { user: true }
+    });
+    
+    if (!employee) {
+      throw new Error('Employee not found');
+    }
+    
+    // 2. Update user data jika ada
+    const userUpdateData: any = {};
+    if (data.name !== undefined) userUpdateData.name = data.name;
+    if (data.email !== undefined) userUpdateData.email = data.email;
+    if (data.phone !== undefined) userUpdateData.phone = data.phone;
+    
+    if (Object.keys(userUpdateData).length > 0) {
+      await tx.user.update({
+        where: { id: employee.userId },
+        data: userUpdateData
+      });
+    }
+    
+    // 3. Update employee data
+    const employeeUpdateData: Prisma.EmployeeUpdateInput = {};
+    
+    if (data.departmentId) {
+      employeeUpdateData.department = { connect: { id: data.departmentId } };
+    }
+    
+    if (data.subDepartmentId === null) {
+      employeeUpdateData.subDepartment = { disconnect: true };
+    } else if (data.subDepartmentId) {
+      employeeUpdateData.subDepartment = { connect: { id: data.subDepartmentId } };
+    }
+    
+    if (data.positionId === null) {
+      employeeUpdateData.position = { disconnect: true };
+    } else if (data.positionId) {
+      employeeUpdateData.position = { connect: { id: data.positionId } };
+    }
+    
+    if (data.shiftId) {
+      employeeUpdateData.shift = { connect: { id: data.shiftId } };
+    }
+    
+    if (data.contractType) {
+      employeeUpdateData.contractType = data.contractType;
+    }
+    
+    if (data.contractNumber !== undefined) {
+      employeeUpdateData.contractNumber = data.contractNumber;
+    }
+    
+    if (data.contractStartDate) {
+      employeeUpdateData.contractStartDate = data.contractStartDate;
+    }
+    
+    if (data.contractEndDate === null) {
+      employeeUpdateData.contractEndDate = null;
+    } else if (data.contractEndDate) {
+      employeeUpdateData.contractEndDate = data.contractEndDate;
+    }
+    
+    if (data.warningStatus) {
+      employeeUpdateData.warningStatus = data.warningStatus;
+    }
+    
+    if (data.gender) {
+      employeeUpdateData.gender = data.gender;
+    }
+    
+    if (data.address !== undefined) {
+      employeeUpdateData.address = data.address;
+    }
+    
+    if (data.faceData !== undefined) {
+      employeeUpdateData.faceData = data.faceData;
+    }
+    
+    // Update employee
+    const updatedEmployee = await tx.employee.update({
+      where: { id },
+      data: employeeUpdateData,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            role: true,
+          }
+        },
+        department: true,
+        subDepartment: true,
+        position: true,
+        shift: true,
+      },
+    });
+    
+    return updatedEmployee;
   });
 }
 

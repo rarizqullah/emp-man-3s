@@ -602,7 +602,7 @@ const SimplifiedFaceRecognition: React.FC<SimplifiedFaceRecognitionProps> = ({
             autoPlay
             playsInline
             muted
-            className="absolute top-0 left-0 w-full h-full object-cover"
+            className="absolute top-0 left-0 w-full h-full object-cover transform scale-x-[-1]"
           />
           <canvas
             ref={canvasRef}

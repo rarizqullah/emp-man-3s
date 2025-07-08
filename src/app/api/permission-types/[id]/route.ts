@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import * as z from "zod"
 import { ZodError } from "zod"
 import { PermissionType } from "@prisma/client"
-import { prisma } from "@/lib/db/prisma"
+import { prisma } from '@/lib/db';
 
 // Skema validasi untuk pembaruan jenis izin
 const updatePermissionTypeSchema = z.object({

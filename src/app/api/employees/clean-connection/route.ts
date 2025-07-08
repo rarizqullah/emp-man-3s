@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ensureDatabaseConnection, refreshDatabaseConnection } from '@/lib/db/prisma';
+import { ensureDatabaseConnection, disconnectDatabase, prisma } from '@/lib/db';
 import { getAllEmployees } from '@/lib/db/employee.service';
 
 // GET: Test database connection health
@@ -67,7 +67,10 @@ export async function POST() {
     console.log('🔄 Forcing database connection refresh...');
     
     const startTime = Date.now();
-    const refreshed = await refreshDatabaseConnection();
+    // Disconnect dan reconnect untuk refresh koneksi
+    await disconnectDatabase();
+    await prisma.$connect();
+    const refreshed = await ensureDatabaseConnection();
     const refreshTime = Date.now() - startTime;
     
     if (!refreshed) {

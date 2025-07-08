@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import { 
   Dialog, 
   DialogContent, 
@@ -167,6 +168,14 @@ export function AddEmployeeModal({
     defaultValues,
   });
 
+  // Fungsi untuk reset form dan state
+  const resetFormAndState = () => {
+    form.reset(defaultValues);
+    setFaceImage(null);
+    setActiveTab("personal");
+    stopCamera();
+  };
+
   // Fetch data dari API jika tidak ada data awal
   useEffect(() => {
     if (open) {
@@ -186,10 +195,7 @@ export function AddEmployeeModal({
       fetchShifts();
     } else {
       // Reset form saat modal ditutup
-      form.reset(defaultValues);
-      setFaceImage(null);
-      setActiveTab("personal");
-      stopCamera();
+      resetFormAndState();
     }
   }, [open, initialDepartments, initialPositions]);
 
@@ -429,6 +435,12 @@ export function AddEmployeeModal({
         return;
       }
       
+      // Validasi data posisi
+      if (!data.personalInfo.positionId) {
+        toast.error("Jabatan harus dipilih");
+        return;
+      }
+      
       // Validasi data wajah jika diperlukan
       if (!faceImage) {
         toast.warning("Data wajah belum diisi. Pastikan ini opsional untuk aplikasi Anda.");
@@ -467,11 +479,8 @@ export function AddEmployeeModal({
         onSubmit(formattedData);
       }
       
-      // Reset form dan state setelah submit berhasil
-      form.reset();
-      setFaceImage(null);
-      setActiveTab("personal");
-      onOpenChange(false);
+      // Reset form setelah submit
+      resetFormAndState();
     } catch (error) {
       console.error("Error submitting form:", error);
       toast.error("Terjadi kesalahan saat menyimpan data karyawan");
@@ -1221,9 +1230,11 @@ export function AddEmployeeModal({
                       
                       {faceImage && (
                         <div className="relative w-full max-w-md mx-auto">
-                          <img 
+                          <Image 
                             src={faceImage} 
                             alt="Face preview" 
+                            width={400}
+                            height={300}
                             className="w-full h-auto border rounded-md" 
                             style={{ transform: 'scaleX(-1)' }} // Mirror effect
                           />

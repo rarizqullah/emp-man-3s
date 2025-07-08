@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseConfig } from './config';
+import { classifySupabaseError } from './error-handler';
 
 /**
  * Client Supabase dengan service role key untuk operasi admin
@@ -6,16 +8,28 @@ import { createClient } from '@supabase/supabase-js';
  */
 export const supabaseAdmin = () => {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Supabase URL or Service Role Key is missing in environment variables');
+    const config = getSupabaseConfig();
+    
+    if (!config.isValid) {
+      throw new Error(`Supabase configuration invalid: ${config.errors.join(', ')}`);
+    }
+    
+    if (!config.serviceRoleKey) {
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing in environment variables');
     }
 
-    return createClient(supabaseUrl, supabaseServiceKey);
+    return createClient(config.url, config.serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
   } catch (error) {
-    console.error('Error creating Supabase admin client:', error);
+    const errorInfo = classifySupabaseError(error);
+    console.error('❌ Error creating Supabase admin client:', {
+      type: errorInfo.type,
+      message: errorInfo.message
+    });
     throw error;
   }
 }; 

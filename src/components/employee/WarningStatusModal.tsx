@@ -193,16 +193,38 @@ export function WarningStatusModal({
               )}
             />
             
-            <div className="grid grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="startDate"
+              render={({ field }) => (
+                <FormItem className="flex flex-col">
+                  <FormLabel>Tanggal Mulai</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="date"
+                      className="w-full"
+                      value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                      onChange={(e) => {
+                        field.onChange(e.target.value ? new Date(e.target.value) : null);
+                      }}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            {form.watch("warningStatus") !== "NONE" && (
               <FormField
                 control={form.control}
-                name="startDate"
+                name="endDate"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
-                    <FormLabel>Tanggal Mulai</FormLabel>
+                    <FormLabel>Tanggal Berakhir</FormLabel>
                     <FormControl>
                       <Input
                         type="date"
+                        className="w-full"
                         value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
                         onChange={(e) => {
                           field.onChange(e.target.value ? new Date(e.target.value) : null);
@@ -213,29 +235,7 @@ export function WarningStatusModal({
                   </FormItem>
                 )}
               />
-              
-              {form.watch("warningStatus") !== "NONE" && (
-                <FormField
-                  control={form.control}
-                  name="endDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Tanggal Berakhir</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="date"
-                          value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                          onChange={(e) => {
-                            field.onChange(e.target.value ? new Date(e.target.value) : null);
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-            </div>
+            )}
             
             <FormField
               control={form.control}

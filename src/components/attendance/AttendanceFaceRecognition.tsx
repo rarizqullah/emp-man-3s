@@ -760,7 +760,7 @@ const AttendanceFaceRecognition: React.FC<AttendanceFaceRecognitionProps> = ({
               autoPlay
               muted
               playsInline
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover transform scale-x-[-1]"
               style={{ 
                 minHeight: '400px',
                 maxHeight: '500px'

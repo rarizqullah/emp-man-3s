@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/db';
-import { Prisma } from '@prisma/client';
 
 // Tipe data untuk parameter position baru
 export interface PositionCreateInput {

@@ -4,7 +4,7 @@ import {
   getAllEmployees, 
 } from '@/lib/db/employee.service';
 import { ContractType, WarningStatus, Gender } from '@prisma/client';
-import prisma from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 
 // Schema validasi untuk membuat karyawan baru
 const employeeCreateSchema = z.object({
@@ -31,322 +31,148 @@ const employeeCreateSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    // Pastikan koneksi database tersedia sebelum query
-    const { ensureDatabaseConnection } = await import('@/lib/db/prisma');
-    const isConnected = await ensureDatabaseConnection();
-    
-    if (!isConnected) {
-      console.error('Gagal terhubung ke database');
-      return NextResponse.json(
-        { error: 'Database tidak tersedia' },
-        { status: 503 }
-      );
-    }
-
-    // Validasi koneksi dengan $connect()
-    await prisma.$connect();
-
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search');
     const withFaceData = searchParams.get('withFaceData');
     
+    // Pagination parameters
+    const take = Math.min(parseInt(searchParams.get('take') || '25'), 100); // Max 100 items per request
+    const skip = parseInt(searchParams.get('skip') || '0');
+    
+    // Lightweight select for list view
+    const lightSelect = {
+      id: true,
+      employeeId: true,
+      departmentId: true,
+      subDepartmentId: true,
+      positionId: true,
+      shiftId: true,
+      contractType: true,
+      contractStartDate: true,
+      contractEndDate: true,
+      warningStatus: true,
+      gender: true,
+      createdAt: true,
+      updatedAt: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+        },
+      },
+      department: {
+        select: {
+          id: true,
+          name: true,
+        }
+      },
+      subDepartment: {
+        select: {
+          id: true,
+          name: true,
+        }
+      },
+      position: {
+        select: {
+          id: true,
+          name: true,
+          level: true,
+        }
+      },
+      shift: {
+        select: {
+          id: true,
+          name: true,
+          shiftType: true,
+        }
+      },
+    };
+    
+    // Add faceData only when explicitly requested
+    const selectFields = withFaceData === 'true' 
+      ? { ...lightSelect, faceData: true, contractNumber: true, address: true }
+      : lightSelect;
+      
+    // Define search conditions
+    const searchConditions = search ? {
+      OR: [
+        { employeeId: { contains: search, mode: 'insensitive' as const } },
+        { user: { name: { contains: search, mode: 'insensitive' as const } } },
+        { user: { email: { contains: search, mode: 'insensitive' as const } } },
+        { department: { name: { contains: search, mode: 'insensitive' as const } } },
+        { subDepartment: { name: { contains: search, mode: 'insensitive' as const } } },
+      ],
+    } : {};
+    
     if (search) {
-      // Implementasikan pencarian langsung dengan enhanced error handling
-      try {
-        const employees = await prisma.employee.findMany({
-          where: {
-            OR: [
-              { employeeId: { contains: search, mode: 'insensitive' } },
-              { user: { name: { contains: search, mode: 'insensitive' } } },
-              { user: { email: { contains: search, mode: 'insensitive' } } },
-              { department: { name: { contains: search, mode: 'insensitive' } } },
-              { subDepartment: { name: { contains: search, mode: 'insensitive' } } },
-            ],
-          },
-          select: {
-            id: true,
-            employeeId: true,
-            departmentId: true,
-            subDepartmentId: true,
-            positionId: true,
-            shiftId: true,
-            contractType: true,
-            contractNumber: true,
-            contractStartDate: true,
-            contractEndDate: true,
-            warningStatus: true,
-            gender: true,
-            address: true,
-            faceData: true,
-            createdAt: true,
-            updatedAt: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-            department: {
-              select: {
-                id: true,
-                name: true,
-              }
-            },
-            subDepartment: {
-              select: {
-                id: true,
-                name: true,
-              }
-            },
-            position: {
-              select: {
-                id: true,
-                name: true,
-                level: true,
-              }
-            },
-            shift: {
-              select: {
-                id: true,
-                name: true,
-                shiftType: true,
-              }
-            },
-          },
-        });
-        return NextResponse.json(employees);
-      } catch (searchError) {
-        console.error('Error dalam pencarian karyawan:', searchError);
-        
-        // Retry jika error koneksi
-        if (String(searchError).toLowerCase().includes('connection')) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          await prisma.$disconnect();
-          await prisma.$connect();
-          
-          const retryEmployees = await prisma.employee.findMany({
-            where: {
-              OR: [
-                { employeeId: { contains: search, mode: 'insensitive' } },
-                { user: { name: { contains: search, mode: 'insensitive' } } },
-                { user: { email: { contains: search, mode: 'insensitive' } } },
-                { department: { name: { contains: search, mode: 'insensitive' } } },
-                { subDepartment: { name: { contains: search, mode: 'insensitive' } } },
-              ],
-            },
-            select: {
-              id: true,
-              employeeId: true,
-              departmentId: true,
-              subDepartmentId: true,
-              positionId: true,
-              shiftId: true,
-              contractType: true,
-              contractNumber: true,
-              contractStartDate: true,
-              contractEndDate: true,
-              warningStatus: true,
-              gender: true,
-              address: true,
-              faceData: true,
-              createdAt: true,
-              updatedAt: true,
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-              },
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                }
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                }
-              },
-              position: {
-                select: {
-                  id: true,
-                  name: true,
-                  level: true,
-                }
-              },
-              shift: {
-                select: {
-                  id: true,
-                  name: true,
-                  shiftType: true,
-                }
-              },
-            },
-          });
-          return NextResponse.json(retryEmployees);
+      // Implementasikan pencarian dengan pagination dan lightweight select
+      const employees = await prisma.employee.findMany({
+        where: {
+          deletedAt: null,
+          ...searchConditions,
+        },
+        select: selectFields,
+        take,
+        skip,
+        orderBy: [
+          { user: { name: 'asc' } },
+          { employeeId: 'asc' }
+        ]
+      });
+      
+      // Get total count for pagination
+      
+      const total = await prisma.employee.count({
+        where: {
+          deletedAt: null,
+          ...searchConditions,
+        },
+      });
+      
+      return NextResponse.json({
+        data: employees,
+        pagination: {
+          total,
+          take,
+          skip,
+          hasMore: skip + take < total
         }
-        
-        throw searchError;
-      }
+      });
     }
     
-    if (withFaceData === 'true') {
-      // Ambil karyawan yang memiliki data wajah dengan enhanced error handling
-      try {
-        const employees = await prisma.employee.findMany({
-          where: {
-            faceData: {
-              not: null
-            }
-          },
-          select: {
-            id: true,
-            employeeId: true,
-            departmentId: true,
-            subDepartmentId: true,
-            positionId: true,
-            shiftId: true,
-            contractType: true,
-            contractNumber: true,
-            contractStartDate: true,
-            contractEndDate: true,
-            warningStatus: true,
-            gender: true,
-            address: true,
-            faceData: true,
-            createdAt: true,
-            updatedAt: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-            department: {
-              select: {
-                id: true,
-                name: true,
-              }
-            },
-            subDepartment: {
-              select: {
-                id: true,
-                name: true,
-              }
-            },
-            position: {
-              select: {
-                id: true,
-                name: true,
-                level: true,
-              }
-            },
-            shift: {
-              select: {
-                id: true,
-                name: true,
-                shiftType: true,
-              }
-            },
-          },
-        });
-        
-        return NextResponse.json({
-          success: true,
-          message: 'Data karyawan dengan wajah berhasil diambil',
-          employees: employees
-        });
-      } catch (faceDataError) {
-        console.error('Error dalam mengambil data karyawan dengan wajah:', faceDataError);
-        
-        // Retry jika error koneksi
-        if (String(faceDataError).toLowerCase().includes('connection')) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          await prisma.$disconnect();
-          await prisma.$connect();
-          
-          const retryEmployees = await prisma.employee.findMany({
-            where: {
-              faceData: {
-                not: null
-              }
-            },
-            select: {
-              id: true,
-              employeeId: true,
-              departmentId: true,
-              subDepartmentId: true,
-              positionId: true,
-              shiftId: true,
-              contractType: true,
-              contractNumber: true,
-              contractStartDate: true,
-              contractEndDate: true,
-              warningStatus: true,
-              gender: true,
-              address: true,
-              faceData: true,
-              createdAt: true,
-              updatedAt: true,
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-              },
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                }
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                }
-              },
-              position: {
-                select: {
-                  id: true,
-                  name: true,
-                  level: true,
-                }
-              },
-              shift: {
-                select: {
-                  id: true,
-                  name: true,
-                  shiftType: true,
-                }
-              },
-            },
-          });
-          
-          return NextResponse.json({
-            success: true,
-            message: 'Data karyawan dengan wajah berhasil diambil',
-            employees: retryEmployees
-          });
-        }
-        
-        throw faceDataError;
-      }
-    }
+    // Default query untuk semua karyawan atau yang memiliki face data
+    const whereCondition = {
+      deletedAt: null,
+      ...(withFaceData === 'true' ? { faceData: { not: null } } : {}),
+    };
     
-    // Menggunakan service function yang sudah enhanced
-    const employees = await getAllEmployees();
-    return NextResponse.json(employees);
+    const [employees, total] = await Promise.all([
+      prisma.employee.findMany({
+        where: whereCondition,
+        select: selectFields,
+        take,
+        skip,
+        orderBy: [
+          { user: { name: 'asc' } },
+          { employeeId: 'asc' }
+        ]
+      }),
+      prisma.employee.count({
+        where: whereCondition,
+      })
+    ]);
+    
+    return NextResponse.json({
+      data: employees,
+      pagination: {
+        total,
+        take,
+        skip,
+        hasMore: skip + take < total
+      }
+    });
     
   } catch (error) {
     console.error('Gagal mengambil data karyawan:', error);

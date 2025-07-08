@@ -25,7 +25,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.87 0 0);
@@ -125,5 +125,255 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+    scroll-behavior: smooth;
+  }
+
+  /* Typography defaults */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+    text-wrap: balance;
+  }
+
+  p {
+    @apply leading-7;
+    text-wrap: pretty;
+  }
+
+  /* Improved focus styles */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+
+  button:focus-visible {
+    @apply ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Typography utility classes */
+  .typography-h1 {
+    @apply scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl;
+  }
+
+  .typography-h2 {
+    @apply scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0;
+  }
+
+  .typography-h3 {
+    @apply scroll-m-20 text-2xl font-semibold tracking-tight;
+  }
+
+  .typography-h4 {
+    @apply scroll-m-20 text-xl font-semibold tracking-tight;
+  }
+
+  .typography-lead {
+    @apply text-xl text-muted-foreground;
+  }
+
+  .typography-large {
+    @apply text-lg font-semibold;
+  }
+
+  .typography-small {
+    @apply text-sm font-medium leading-none;
+  }
+
+  .typography-muted {
+    @apply text-sm text-muted-foreground;
+  }
+
+  .typography-subtle {
+    @apply text-xs text-muted-foreground;
+  }
+}
+
+@layer components {
+  /* Enhanced table styles */
+  .data-table {
+    @apply w-full border-collapse;
+  }
+
+  .data-table-header {
+    @apply bg-muted/50 border-b font-semibold text-muted-foreground;
+  }
+
+  .data-table-row {
+    @apply border-b transition-colors hover:bg-muted/50;
+  }
+
+  .data-table-cell {
+    @apply p-4 text-left align-middle;
+  }
+
+  .data-table-head {
+    @apply h-12 px-4 text-left align-middle font-medium text-muted-foreground;
+  }
+
+  /* Badge styles */
+  .badge-status {
+    @apply inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors;
+  }
+
+  .badge-success {
+    @apply border-transparent bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400;
+  }
+
+  .badge-warning {
+    @apply border-transparent bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400;
+  }
+
+  .badge-danger {
+    @apply border-transparent bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400;
+  }
+
+  .badge-info {
+    @apply border-transparent bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400;
+  }
+
+  .badge-neutral {
+    @apply border-transparent bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400;
+  }
+
+  /* Pagination styles */
+  .pagination-wrapper {
+    @apply flex items-center justify-between px-2;
+  }
+
+  .pagination-info {
+    @apply flex-1 text-sm text-muted-foreground;
+  }
+
+  .pagination-controls {
+    @apply flex items-center space-x-6 lg:space-x-8;
+  }
+
+  /* Custom scrollbar */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(203 213 225) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgb(203 213 225);
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(148 163 184);
+  }
+
+  /* Enhanced Sidebar Styles for Perfect Collapsed State */
+  .sidebar-collapsed-item {
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  /* Perfect centering for collapsed sidebar icons */
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="menu-button"] {
+    @apply w-10 h-10 justify-center mx-auto;
+  }
+
+  /* Ensure consistent spacing for all collapsed items */
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="menu"] {
+    @apply gap-1;
+  }
+
+  /* Hide overflow and maintain aspect ratio */
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="group-label"] {
+    @apply opacity-0 transition-opacity duration-200;
+  }
+
+  /* Smooth hover effects for collapsed items */
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="menu-button"]:hover {
+    @apply scale-105 transition-transform duration-200;
+  }
+
+  /* Perfect alignment for header and footer in collapsed state */
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="header"],
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="footer"] {
+    @apply px-2;
+  }
+
+  /* Perfect centering for header and footer icons when collapsed */
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="header"] > div,
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="footer"] > div {
+    @apply justify-center px-0 space-x-0;
+  }
+
+  /* Ensure header and footer icons have consistent sizing with menu items */
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="header"] > div > div:first-child,
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="footer"] > div > div:first-child {
+    @apply w-10 h-10 mx-auto;
+  }
+
+  /* Consistent icon sizing across all menu items */
+  [data-sidebar="menu-button"] svg {
+    @apply w-5 h-5 flex-shrink-0;
+  }
+
+  [data-sidebar="menu-sub-button"] svg {
+    @apply w-4 h-4 flex-shrink-0;
+  }
+
+  /* Enhanced tooltip positioning for collapsed state */
+  [data-sidebar="sidebar"][data-state="collapsed"] [data-tooltip-trigger] {
+    @apply relative;
+  }
+
+  /* Smooth transition for all sidebar elements */
+  [data-sidebar="sidebar"] * {
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  /* Aceternity Sidebar Enhancements */
+  .aceternity-sidebar {
+    @apply shadow-lg;
+  }
+
+  /* Custom scrollbar for sidebar content */
+  .aceternity-sidebar .sidebar-content {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(203 213 225) transparent;
+  }
+
+  .aceternity-sidebar .sidebar-content::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .aceternity-sidebar .sidebar-content::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .aceternity-sidebar .sidebar-content::-webkit-scrollbar-thumb {
+    background-color: rgb(203 213 225);
+    border-radius: 2px;
+  }
+
+  .aceternity-sidebar .sidebar-content::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(148 163 184);
+  }
+
+  /* Pin button hover effects */
+  .pin-button {
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  .pin-button:hover {
+    @apply scale-110 rotate-12;
+  }
+
+  /* Mobile sidebar overlay */
+  .mobile-sidebar-overlay {
+    backdrop-filter: blur(4px);
+    @apply bg-black/20;
   }
 }

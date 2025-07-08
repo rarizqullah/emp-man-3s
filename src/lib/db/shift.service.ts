@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 import { ShiftType } from '@prisma/client';
 
 // Tipe data untuk parameter shift baru
@@ -22,8 +22,8 @@ export interface ShiftUpdateInput {
   name?: string;
   shiftType?: ShiftType;
   subDepartmentId?: string | null;
-  mainWorkStart?: Date;
-  mainWorkEnd?: Date;
+  mainWorkStart?: Date | null;
+  mainWorkEnd?: Date | null;
   lunchBreakStart?: Date | null;
   lunchBreakEnd?: Date | null;
   workingDays?: string[];

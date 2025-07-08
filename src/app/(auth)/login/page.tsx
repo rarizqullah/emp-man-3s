@@ -1,133 +1,86 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import * as z from 'zod';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { LoginForm } from '@/components/login-form';
 import { supabaseClient } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { toast } from '@/components/ui/use-toast';
 
-const formSchema = z.object({
-  email: z.string().email('Format email tidak valid'),
-  password: z.string().min(1, 'Password wajib diisi'),
-});
-
-type FormValues = z.infer<typeof formSchema>;
-
-export default function Login() {
-  const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
+export default function LoginPage() {
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams?.get('redirect_to') || '/dashboard';
+  const [isCheckingAuth, setIsCheckingAuth] = useState(false);
+  const checkAuth = searchParams?.get('check_auth');
+  const redirectTo = searchParams?.get('redirect_to') || '/dashboard';
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      email: '',
-      password: '',
-    },
-  });
+  useEffect(() => {
+    // Jika ada parameter check_auth, cek apakah user sudah login
+    if (checkAuth === 'true') {
+      setIsCheckingAuth(true);
+      checkExistingAuth();
+    }
+  }, [checkAuth]);
 
-  const onSubmit = async (data: FormValues) => {
-    setIsLoading(true);
+  const checkExistingAuth = async () => {
     try {
-      const { error } = await supabaseClient.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
-      });
-
-      if (error) {
+      console.log('🔍 Checking for existing authentication...');
+      
+      // Check apakah user sudah login dengan getUser() yang secure
+      const { data: { user }, error } = await supabaseClient.auth.getUser();
+      
+      if (user && !error) {
+        console.log('✅ Found existing authentication for:', user.email);
+        
         toast({
-          title: 'Gagal Masuk',
-          description: error.message,
+          title: 'Sudah Login',
+          description: 'Anda sudah login, mengarahkan ke dashboard...',
+        });
+        
+        // Redirect ke halaman yang dituju
+        setTimeout(() => {
+          window.location.href = redirectTo;
+        }, 1000);
+        
+        return;
+      } else {
+        console.log('⚠️ No existing authentication found');
+        if (error) {
+          console.log('Auth error:', error.message);
+        }
+        
+        toast({
+          title: 'Sesi Berakhir',
+          description: 'Sesi Anda telah berakhir, silakan login kembali',
           variant: 'destructive',
         });
-        return;
       }
-
-      // Login berhasil, arahkan ke dashboard atau halaman tujuan
-      toast({
-        title: 'Login Berhasil',
-        description: 'Selamat datang kembali!',
-      });
-      router.push(redirectUrl);
     } catch (error) {
-      console.error('Kesalahan saat login:', error);
+      console.error('❌ Error checking existing auth:', error);
       toast({
-        title: 'Terjadi Kesalahan',
-        description: 'Gagal masuk ke akun. Silakan coba lagi nanti.',
+        title: 'Error',
+        description: 'Terjadi kesalahan saat memeriksa autentikasi',
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      setIsCheckingAuth(false);
     }
   };
 
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Memeriksa autentikasi...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-50 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Login</CardTitle>
-          <CardDescription>
-            Masukkan kredensial Anda untuk masuk ke akun
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form suppressHydrationWarning onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input suppressHydrationWarning type="email" placeholder="nama@perusahaan.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input suppressHydrationWarning type="password" placeholder="Masukkan password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button suppressHydrationWarning type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Masuk...' : 'Masuk'}
-              </Button>
-            </form>
-          </Form>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-2">
-          <p className="text-sm text-gray-600 text-center">
-            Belum punya akun?{' '}
-            <Link href="/signup" className="text-blue-600 hover:underline">
-              Daftar
-            </Link>
-          </p>
-          <Link 
-            href="/forgot-password" 
-            className="text-sm text-blue-600 hover:underline text-center"
-          >
-            Lupa password?
-          </Link>
-        </CardFooter>
-      </Card>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full">
+        <LoginForm />
+      </div>
     </div>
   );
 } 

@@ -1,9 +1,22 @@
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+});
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   /* config options here */
   reactStrictMode: true,
   images: {
-    domains: ['iemwqfigkreipeptpman.supabase.co'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'iemwqfigkreipeptpman.supabase.co',
+        port: '',
+        pathname: '**',
+      },
+    ],
+    formats: ['image/webp', 'image/avif'],
+    minimumCacheTTL: 60,
   },
   webpack: (config, { isServer, webpack }) => {
     // Mengatasi warning critical dependency dari @vladmandic/face-api
@@ -47,4 +60,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig; 
+module.exports = withBundleAnalyzer(nextConfig); 

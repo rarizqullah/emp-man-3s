@@ -18,17 +18,33 @@ export interface PermissionUpdateInput {
   status?: PermissionStatus;
 }
 
-// Mendapatkan semua izin/cuti
+// Mendapatkan semua izin/cuti dengan select yang dioptimalkan
 export async function getAllPermissions() {
   return prisma.permission.findMany({
-    include: {
+    select: {
+      id: true,
+      userId: true,
+      type: true,
+      startDate: true,
+      endDate: true,
+      reason: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
       user: {
         select: {
           name: true,
           email: true,
           employee: {
-            include: {
-              department: true,
+            select: {
+              id: true,
+              employeeId: true,
+              department: {
+                select: {
+                  id: true,
+                  name: true,
+                }
+              },
             },
           },
         },

@@ -12,6 +12,7 @@ model User {
   id                  String       @id @default(uuid())
   email               String       @unique
   name                String
+  phone               String?      // Field telepon
   role                Role         @default(EMPLOYEE)
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
@@ -41,6 +42,10 @@ model Employee {
   faceData           String?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+  // Soft delete fields
+  deletedAt          DateTime?
+  deletedBy          String?
+  deletionReason     String?
   attendances        Attendance[]
   contractHistory    ContractHistory[]
   employeeAllowances EmployeeAllowance[]
@@ -53,6 +58,15 @@ model Employee {
   shiftHistory       ShiftHistory[]
   warningHistory     WarningHistory[]
 
+  // Indexes untuk optimasi query
+  @@index([departmentId])
+  @@index([subDepartmentId])
+  @@index([positionId])
+  @@index([shiftId])
+  @@index([contractType])
+  @@index([warningStatus])
+  @@index([deletedAt])
+  @@index([contractEndDate])
   @@map("employees")
 }
 
@@ -73,7 +87,6 @@ model Department {
   name            String           @unique
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
-  allowanceValues AllowanceValue[]
   employees       Employee[]
   salaryRates     SalaryRate[]
   subDepartments  SubDepartment[]
@@ -145,6 +158,13 @@ model Attendance {
   latenessMessage      String?
   employee             Employee         @relation(fields: [employeeId], references: [id])
 
+  // Indexes untuk optimasi query absensi
+  @@index([employeeId])
+  @@index([attendanceDate])
+  @@index([employeeId, attendanceDate])
+  @@index([status])
+  @@index([isLate])
+  @@index([isAutoCutOff])
   @@map("attendances")
 }
 
@@ -166,6 +186,12 @@ model Salary {
   updatedAt            DateTime      @updatedAt
   employee             Employee      @relation(fields: [employeeId], references: [id])
 
+  // Indexes untuk optimasi query gaji
+  @@index([employeeId])
+  @@index([periodStart])
+  @@index([periodEnd])
+  @@index([paymentStatus])
+  @@index([employeeId, periodStart])
   @@map("salaries")
 }
 
@@ -184,43 +210,34 @@ model SalaryRate {
   @@map("salary_rates")
 }
 
-model AllowanceType {
-  id              String           @id @default(uuid())
-  name            String           @unique
-  description     String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  allowanceValues AllowanceValue[]
+model Allowance {
+  id                    String              @id @default(uuid())
+  name                  String              @unique
+  description           String?
+  applicableRule        String              // Ketentuan berlaku
+  umkAmount             Float?              // UMK (Upah Minimum Kota/Kabupaten)
+  companyPercentage     Float?              // Persentase perusahaan
+  companyAmount         Float?              // Nominal perusahaan (dikalkulasi otomatis)
+  employeePercentage    Float?              // Persentase karyawan
+  employeeAmount        Float?              // Nominal karyawan (dikalkulasi otomatis)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  employeeAllowances    EmployeeAllowance[]
 
-  @@map("allowance_types")
-}
-
-model AllowanceValue {
-  id                 String              @id @default(uuid())
-  allowanceTypeId    String
-  departmentId       String
-  contractType       ContractType
-  value              Float
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  allowanceType      AllowanceType       @relation(fields: [allowanceTypeId], references: [id], onDelete: Cascade)
-  department         Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  employeeAllowances EmployeeAllowance[]
-
-  @@unique([allowanceTypeId, departmentId, contractType])
-  @@map("allowance_values")
+  @@map("allowances")
 }
 
 model EmployeeAllowance {
-  id               String         @id @default(uuid())
+  id               String    @id @default(uuid())
   employeeId       String
-  allowanceValueId String
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  allowanceValue   AllowanceValue @relation(fields: [allowanceValueId], references: [id], onDelete: Cascade)
-  employee         Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  allowanceId      String
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  allowance        Allowance @relation(fields: [allowanceId], references: [id], onDelete: Cascade)
+  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  @@unique([employeeId, allowanceValueId])
+  @@unique([employeeId, allowanceId])
   @@map("employee_allowances")
 }
 
@@ -241,6 +258,13 @@ model Permission {
   approvedBy      User?            @relation("ApprovedPermissions", fields: [approvedById], references: [id])
   user            User             @relation("UserPermissions", fields: [userId], references: [id], onDelete: Cascade)
 
+  // Indexes untuk optimasi query permission
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([approvedById])
   @@map("permissions")
 }
 

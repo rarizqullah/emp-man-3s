@@ -6,6 +6,7 @@ import {
   createShift,
   searchShifts
 } from '@/lib/db/shift.service';
+import { cacheHelpers, invalidateCache } from '@/lib/utils/cache';
 
 // Schema validasi untuk membuat shift baru
 const shiftCreateSchema = z.object({
@@ -27,9 +28,10 @@ const shiftCreateSchema = z.object({
     return true;
   }
   
-  // Untuk SHIFT_A dan SHIFT_B, mainWorkStart dan mainWorkEnd wajib
+  // Untuk SHIFT_A dan SHIFT_B, mainWorkStart dan mainWorkEnd wajib (tidak boleh null atau empty)
   if (data.shiftType === 'SHIFT_A' || data.shiftType === 'SHIFT_B') {
-    return data.mainWorkStart && data.mainWorkEnd;
+    return data.mainWorkStart !== null && data.mainWorkStart !== undefined && 
+           data.mainWorkEnd !== null && data.mainWorkEnd !== undefined;
   }
   
   return true;
@@ -53,21 +55,34 @@ export async function GET(request: NextRequest) {
     // Jika ada parameter pencarian
     if (search) {
       console.log('Mencari shift dengan query:', search);
-      shifts = await searchShifts(search);
+      shifts = await cacheHelpers.dynamicData(
+        `shifts:search:${search}`, 
+        () => searchShifts(search)
+      );
     }
     // Jika ada parameter subDepartmentId, filter berdasarkan sub departemen
     else if (subDepartmentId) {
       console.log('Mengambil shift untuk subDepartmentId:', subDepartmentId);
-      shifts = await getShiftsBySubDepartment(subDepartmentId);
+      shifts = await cacheHelpers.staticData(
+        `shifts:subdept:${subDepartmentId}`,
+        () => getShiftsBySubDepartment(subDepartmentId)
+      );
     }
     // Jika tidak ada parameter, ambil semua shift
     else {
       console.log('Mengambil semua shift');
-      shifts = await getAllShifts();
+      shifts = await cacheHelpers.staticData(
+        'shifts:all',
+        () => getAllShifts()
+      );
     }
     
     console.log(`Berhasil mengambil ${shifts.length} shift`);
-    return NextResponse.json(shifts);
+    
+    const response = NextResponse.json(shifts);
+    // Cache di browser untuk 2 menit
+    response.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=300');
+    return response;
   } catch (error) {
     console.error('Gagal mengambil data shift:', error);
     
@@ -121,6 +136,10 @@ export async function POST(request: NextRequest) {
     
     // Buat shift baru
     const shift = await createShift(processedData);
+    
+    // Invalidate cache after creating new shift
+    invalidateCache.shifts();
+    console.log('Shift cache invalidated after creation');
     
     return NextResponse.json(shift, { status: 201 });
   } catch (error) {

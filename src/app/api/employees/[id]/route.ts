@@ -11,10 +11,16 @@ import {
   updateEmployeeContract
 } from '@/lib/db/employee.service';
 import { ContractType, WarningStatus, Gender } from '@prisma/client';
-import { ensureDatabaseConnection } from "@/lib/db/prisma";
+import { ensureDatabaseConnection, prisma } from '@/lib/db';
 
-// Schema validasi untuk update employee
+// Schema validasi untuk update employee - UPDATED untuk mendukung field user
 const employeeUpdateSchema = z.object({
+  // User data - TAMBAHAN BARU
+  name: z.string().min(1, "Nama harus diisi").optional(),
+  email: z.string().email("Format email tidak valid").optional(),
+  phone: z.string().optional().nullable(),
+  
+  // Employee data (yang sudah ada)
   departmentId: z.string().uuid().optional(),
   subDepartmentId: z.string().uuid().optional().nullable(),
   positionId: z.string().uuid().optional().nullable(),
@@ -244,11 +250,13 @@ export async function GET(
           id: employee.user.id,
           name: employee.user.name || 'Nama tidak tersedia',
           email: employee.user.email || 'Email tidak tersedia',
+          phone: employee.user.phone || null, // Tambahkan field phone
           role: employee.user.role || 'EMPLOYEE',
         } : {
           id: '',
           name: 'Nama tidak tersedia',
           email: 'Email tidak tersedia',
+          phone: null,
           role: 'EMPLOYEE',
         },
       };

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient, Role } from '@prisma/client';
 import { supabaseRouteHandler } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 const prismaClient = new PrismaClient();
 
@@ -8,28 +9,56 @@ export async function POST(request: Request) {
   try {
     // Mendapatkan data dari request body
     const { authId, email, name } = await request.json();
+    
+    console.log('🔍 POST /api/users called with:', { authId, email, name });
 
     // Validasi data yang diperlukan
     if (!authId || !email) {
+      console.error('❌ Missing required fields:', { authId: !!authId, email: !!email });
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Verifikasi sesi supaya kita yakin pengguna terautentikasi
-    const supabase = await supabaseRouteHandler();
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError) {
-      console.error('Error getting session:', sessionError);
-      return NextResponse.json({ error: 'Error authenticating user' }, { status: 401 });
-    }
-    
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Validasi user menggunakan Supabase Admin - lebih reliable daripada session
+    try {
+      const adminClient = supabaseAdmin();
+      const { data: adminUser, error: adminError } = await adminClient.auth.admin.getUserById(authId);
+      
+      console.log('🔐 Admin user validation:', { 
+        userFound: !!adminUser, 
+        userEmail: adminUser?.user?.email,
+        providedEmail: email,
+        error: adminError?.message 
+      });
+
+      if (adminError || !adminUser?.user) {
+        console.error('❌ Invalid user - admin validation failed:', adminError?.message);
+        return NextResponse.json({ error: 'Invalid user' }, { status: 401 });
+      }
+
+      // Verifikasi bahwa email yang diberikan sama dengan email di Supabase
+      if (adminUser.user.email !== email) {
+        console.error('❌ Email mismatch:', { 
+          supabaseEmail: adminUser.user.email, 
+          providedEmail: email 
+        });
+        return NextResponse.json({ error: 'Email mismatch' }, { status: 401 });
+      }
+
+      console.log('✅ User validation successful');
+      
+    } catch (error) {
+      console.error('❌ Error validating user with admin:', error);
+      return NextResponse.json({ error: 'User validation failed' }, { status: 401 });
     }
 
     // Cek dulu apakah user dengan email tersebut sudah ada
     const existingUser = await prismaClient.user.findUnique({
       where: { email }
+    });
+
+    console.log('👤 User check result:', { 
+      existingUser: existingUser ? 'Found' : 'Not found',
+      existingUserId: existingUser?.id 
     });
 
     let user;
@@ -44,6 +73,7 @@ export async function POST(request: Request) {
           updatedAt: new Date()
         }
       });
+      console.log('✅ User updated:', user.id);
     } else {
       // Buat user baru jika belum ada
       user = await prismaClient.user.create({
@@ -54,11 +84,67 @@ export async function POST(request: Request) {
           role: Role.EMPLOYEE
         }
       });
+      console.log('✅ User created:', user.id);
     }
 
     return NextResponse.json({ user }, { status: 200 });
   } catch (error) {
-    console.error('Error handling user data:', error);
+    console.error('❌ Error handling user data:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } finally {
+    await prismaClient.$disconnect();
+  }
+}
+
+// Fallback endpoint untuk user creation yang tidak memerlukan sync
+export async function PUT(request: Request) {
+  try {
+    const { authId, email, name } = await request.json();
+    
+    console.log('🔄 PUT /api/users (fallback) called with:', { authId, email, name });
+
+    if (!authId || !email) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Langsung cek dan buat user tanpa validasi session
+    const existingUser = await prismaClient.user.findFirst({
+      where: { 
+        OR: [
+          { email },
+          { authId }
+        ]
+      }
+    });
+
+    let user;
+
+    if (existingUser) {
+      user = await prismaClient.user.update({
+        where: { id: existingUser.id },
+        data: {
+          name: name || email.split('@')[0],
+          authId,
+          email,
+          updatedAt: new Date()
+        }
+      });
+      console.log('✅ User updated (fallback):', user.id);
+    } else {
+      user = await prismaClient.user.create({
+        data: {
+          email,
+          name: name || email.split('@')[0],
+          authId,
+          role: Role.EMPLOYEE
+        }
+      });
+      console.log('✅ User created (fallback):', user.id);
+    }
+
+    return NextResponse.json({ user }, { status: 200 });
+  } catch (error) {
+    console.error('❌ Error in fallback user creation:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   } finally {
     await prismaClient.$disconnect();
@@ -75,7 +161,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing authId parameter' }, { status: 400 });
     }
 
-    const supabase = await supabaseRouteHandler();
+    const supabase = await supabaseRouteHandler(request);
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
     if (sessionError) {
@@ -119,7 +205,7 @@ export async function GETSupabase(request: Request) {
       return NextResponse.json({ error: 'Missing authId parameter' }, { status: 400 });
     }
 
-    const supabase = await supabaseRouteHandler();
+    const supabase = await supabaseRouteHandler(request);
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {

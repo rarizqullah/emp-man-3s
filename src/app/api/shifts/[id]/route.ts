@@ -11,8 +11,8 @@ const shiftUpdateSchema = z.object({
   name: z.string().min(1, "Nama shift wajib diisi").optional(),
   shiftType: z.enum(['NON_SHIFT', 'SHIFT_A', 'SHIFT_B']).optional(),
   subDepartmentId: z.string().uuid().optional().nullable(),
-  mainWorkStart: z.string().or(z.date()).optional(),
-  mainWorkEnd: z.string().or(z.date()).optional(),
+  mainWorkStart: z.string().or(z.date()).optional().nullable(),
+  mainWorkEnd: z.string().or(z.date()).optional().nullable(),
   lunchBreakStart: z.string().or(z.date()).optional().nullable(),
   lunchBreakEnd: z.string().or(z.date()).optional().nullable(),
   workingDays: z.array(z.string()).optional(),
@@ -63,8 +63,8 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
       name?: string;
       shiftType?: 'NON_SHIFT' | 'SHIFT_A' | 'SHIFT_B';
       subDepartmentId?: string | null;
-      mainWorkStart?: Date;
-      mainWorkEnd?: Date;
+      mainWorkStart?: Date | null;
+      mainWorkEnd?: Date | null;
       lunchBreakStart?: Date | null;
       lunchBreakEnd?: Date | null;
       workingDays?: string[];
@@ -81,10 +81,14 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     
     if (validatedData.mainWorkStart) {
       processedData.mainWorkStart = new Date(validatedData.mainWorkStart);
+    } else if (validatedData.mainWorkStart === null) {
+      processedData.mainWorkStart = null;
     }
     
     if (validatedData.mainWorkEnd) {
       processedData.mainWorkEnd = new Date(validatedData.mainWorkEnd);
+    } else if (validatedData.mainWorkEnd === null) {
+      processedData.mainWorkEnd = null;
     }
     
     if (validatedData.lunchBreakStart) {

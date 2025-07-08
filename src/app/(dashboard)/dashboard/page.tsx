@@ -350,7 +350,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <h1 className="typography-h1">Dashboard</h1>
           <p className="text-muted-foreground mt-1">
             {format(currentDate, "EEEE, dd MMMM yyyy", { locale: id })} | {format(currentDate, "HH:mm")}
           </p>
@@ -391,7 +391,7 @@ export default function DashboardPage() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Karyawan</CardTitle>
+                            <CardTitle className="typography-small">Total Karyawan</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -404,7 +404,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Hadir Hari Ini</CardTitle>
+                            <CardTitle className="typography-small">Hadir Hari Ini</CardTitle>
             <CheckCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -417,7 +417,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Terlambat</CardTitle>
+                            <CardTitle className="typography-small">Terlambat</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -430,7 +430,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Izin/Cuti</CardTitle>
+                            <CardTitle className="typography-small">Izin/Cuti</CardTitle>
             <CalendarOff className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -443,7 +443,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tidak Hadir</CardTitle>
+                            <CardTitle className="typography-small">Tidak Hadir</CardTitle>
             <User className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -506,7 +506,7 @@ export default function DashboardPage() {
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle>Karyawan Hadir</CardTitle>
+                  <CardTitle className="typography-h3">Karyawan Hadir</CardTitle>
                   <Badge>{filteredPresentEmployees.length} karyawan</Badge>
                 </div>
                 <CardDescription>
@@ -607,7 +607,7 @@ export default function DashboardPage() {
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle>Karyawan Cuti/Izin</CardTitle>
+                  <CardTitle className="typography-h3">Karyawan Cuti/Izin</CardTitle>
                   <Badge variant="outline">{filteredLeaveEmployees.length} karyawan</Badge>
                 </div>
                 <CardDescription>
@@ -680,10 +680,10 @@ export default function DashboardPage() {
         <div className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Ringkasan Admin</CardTitle>
-              <CardDescription>
-                Akses cepat ke fungsi administrator
-              </CardDescription>
+                              <CardTitle className="typography-h3">Ringkasan Admin</CardTitle>
+                              <CardDescription className="typography-muted">
+                  Akses cepat ke fungsi administrator
+                </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Button variant="outline" className="h-auto flex flex-col items-center justify-center p-4 space-y-2" asChild>

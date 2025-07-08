@@ -1,5 +1,5 @@
 import { Shift } from '@prisma/client';
-import { addHours, addMinutes, isAfter, startOfDay } from 'date-fns';
+import { addMinutes, isAfter, startOfDay } from 'date-fns';
 
 // Interface untuk shift cycle information
 export interface ShiftCycleInfo {
@@ -208,21 +208,29 @@ export class ShiftCycleManager {
   }
 
   /**
-   * Periksa apakah bisa check-in
+   * Periksa apakah dapat melakukan check-in
+   * ENHANCED: Hanya izinkan check-in dalam periode shift yang tepat
    */
   private static canCheckIn(currentShift: any, nextShift: any, currentTime: Date): boolean {
-    // Bisa check-in jika:
-    // 1. Dalam periode shift aktif, atau
-    // 2. Maksimal 2 jam sebelum shift dimulai
-    if (currentShift && this.isInActiveShiftPeriod(currentShift, currentTime)) {
-      return true;
+    // Jika ada shift aktif saat ini
+    if (currentShift) {
+      // Hanya izinkan check-in jika dalam periode shift aktif (bukan grace period)
+      const isInActiveShiftPeriod = currentTime >= currentShift.startTime && currentTime <= currentShift.endTime;
+      
+      // REVISI: Tidak izinkan check-in di grace period untuk mencegah presensi di luar jam
+      return isInActiveShiftPeriod;
     }
 
+    // Jika tidak ada shift aktif, periksa apakah mendekati shift berikutnya
     if (nextShift) {
-      const maxEarlyCheckIn = addHours(nextShift.startTime, -2);
-      return currentTime >= maxEarlyCheckIn;
+      // Hanya izinkan check-in maksimal 30 menit sebelum shift dimulai
+      const preShiftWindow = new Date(nextShift.startTime);
+      preShiftWindow.setMinutes(preShiftWindow.getMinutes() - 30);
+      
+      return currentTime >= preShiftWindow && currentTime < nextShift.startTime;
     }
 
+    // Jika tidak ada shift aktif atau berikutnya, tidak izinkan check-in
     return false;
   }
 

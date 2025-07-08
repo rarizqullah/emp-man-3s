@@ -1,5 +1,4 @@
-import { prisma } from '@/lib/db/prisma';
-import { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/db';
 
 // Tipe data untuk parameter department baru
 export interface DepartmentCreateInput {
@@ -12,19 +11,27 @@ export interface DepartmentUpdateInput {
 }
 
 /**
- * Mendapatkan semua data departemen
+ * Mendapatkan semua data departemen dengan select yang dioptimalkan
  */
 export async function getAllDepartments() {
   return prisma.department.findMany({
-    orderBy: { name: 'asc' },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      createdAt: true,
+      updatedAt: true,
       _count: {
         select: {
-          employees: true,
+          employees: {
+            where: {
+              deletedAt: null, // Hanya count karyawan aktif
+            }
+          },
           subDepartments: true
         }
       }
-    }
+    },
+    orderBy: { name: 'asc' }
   });
 }
 

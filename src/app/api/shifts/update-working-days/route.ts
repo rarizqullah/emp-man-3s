@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 import { NextRequest } from 'next/server';
 
 // POST /api/shifts/update-working-days

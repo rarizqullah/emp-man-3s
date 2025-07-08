@@ -1,6 +1,7 @@
-import { prisma } from '@/lib/db/prisma';
+import { prisma } from '@/lib/db';
 import { ContractType, PaymentStatus } from '@prisma/client';
 import { format } from 'date-fns';
+import { id as localeId } from 'date-fns/locale';
 
 // Interface untuk input perhitungan gaji
 export interface SalaryCalculationInput {
@@ -23,8 +24,8 @@ export interface SalaryCalculationResult {
   weeklyOvertimeSalary: number;
   totalAllowances: number;
   totalSalary: number;
-  employee?: any;
-  allowances?: any[];
+  employee?: unknown;
+  allowances?: Array<{ type: string; value: number }>;
 }
 
 // Interface untuk filter salary
@@ -53,11 +54,7 @@ export async function calculateEmployeeSalary(input: SalaryCalculationInput): Pr
       shift: true,
       employeeAllowances: {
         include: {
-          allowanceValue: {
-            include: {
-              allowanceType: true
-            }
-          }
+          allowance: true
         }
       }
     }
@@ -106,13 +103,23 @@ export async function calculateEmployeeSalary(input: SalaryCalculationInput): Pr
   // Hitung gaji lembur mingguan
   const weeklyOvertimeSalary = totalWeeklyOvertimeHours * salaryRate.weeklyOvertimeRate;
 
-  // Hitung total tunjangan
-  const totalAllowances = employee.employeeAllowances.reduce((total, empAllowance) => {
-    return total + empAllowance.allowanceValue.value;
+  // Filter tunjangan yang aktif (hanya check employee allowance active status)
+  const activeAllowances = employee.employeeAllowances.filter(ea => 
+    ea.isActive
+  );
+
+  // Hitung total tunjangan perusahaan (tambahan)
+  const totalCompanyAllowances = activeAllowances.reduce((total, empAllowance) => {
+    return total + (empAllowance.allowance.companyAmount || 0);
   }, 0);
 
-  // Hitung total gaji
-  const totalSalary = baseSalary + overtimeSalary + weeklyOvertimeSalary + totalAllowances;
+  // Hitung total potongan tunjangan karyawan (dikurangi dari gaji)
+  const totalEmployeeAllowanceDeductions = activeAllowances.reduce((total, empAllowance) => {
+    return total + (empAllowance.allowance.employeeAmount || 0);
+  }, 0);
+
+  // Hitung total gaji (gaji pokok + lembur + tunjangan perusahaan - potongan tunjangan karyawan)
+  const totalSalary = baseSalary + overtimeSalary + weeklyOvertimeSalary + totalCompanyAllowances - totalEmployeeAllowanceDeductions;
 
   return {
     employeeId,
@@ -124,12 +131,13 @@ export async function calculateEmployeeSalary(input: SalaryCalculationInput): Pr
     baseSalary: Math.round(baseSalary),
     overtimeSalary: Math.round(overtimeSalary),
     weeklyOvertimeSalary: Math.round(weeklyOvertimeSalary),
-    totalAllowances: Math.round(totalAllowances),
+    totalAllowances: Math.round(totalCompanyAllowances - totalEmployeeAllowanceDeductions),
     totalSalary: Math.round(totalSalary),
     employee,
-    allowances: employee.employeeAllowances.map(empAllowance => ({
-      type: empAllowance.allowanceValue.allowanceType.name,
-      value: empAllowance.allowanceValue.value
+    allowances: activeAllowances.map(empAllowance => ({
+      type: empAllowance.allowance.name,
+      value: empAllowance.allowance.companyAmount || 0,
+      deduction: empAllowance.allowance.employeeAmount || 0
     }))
   };
 }
@@ -137,7 +145,7 @@ export async function calculateEmployeeSalary(input: SalaryCalculationInput): Pr
 /**
  * Menyimpan hasil perhitungan gaji ke database
  */
-export async function saveSalaryCalculation(calculation: SalaryCalculationResult): Promise<any> {
+export async function saveSalaryCalculation(calculation: SalaryCalculationResult): Promise<unknown> {
   return prisma.salary.create({
     data: {
       employeeId: calculation.employeeId,
@@ -168,9 +176,9 @@ export async function saveSalaryCalculation(calculation: SalaryCalculationResult
 /**
  * Membuat slip gaji untuk semua karyawan dalam periode tertentu
  */
-export async function generateSalariesForPeriod(periodStart: Date, periodEnd: Date, departmentId?: string): Promise<any[]> {
+export async function generateSalariesForPeriod(periodStart: Date, periodEnd: Date, departmentId?: string): Promise<unknown[]> {
   // Ambil daftar karyawan yang aktif (kontrak belum berakhir atau tidak ada tanggal berakhir)
-  const whereCondition: any = {
+  const whereCondition: Record<string, unknown> = {
     OR: [
       { contractEndDate: { gte: periodStart } }, // Kontrak masih aktif
       { contractEndDate: null } // Kontrak permanen tanpa tanggal berakhir
@@ -232,7 +240,7 @@ export async function generateSalariesForPeriod(periodStart: Date, periodEnd: Da
  * Mendapatkan daftar gaji dengan filter
  */
 export async function getSalaries(filter: SalaryFilter = {}) {
-  const whereCondition: any = {};
+  const whereCondition: Record<string, unknown> = {};
 
   if (filter.employeeId) {
     whereCondition.employeeId = filter.employeeId;
@@ -256,10 +264,16 @@ export async function getSalaries(filter: SalaryFilter = {}) {
   }
 
   if (filter.contractType) {
-    whereCondition.employee = {
-      ...whereCondition.employee,
-      contractType: filter.contractType
-    };
+    if (whereCondition.employee && typeof whereCondition.employee === 'object') {
+      whereCondition.employee = {
+        ...whereCondition.employee,
+        contractType: filter.contractType
+      };
+    } else {
+      whereCondition.employee = {
+        contractType: filter.contractType
+      };
+    }
   }
 
   return prisma.salary.findMany({
@@ -294,11 +308,7 @@ export async function getSalaryById(id: string) {
           position: true,
           employeeAllowances: {
             include: {
-              allowanceValue: {
-                include: {
-                  allowanceType: true
-                }
-              }
+              allowance: true
             }
           }
         }
@@ -406,7 +416,7 @@ export async function exportSalaryData(filter: SalaryFilter = {}) {
   const salaries = await getSalaries(filter);
 
   return salaries.map(salary => ({
-    'ID Karyawan': salary.employee.employeeId,
+    'NIK': salary.employee.employeeId, // Changed from 'ID Karyawan' to 'NIK'
     'Nama Karyawan': salary.employee.user.name,
     'Departemen': salary.employee.department.name,
     'Posisi': salary.employee.position?.name || '-',
@@ -424,6 +434,85 @@ export async function exportSalaryData(filter: SalaryFilter = {}) {
     'Tanggal Dibuat': format(salary.createdAt, 'dd/MM/yyyy HH:mm'),
     'Tanggal Diperbarui': format(salary.updatedAt, 'dd/MM/yyyy HH:mm')
   }));
+}
+
+/**
+ * Export slip gaji individual ke format PDF dengan detail lengkap
+ */
+export async function exportSalarySlipPDF(salaryId: string) {
+  const salary = await getSalaryById(salaryId);
+  
+  if (!salary) {
+    throw new Error('Data gaji tidak ditemukan');
+  }
+
+  // Return data formatted untuk PDF dengan detail lengkap
+  return {
+    employee: {
+      employeeId: salary.employee.employeeId, // NIK
+      name: salary.employee.user.name,
+      email: salary.employee.user.email,
+      department: salary.employee.department.name,
+      position: salary.employee.position?.name || '-',
+      contractType: salary.employee.contractType === 'PERMANENT' ? 'Permanen' : 'Training'
+    },
+    period: {
+      start: format(salary.periodStart, 'dd MMMM yyyy', { locale: localeId }),
+      end: format(salary.periodEnd, 'dd MMMM yyyy', { locale: localeId }),
+      month: format(salary.periodStart, 'MMMM yyyy', { locale: localeId }),
+      year: format(salary.periodStart, 'yyyy', { locale: localeId })
+    },
+    workHours: {
+      mainHours: salary.mainWorkHours,
+      regularOvertimeHours: salary.regularOvertimeHours,
+      weeklyOvertimeHours: salary.weeklyOvertimeHours,
+      totalHours: salary.mainWorkHours + salary.regularOvertimeHours + salary.weeklyOvertimeHours
+    },
+    earnings: {
+      baseSalary: salary.baseSalary,
+      overtimeSalary: salary.overtimeSalary,
+      weeklyOvertimeSalary: salary.weeklyOvertimeSalary,
+      totalAllowances: salary.totalAllowances,
+      grossSalary: salary.baseSalary + salary.overtimeSalary + salary.weeklyOvertimeSalary + salary.totalAllowances
+    },
+    earningsDetails: {
+      baseSalary: {
+        hours: salary.mainWorkHours,
+        rate: salary.mainWorkHours > 0 ? Math.round(salary.baseSalary / salary.mainWorkHours) : 0,
+        amount: salary.baseSalary
+      },
+      regularOvertime: {
+        hours: salary.regularOvertimeHours,
+        rate: salary.regularOvertimeHours > 0 ? Math.round(salary.overtimeSalary / salary.regularOvertimeHours) : 0,
+        amount: salary.overtimeSalary
+      },
+      weeklyOvertime: {
+        hours: salary.weeklyOvertimeHours,
+        rate: salary.weeklyOvertimeHours > 0 ? Math.round(salary.weeklyOvertimeSalary / salary.weeklyOvertimeHours) : 0,
+        amount: salary.weeklyOvertimeSalary
+      }
+    },
+    allowances: salary.employee.employeeAllowances?.map((empAllowance: any) => ({
+      type: empAllowance.allowance.name,
+      amount: empAllowance.allowance.companyAmount || 0
+    })) || [],
+    netSalary: salary.totalSalary,
+    paymentStatus: salary.paymentStatus === PaymentStatus.PAID ? 'Dibayar' : 'Belum Dibayar',
+    paymentDate: salary.paymentStatus === PaymentStatus.PAID ? format(salary.updatedAt, 'dd MMMM yyyy', { locale: localeId }) : null,
+    dates: {
+      created: format(salary.createdAt, 'dd MMMM yyyy HH:mm', { locale: localeId }),
+      updated: format(salary.updatedAt, 'dd MMMM yyyy HH:mm', { locale: localeId })
+    },
+    // Format currency untuk display
+    formatted: {
+      baseSalary: new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(salary.baseSalary),
+      overtimeSalary: new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(salary.overtimeSalary),
+      weeklyOvertimeSalary: new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(salary.weeklyOvertimeSalary),
+      totalAllowances: new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(salary.totalAllowances),
+      grossSalary: new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(salary.baseSalary + salary.overtimeSalary + salary.weeklyOvertimeSalary + salary.totalAllowances),
+      totalSalary: new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(salary.totalSalary)
+    }
+  };
 }
 
 /**
@@ -463,4 +552,4 @@ export async function handleContractStatusChange(employeeId: string, newContract
 
     console.log(`Updated ${unpaidSalaries.length} unpaid salaries for employee ${employeeId} due to contract change`);
   }
-} 
+}

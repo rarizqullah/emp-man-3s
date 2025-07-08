@@ -8,16 +8,22 @@ import {
   PlusCircle,
   Loader2,
   RefreshCw,
-  FileDown
+  Eye,
+  CreditCard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { SalaryDatePicker } from "@/components/salary/salary-date-picker";
+import { ExportMenu } from "@/components/salary/export-menu";
+import { SalarySlipPDF } from "@/components/salary/salary-slip-pdf";
 
 interface Department {
   id: string;
@@ -70,37 +76,50 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-export default function SalaryPage() {
-  // State management
-  const [activeTab, setActiveTab] = useState("list");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
-  const [filterDepartment, setFilterDepartment] = useState("ALL");
-  
-  // Data state
+export default function SalaryPageUpdated() {
+  // State untuk data
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  
+  // State untuk loading
   const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // State untuk filter dan pencarian
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterDepartment, setFilterDepartment] = useState("ALL");
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState("ALL");
+  
+  // State untuk date range filter
+  const [dateFrom, setDateFrom] = useState<Date>();
+  const [dateTo, setDateTo] = useState<Date>();
+  
+  // State untuk generate gaji dengan date picker
+  const [generateStartDate, setGenerateStartDate] = useState<Date>();
+  const [generateEndDate, setGenerateEndDate] = useState<Date>();
+  
+  // State untuk dialog
   const [isGeneratingOpen, setIsGeneratingOpen] = useState(false);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [selectedSalary, setSelectedSalary] = useState<Salary | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [selectedSalaryDetails, setSelectedSalaryDetails] = useState<Salary | null>(null);
 
-  // Fetch salaries dengan filter
+  // Fetch data salaries dengan filter
   const fetchSalaries = async () => {
-    setIsLoading(true);
     try {
+      setIsLoading(true);
       const params = new URLSearchParams();
       
-      if (filterDepartment && filterDepartment !== "ALL") {
+      if (filterDepartment !== "ALL") {
         params.append('departmentId', filterDepartment);
       }
       
-      if (filterMonth && filterYear) {
-        const startDate = new Date(filterYear, filterMonth - 1, 1).toISOString();
-        const endDate = new Date(filterYear, filterMonth, 0).toISOString();
-        params.append('startDate', startDate);
-        params.append('endDate', endDate);
+      if (filterPaymentStatus !== "ALL") {
+        params.append('paymentStatus', filterPaymentStatus);
+      }
+      
+      if (dateFrom && dateTo) {
+        params.append('startDate', dateFrom.toISOString());
+        params.append('endDate', dateTo.toISOString());
       }
       
       const url = params.toString() ? `/api/salaries?${params}` : '/api/salaries';
@@ -133,24 +152,31 @@ export default function SalaryPage() {
     }
   };
 
-  // Generate gaji untuk periode tertentu
+  // Generate gaji dengan date range picker
   const handleGenerateSalaries = async () => {
+    if (!generateStartDate || !generateEndDate) {
+      toast.error('Pilih tanggal mulai dan akhir untuk generate gaji');
+      return;
+    }
+
     try {
-      const response = await fetch('/api/salaries', {
+      setIsGenerating(true);
+      
+      const response = await fetch('/api/salaries/generate-by-date', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-                  body: JSON.stringify({
-            year: filterYear,
-            month: filterMonth,
-            departmentId: filterDepartment !== "ALL" ? filterDepartment : undefined
-          }),
+        body: JSON.stringify({
+          startDate: generateStartDate.toISOString(),
+          endDate: generateEndDate.toISOString(),
+          departmentId: filterDepartment !== "ALL" ? filterDepartment : undefined
+        }),
       });
       
       if (response.ok) {
         const result = await response.json();
-        toast.success(result.message || 'Gaji berhasil dihitung');
+        toast.success(result.message);
         setIsGeneratingOpen(false);
         fetchSalaries(); // Refresh data
       } else {
@@ -160,193 +186,332 @@ export default function SalaryPage() {
     } catch (error) {
       console.error('Error generating salaries:', error);
       toast.error('Terjadi kesalahan saat menghitung gaji');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
+  // Handle export data - Excel only
+  const handleExport = async (format: 'excel') => {
+    try {
+      const params = new URLSearchParams();
+      params.append('export', format);
+      
+      if (filterDepartment !== "ALL") {
+        params.append('departmentId', filterDepartment);
+      }
+      
+      if (filterPaymentStatus !== "ALL") {
+        params.append('paymentStatus', filterPaymentStatus);
+      }
+      
+      if (dateFrom && dateTo) {
+        params.append('startDate', dateFrom.toISOString());
+        params.append('endDate', dateTo.toISOString());
+      }
+      
+      const response = await fetch(`/api/salaries?${params}`);
+      const result = await response.json();
+      
+      if (result.type === 'export') {
+        // Process Excel export on client side
+        const { utils, writeFile } = await import('xlsx');
+        const worksheet = utils.json_to_sheet(result.data);
+        const workbook = utils.book_new();
+        utils.book_append_sheet(workbook, worksheet, 'Data Gaji');
+        writeFile(workbook, result.filename);
+        
+        toast.success('Data berhasil diekspor ke Excel');
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Gagal mengekspor data ke Excel');
+    }
+  };
+
+  // Handle view salary details
+  const handleViewDetails = (salary: Salary) => {
+    setSelectedSalaryDetails(salary);
+    setIsDetailsOpen(true);
+  };
+
+  // Handle payment status update
+  const handleUpdatePaymentStatus = async (salaryId: string, status: 'PAID' | 'UNPAID') => {
+    try {
+      const response = await fetch(`/api/salaries/${salaryId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          paymentStatus: status,
+          paymentDate: status === 'PAID' ? new Date().toISOString() : undefined
+        }),
+      });
+      
+      if (response.ok) {
+        toast.success('Status pembayaran berhasil diupdate');
+        fetchSalaries(); // Refresh data
+      } else {
+        toast.error('Gagal mengupdate status pembayaran');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Terjadi kesalahan saat mengupdate status');
+    }
+  };
+
+  // Handle date range filter change
+  const handleDateRangeChange = (startDate: Date, endDate: Date) => {
+    setDateFrom(startDate);
+    setDateTo(endDate);
+  };
+
+  // Handle generate date range change
+  const handleGenerateDateChange = (startDate: Date, endDate: Date) => {
+    setGenerateStartDate(startDate);
+    setGenerateEndDate(endDate);
+  };
+
+  // Filter salaries berdasarkan search term
+  const filteredSalaries = salaries.filter((salary) => {
+    const matchesSearch = searchTerm === "" || 
+      salary.employee.user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      salary.employee.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return matchesSearch;
+  });
+
+  // Initial data fetch
   useEffect(() => {
     fetchDepartments();
     fetchSalaries();
   }, []);
 
-  // Re-fetch when filters change
+  // Auto refresh saat filter berubah
   useEffect(() => {
     fetchSalaries();
-  }, [filterDepartment, filterMonth, filterYear]);
+  }, [filterDepartment, filterPaymentStatus, dateFrom, dateTo]);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Manajemen Penggajian</h1>
+          <h1 className="typography-h1">Penggajian</h1>
           <p className="text-muted-foreground">
-            Sistem penggajian terintegrasi dengan kehadiran dan tunjangan
+            Kelola data gaji dan pembayaran karyawan
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={() => setIsGeneratingOpen(true)}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Hitung Gaji
+        
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <Dialog open={isGeneratingOpen} onOpenChange={setIsGeneratingOpen}>
+            <DialogTrigger asChild>
+              <Button size="default" className="h-10 min-w-[140px]">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Hitung Gaji
+              </Button>
+            </DialogTrigger>
+          </Dialog>
+          
+          <Button 
+            onClick={fetchSalaries} 
+            disabled={isLoading} 
+            variant="outline" 
+            size="default"
+            className="h-10 min-w-[120px]"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
           </Button>
         </div>
       </div>
 
-      <Tabs defaultValue="list" value={activeTab} onValueChange={setActiveTab}>
+      <Tabs defaultValue="data" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="list">Daftar Gaji</TabsTrigger>
-          <TabsTrigger value="configuration">Konfigurasi</TabsTrigger>
+          <TabsTrigger value="data">Data Gaji Karyawan</TabsTrigger>
+          <TabsTrigger value="config">Konfigurasi</TabsTrigger>
         </TabsList>
-        
-        <TabsContent value="list" className="mt-6">
+
+        <TabsContent value="data" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Data Gaji Karyawan</CardTitle>
               <CardDescription>
-                Kelola perhitungan dan pembayaran gaji karyawan
+                Daftar gaji karyawan dengan filter pencarian
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col md:flex-row justify-between mb-4 gap-4">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1">
-                  <div className="relative w-full max-w-sm">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Cari karyawan..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-8"
-                    />
+              {/* Filter dan Pencarian */}
+              <div className="flex flex-col gap-6 mb-6">
+                {/* Row 1: Search, Department, Payment Status - Grid layout yang responsif */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Cari berdasarkan Nama/NIK</Label>
+                    <div className="relative">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Cari nama atau NIK karyawan..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-8 h-11"
+                      />
+                    </div>
                   </div>
                   
-                  <div className="flex gap-2">
-                    <Select value={String(filterMonth)} onValueChange={(value) => setFilterMonth(Number(value))}>
-                      <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder="Bulan" />
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Departemen</Label>
+                    <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Semua Departemen" />
                       </SelectTrigger>
                       <SelectContent>
-                        {Array.from({ length: 12 }, (_, i) => (
-                          <SelectItem key={i + 1} value={String(i + 1)}>
-                            {format(new Date(2024, i, 1), 'MMMM', { locale: id })}
+                        <SelectItem value="ALL">Semua Departemen</SelectItem>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.id}>
+                            {dept.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    
-                    <Select value={String(filterYear)} onValueChange={(value) => setFilterYear(Number(value))}>
-                      <SelectTrigger className="w-[100px]">
-                        <SelectValue placeholder="Tahun" />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Status Pembayaran</Label>
+                    <Select value={filterPaymentStatus} onValueChange={setFilterPaymentStatus}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Semua Status" />
                       </SelectTrigger>
                       <SelectContent>
-                        {Array.from({ length: 5 }, (_, i) => {
-                          const year = new Date().getFullYear() - 2 + i;
-                          return (
-                            <SelectItem key={year} value={String(year)}>
-                              {year}
-                            </SelectItem>
-                          );
-                        })}
+                        <SelectItem value="ALL">Semua Status</SelectItem>
+                        <SelectItem value="PAID">Sudah Dibayar</SelectItem>
+                        <SelectItem value="UNPAID">Belum Dibayar</SelectItem>
                       </SelectContent>
-                    </Select>
-                    
-                    <Select value={filterDepartment} onValueChange={setFilterDepartment}>
-                      <SelectTrigger className="w-[150px]">
-                        <SelectValue placeholder="Departemen" />
-                      </SelectTrigger>
-                                              <SelectContent>
-                          <SelectItem value="ALL">Semua Departemen</SelectItem>
-                          {departments.map((dept) => (
-                            <SelectItem key={dept.id} value={dept.id}>
-                              {dept.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
                     </Select>
                   </div>
                 </div>
                 
-                <Button onClick={fetchSalaries} disabled={isLoading}>
-                  <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
+                {/* Row 2: Date Range Filter with Export Button - Layout yang simetris */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Filter Periode Gaji</Label>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-end sm:justify-start">
+                    <div className="w-full sm:w-[200px]">
+                      <SalaryDatePicker
+                        startDate={dateFrom}
+                        endDate={dateTo}
+                        onDateChange={handleDateRangeChange}
+                        placeholder="Pilih periode"
+                        className="w-full"
+                      />
+                    </div>
+                    
+                    <div className="w-full sm:w-[140px]">
+                      <ExportMenu 
+                        onExport={handleExport} 
+                        size="default"
+                        variant="outline"
+                        className="h-11 w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
               
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID Karyawan</TableHead>
-                      <TableHead>Nama</TableHead>
-                      <TableHead>Departemen</TableHead>
-                      <TableHead>Periode</TableHead>
-                      <TableHead className="text-right">Total Gaji</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {isLoading ? (
+              {/* Tabel Data Gaji */}
+              <div className="rounded-md border overflow-hidden">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center h-24">
-                          <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-                          <p className="mt-2">Memuat data gaji...</p>
-                        </TableCell>
+                        <TableHead className="min-w-[100px]">NIK</TableHead>
+                        <TableHead className="min-w-[150px]">Nama</TableHead>
+                        <TableHead className="min-w-[120px]">Departemen</TableHead>
+                        <TableHead className="min-w-[150px]">Periode</TableHead>
+                        <TableHead className="text-right min-w-[120px]">Total Gaji</TableHead>
+                        <TableHead className="min-w-[100px]">Status</TableHead>
+                        <TableHead className="text-right min-w-[140px]">Aksi</TableHead>
                       </TableRow>
-                    ) : salaries.length > 0 ? (
-                      salaries
-                        .filter((salary) => 
-                          searchTerm === "" || 
-                          salary.employee.user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          salary.employee.employeeId.toLowerCase().includes(searchTerm.toLowerCase())
-                        )
-                        .map((salary) => (
-                          <TableRow key={salary.id}>
-                            <TableCell>{salary.employee.employeeId}</TableCell>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center h-24">
+                            <div className="flex flex-col items-center justify-center">
+                              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                              <p className="text-sm text-muted-foreground">Memuat data gaji...</p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : filteredSalaries.length > 0 ? (
+                        filteredSalaries.map((salary) => (
+                          <TableRow key={salary.id} className="hover:bg-muted/50">
+                            <TableCell className="font-medium font-mono text-sm">{salary.employee.employeeId}</TableCell>
                             <TableCell className="font-medium">{salary.employee.user.name}</TableCell>
-                            <TableCell>{salary.employee.department.name}</TableCell>
-                            <TableCell>{format(new Date(salary.periodStart), 'MMM yyyy', { locale: id })}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(salary.totalSalary)}</TableCell>
-                            <TableCell>
-                              <span className={`px-2 py-1 rounded-full text-xs ${
-                                salary.paymentStatus === "PAID" 
-                                  ? "bg-green-100 text-green-800" 
-                                  : "bg-orange-100 text-orange-800"
-                              }`}>
-                                {salary.paymentStatus === "PAID" ? "Dibayar" : "Belum Dibayar"}
-                              </span>
+                            <TableCell className="text-sm">{salary.employee.department.name}</TableCell>
+                            <TableCell className="text-sm">
+                              {format(new Date(salary.periodStart), 'dd MMM', { locale: id })} - {format(new Date(salary.periodEnd), 'dd MMM yyyy', { locale: id })}
                             </TableCell>
-                                                         <TableCell className="text-right">
-                               <Button 
-                                 variant="ghost" 
-                                 size="sm"
-                                 onClick={() => {
-                                   setSelectedSalary(salary);
-                                   setIsDetailOpen(true);
-                                 }}
-                               >
-                                 Detail
-                               </Button>
-                             </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {formatCurrency(salary.totalSalary)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={salary.paymentStatus === 'PAID' ? 'default' : 'destructive'} className="text-xs">
+                                {salary.paymentStatus === 'PAID' ? 'Dibayar' : 'Belum Dibayar'}
+                              </Badge>
+                            </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleViewDetails(salary)}
+                                className="h-8 px-2"
+                              >
+                                <Eye className="h-4 w-4" />
+                                <span className="ml-1 hidden sm:inline">Detail</span>
+                              </Button>
+                              
+                              <SalarySlipPDF 
+                                salaryId={salary.id}
+                                variant="ghost"
+                                size="sm"
+                              />
+                              
+                              {salary.paymentStatus === 'UNPAID' && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleUpdatePaymentStatus(salary.id, 'PAID')}
+                                  className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                >
+                                  <CreditCard className="h-4 w-4" />
+                                  <span className="ml-1 hidden sm:inline">Bayar</span>
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
                           </TableRow>
                         ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center h-24">
-                          <div className="text-center space-y-2">
-                            <p className="text-muted-foreground">Tidak ada data gaji ditemukan</p>
-                                                         <p className="text-sm text-muted-foreground">
-                               Klik tombol &quot;Hitung Gaji&quot; untuk membuat slip gaji berdasarkan data kehadiran
-                             </p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center h-24">
+                            <div className="flex flex-col items-center justify-center">
+                              <p className="text-muted-foreground">Tidak ada data gaji yang ditemukan</p>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Silakan ubah filter atau generate gaji terlebih dahulu
+                              </p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="configuration" className="mt-6">
+        <TabsContent value="config">
           <Card>
             <CardHeader>
               <CardTitle>Konfigurasi Penggajian</CardTitle>
@@ -365,239 +530,194 @@ export default function SalaryPage() {
         </TabsContent>
       </Tabs>
 
+      {/* Dialog Generate Gaji dengan Date Picker */}
       <Dialog open={isGeneratingOpen} onOpenChange={setIsGeneratingOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Hitung Gaji Karyawan</DialogTitle>
             <DialogDescription>
-              Hitung gaji berdasarkan data kehadiran
+              Hitung gaji berdasarkan data kehadiran untuk periode tertentu
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <label className="text-sm font-medium mb-1 block">Bulan</label>
-                <Select value={String(filterMonth)} onValueChange={(value) => setFilterMonth(Number(value))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih bulan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <SelectItem key={i + 1} value={String(i + 1)}>
-                        {format(new Date(2024, i, 1), 'MMMM', { locale: id })}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="flex-1">
-                <label className="text-sm font-medium mb-1 block">Tahun</label>
-                <Select value={String(filterYear)} onValueChange={(value) => setFilterYear(Number(value))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih tahun" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2024">2024</SelectItem>
-                    <SelectItem value="2023">2023</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div>
+              <Label className="text-sm font-medium">Periode Perhitungan Gaji</Label>
+              <SalaryDatePicker
+                startDate={generateStartDate}
+                endDate={generateEndDate}
+                onDateChange={handleGenerateDateChange}
+                placeholder="Pilih periode"
+              />
+            </div>
+            
+            <div>
+              <Label className="text-sm font-medium">Departemen (Opsional)</Label>
+              <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih departemen" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Semua Departemen</SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsGeneratingOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsGeneratingOpen(false)}
+              disabled={isGenerating}
+            >
               Batal
             </Button>
-            <Button onClick={handleGenerateSalaries}>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Hitung Gaji
+            <Button
+              onClick={handleGenerateSalaries}
+              disabled={isGenerating || !generateStartDate || !generateEndDate}
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Menghitung...
+                </>
+              ) : (
+                'Hitung Gaji'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Detail Slip Gaji */}
-      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+      {/* Dialog Detail Gaji */}
+      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Detail Slip Gaji</DialogTitle>
             <DialogDescription>
-              {selectedSalary && `${selectedSalary.employee.user.name} - ${format(new Date(selectedSalary.periodStart), 'MMMM yyyy', { locale: id })}`}
+              Rincian lengkap gaji karyawan
             </DialogDescription>
           </DialogHeader>
           
-          {selectedSalary && (
-            <div className="space-y-6">
-              {/* Header Info */}
+          {selectedSalaryDetails && (
+            <div className="space-y-4">
+              {/* Data Karyawan */}
               <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
                 <div>
-                  <p className="text-sm text-muted-foreground">ID Karyawan</p>
-                  <p className="font-medium">{selectedSalary.employee.employeeId}</p>
+                  <Label className="text-sm font-medium">NIK</Label>
+                  <p className="text-sm">{selectedSalaryDetails.employee.employeeId}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Departemen</p>
-                  <p className="font-medium">{selectedSalary.employee.department.name}</p>
+                  <Label className="text-sm font-medium">Nama Karyawan</Label>
+                  <p className="text-sm">{selectedSalaryDetails.employee.user.name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Posisi</p>
-                  <p className="font-medium">{selectedSalary.employee.position?.name || 'N/A'}</p>
+                  <Label className="text-sm font-medium">Departemen</Label>
+                  <p className="text-sm">{selectedSalaryDetails.employee.department.name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Tipe Kontrak</p>
-                  <p className="font-medium">
-                    {selectedSalary.employee.contractType === 'PERMANENT' ? 'Tetap' : 'Training'}
-                  </p>
+                  <Label className="text-sm font-medium">Posisi</Label>
+                  <p className="text-sm">{selectedSalaryDetails.employee.position?.name || '-'}</p>
                 </div>
               </div>
-              
+
               {/* Periode Gaji */}
-              <div className="p-4 border rounded-lg">
-                <h4 className="font-medium mb-3">Periode Gaji</h4>
-                <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-muted rounded-lg">
+                <Label className="text-sm font-medium">Periode Gaji</Label>
+                <p className="text-sm">
+                  {format(new Date(selectedSalaryDetails.periodStart), 'dd MMMM yyyy', { locale: id })} - {format(new Date(selectedSalaryDetails.periodEnd), 'dd MMMM yyyy', { locale: id })}
+                </p>
+              </div>
+
+              {/* Rekap Jam Kerja */}
+              <div className="p-4 bg-muted rounded-lg">
+                <Label className="text-sm font-medium mb-2 block">Rekap Jam Kerja</Label>
+                <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
-                    <p className="text-sm text-muted-foreground">Dari</p>
-                    <p className="font-medium">{format(new Date(selectedSalary.periodStart), 'dd MMMM yyyy', { locale: id })}</p>
+                    <p className="font-medium">Jam Kerja Utama</p>
+                    <p>{selectedSalaryDetails.mainWorkHours} jam</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Sampai</p>
-                    <p className="font-medium">{format(new Date(selectedSalary.periodEnd), 'dd MMMM yyyy', { locale: id })}</p>
+                    <p className="font-medium">Lembur Reguler</p>
+                    <p>{selectedSalaryDetails.regularOvertimeHours} jam</p>
+                  </div>
+                  <div>
+                    <p className="font-medium">Lembur Mingguan</p>
+                    <p>{selectedSalaryDetails.weeklyOvertimeHours} jam</p>
                   </div>
                 </div>
               </div>
-              
-              {/* Jam Kerja */}
-              <div className="p-4 border rounded-lg">
-                <h4 className="font-medium mb-3">Rekap Jam Kerja</h4>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-3 bg-blue-50 rounded">
-                    <p className="text-sm text-muted-foreground">Jam Kerja Utama</p>
-                    <p className="text-lg font-bold text-blue-600">{selectedSalary.mainWorkHours.toFixed(1)}</p>
-                    <p className="text-xs text-muted-foreground">jam</p>
+
+              {/* Rincian Pendapatan */}
+              <div className="p-4 bg-muted rounded-lg">
+                <Label className="text-sm font-medium mb-2 block">Rincian Pendapatan</Label>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Gaji Pokok</span>
+                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.baseSalary)}</span>
                   </div>
-                  <div className="text-center p-3 bg-orange-50 rounded">
-                    <p className="text-sm text-muted-foreground">Lembur Reguler</p>
-                    <p className="text-lg font-bold text-orange-600">{selectedSalary.regularOvertimeHours.toFixed(1)}</p>
-                    <p className="text-xs text-muted-foreground">jam</p>
+                  <div className="flex justify-between">
+                    <span>Gaji Lembur Reguler</span>
+                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.overtimeSalary)}</span>
                   </div>
-                  <div className="text-center p-3 bg-purple-50 rounded">
-                    <p className="text-sm text-muted-foreground">Lembur Mingguan</p>
-                    <p className="text-lg font-bold text-purple-600">{selectedSalary.weeklyOvertimeHours.toFixed(1)}</p>
-                    <p className="text-xs text-muted-foreground">jam</p>
+                  <div className="flex justify-between">
+                    <span>Gaji Lembur Mingguan</span>
+                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.weeklyOvertimeSalary)}</span>
                   </div>
-                </div>
-                <div className="mt-3 text-center p-2 bg-gray-50 rounded">
-                  <p className="text-sm text-muted-foreground">Total Jam Kerja</p>
-                  <p className="text-xl font-bold">
-                    {(selectedSalary.mainWorkHours + selectedSalary.regularOvertimeHours + selectedSalary.weeklyOvertimeHours).toFixed(1)} jam
-                  </p>
+                  <div className="flex justify-between">
+                    <span>Total Tunjangan</span>
+                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.totalAllowances)}</span>
+                  </div>
                 </div>
               </div>
-              
-              {/* Rincian Gaji */}
-              <div className="p-4 border rounded-lg">
-                <h4 className="font-medium mb-3">Rincian Pendapatan</h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <div>
-                      <p className="font-medium">Gaji Pokok</p>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedSalary.mainWorkHours.toFixed(1)} jam × tarif/jam
-                      </p>
-                    </div>
-                    <p className="font-medium text-right">{formatCurrency(selectedSalary.baseSalary)}</p>
-                  </div>
-                  
-                  {selectedSalary.overtimeSalary > 0 && (
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <div>
-                        <p className="font-medium">Gaji Lembur Reguler</p>
-                        <p className="text-sm text-muted-foreground">
-                          {selectedSalary.regularOvertimeHours.toFixed(1)} jam × tarif lembur
-                        </p>
-                      </div>
-                      <p className="font-medium text-right">{formatCurrency(selectedSalary.overtimeSalary)}</p>
-                    </div>
-                  )}
-                  
-                  {selectedSalary.weeklyOvertimeSalary > 0 && (
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <div>
-                        <p className="font-medium">Gaji Lembur Mingguan</p>
-                        <p className="text-sm text-muted-foreground">
-                          {selectedSalary.weeklyOvertimeHours.toFixed(1)} jam × tarif lembur mingguan
-                        </p>
-                      </div>
-                      <p className="font-medium text-right">{formatCurrency(selectedSalary.weeklyOvertimeSalary)}</p>
-                    </div>
-                  )}
-                  
-                  {selectedSalary.totalAllowances > 0 && (
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <div>
-                        <p className="font-medium">Total Tunjangan</p>
-                        <p className="text-sm text-muted-foreground">Tunjangan karyawan</p>
-                      </div>
-                      <p className="font-medium text-right">{formatCurrency(selectedSalary.totalAllowances)}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              {/* Total Gaji */}
-              <div className="p-4 bg-primary/5 border-2 border-primary/20 rounded-lg">
+
+              {/* Total Gaji Bersih */}
+              <div className="p-4 bg-primary/10 rounded-lg">
                 <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-lg font-semibold">Total Gaji Bersih</p>
-                    <p className="text-sm text-muted-foreground">
-                      Gaji pokok + lembur + tunjangan
-                    </p>
-                  </div>
-                  <p className="text-2xl font-bold text-primary">
-                    {formatCurrency(selectedSalary.totalSalary)}
-                  </p>
-                </div>
-              </div>
-              
-              {/* Status & Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 border rounded">
-                  <p className="text-sm text-muted-foreground">Status Pembayaran</p>
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    selectedSalary.paymentStatus === "PAID" 
-                      ? "bg-green-100 text-green-800" 
-                      : "bg-orange-100 text-orange-800"
-                  }`}>
-                    {selectedSalary.paymentStatus === "PAID" ? "Sudah Dibayar" : "Belum Dibayar"}
+                  <Label className="text-base font-semibold">Total Gaji Bersih</Label>
+                  <span className="text-xl font-bold text-primary">
+                    {formatCurrency(selectedSalaryDetails.totalSalary)}
                   </span>
                 </div>
-                
-                <div className="p-3 border rounded">
-                  <p className="text-sm text-muted-foreground">Tanggal Dibuat</p>
-                  <p className="font-medium">
-                    {format(new Date(selectedSalary.createdAt), 'dd MMM yyyy, HH:mm', { locale: id })}
-                  </p>
+              </div>
+
+              {/* Status Pembayaran */}
+              <div className="p-4 bg-muted rounded-lg">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm font-medium">Status Pembayaran</Label>
+                  <Badge variant={selectedSalaryDetails.paymentStatus === 'PAID' ? 'default' : 'destructive'}>
+                    {selectedSalaryDetails.paymentStatus === 'PAID' ? 'Sudah Dibayar' : 'Belum Dibayar'}
+                  </Badge>
                 </div>
+              </div>
+
+              {/* Tanggal Dibuat */}
+              <div className="p-4 bg-muted rounded-lg">
+                <Label className="text-sm font-medium">Tanggal Dibuat</Label>
+                <p className="text-sm">
+                  {format(new Date(selectedSalaryDetails.createdAt), 'dd MMMM yyyy HH:mm', { locale: id })}
+                </p>
               </div>
             </div>
           )}
           
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
               Tutup
             </Button>
-            <Button onClick={() => {
-              // Implementasi cetak slip gaji
-              window.print();
-            }}>
-              <FileDown className="mr-2 h-4 w-4" />
-              Cetak Slip Gaji
-            </Button>
+            {selectedSalaryDetails && (
+              <SalarySlipPDF 
+                salaryId={selectedSalaryDetails.id}
+              />
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
-} 
+}

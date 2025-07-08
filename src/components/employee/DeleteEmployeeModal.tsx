@@ -36,20 +36,24 @@ export function DeleteEmployeeModal({
 
     try {
       setIsDeleting(true);
-      console.log(`Menghapus karyawan dengan ID: ${employeeId}${isRetry ? ` (retry ${retryAttempt}/2)` : ''}`);
+      console.log(`Mengarsipkan karyawan dengan ID: ${employeeId}${isRetry ? ` (retry ${retryAttempt}/2)` : ''}`);
 
-      // Enhanced timeout untuk delete operation - diperpanjang untuk mencocokkan backend
+      // Enhanced timeout untuk archive operation - diperpanjang untuk mencocokkan backend
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 detik timeout
 
       try {
-        const response = await fetch(`/api/employees/${employeeId}`, {
-          method: "DELETE",
+        const response = await fetch(`/api/employees/archive`, {
+          method: "POST",
           signal: controller.signal,
           headers: {
             'Content-Type': 'application/json',
-            'X-Request-ID': `delete-${employeeId}-${Date.now()}`,
+            'X-Request-ID': `archive-${employeeId}-${Date.now()}`,
           },
+          body: JSON.stringify({
+            employeeIds: [employeeId],
+            reason: 'Diarsipkan melalui manajemen karyawan'
+          })
         });
 
         clearTimeout(timeoutId);
@@ -63,11 +67,11 @@ export function DeleteEmployeeModal({
             // Fallback jika tidak bisa parse JSON
           }
           
-          const errorMessage = errorData.error || `Gagal menghapus karyawan (Status: ${response.status})`;
+          const errorMessage = errorData.error || `Gagal mengarsipkan karyawan (Status: ${response.status})`;
           const isRetryable = errorData.retryable === true;
           const errorType = errorData.errorType || 'unknown';
           
-          console.error(`Delete failed with status ${response.status}:`, {
+          console.error(`Archive failed with status ${response.status}:`, {
             error: errorMessage,
             retryable: isRetryable,
             errorType,
@@ -130,12 +134,22 @@ export function DeleteEmployeeModal({
         }
         
         if (result.success) {
-          console.log('Employee deleted successfully:', result);
-          toast.success("Karyawan berhasil dihapus", {
+          console.log('✅ Employee archived successfully:', result);
+          toast.success("Karyawan berhasil diarsipkan", {
             description: retryAttempt > 0 ? `Berhasil setelah ${retryAttempt + 1} percobaan` : undefined
           });
-          onSuccess();
+          
+          // Close modal first
           onOpenChange(false);
+          
+          // Show immediate feedback
+          toast.info("🔄 Memperbarui daftar karyawan...", { duration: 2000 });
+          
+          // Delay refresh to ensure database has processed the change
+          setTimeout(() => {
+            console.log('🔄 Refreshing employee list after archive...');
+            onSuccess();
+          }, 500);
         } else {
           throw new Error(result.error || "Gagal menghapus karyawan");
         }
@@ -231,10 +245,10 @@ export function DeleteEmployeeModal({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Konfirmasi Hapus Karyawan</AlertDialogTitle>
+          <AlertDialogTitle>Konfirmasi Arsip Karyawan</AlertDialogTitle>
           <AlertDialogDescription>
-            Apakah Anda yakin ingin menghapus karyawan <strong>{employeeName}</strong>? 
-            Tindakan ini tidak dapat dibatalkan dan semua data terkait karyawan ini akan hilang.
+            Apakah Anda yakin ingin memindahkan karyawan <strong>{employeeName}</strong> ke arsip? 
+            Data karyawan akan dipindahkan ke arsip dan dapat dipulihkan kembali jika diperlukan.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -252,7 +266,7 @@ export function DeleteEmployeeModal({
             ) : (
               <>
                 <Trash2 className="mr-2 h-4 w-4" />
-                <span>Hapus Karyawan</span>
+                <span>Arsipkan Karyawan</span>
               </>
             )}
           </Button>
