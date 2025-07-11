@@ -115,6 +115,7 @@ export function AppTopbar() {
       </div>
       
       <div className="flex items-center gap-4">
+        {/* Notification button (always visible) */}
         <Button
           variant="ghost"
           size="icon"
@@ -123,7 +124,7 @@ export function AppTopbar() {
           <Bell size={20} />
           <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
         </Button>
-        
+        {/* Current time display (always visible) */}
         <div className="text-sm text-right hidden sm:block">
           <p className="font-medium text-gray-900 dark:text-white">Waktu Sekarang</p>
           <p className="text-gray-500 dark:text-gray-400">

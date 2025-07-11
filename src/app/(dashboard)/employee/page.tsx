@@ -198,53 +198,17 @@ export default function EmployeePage() {
       // Force refresh mode untuk setelah archive
       if (forceRefresh) {
         console.log('🔄 Force refreshing employee data...');
-        // Clear any existing state
-        setEmployees([]);
-        setSelectedEmployees([]);
-        setSelectAll(false);
       }
       
-      // Jika ini adalah retry kedua atau lebih, coba bersihkan koneksi database terlebih dahulu
-      if (retryCount >= 1) {
-        console.log(`Mencoba retry ke-${retryCount}, membersihkan koneksi database...`);
-        
-        try {
-          const cleanResponse = await fetch('/api/employees/clean-connection', {
-            method: 'POST',
-          });
-          
-          if (cleanResponse.ok) {
-            const cleanResult = await cleanResponse.json();
-            console.log('Koneksi database berhasil dibersihkan:', cleanResult);
-            
-            // Tunggu sebentar setelah pembersihan
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-        } catch {
-          console.log('Gagal membersihkan koneksi, lanjut dengan request normal');
-        }
-      }
-      
-      // Gunakan parameter pagination untuk initial load
-      const searchParams = new URLSearchParams({
-        take: '100', // Load lebih banyak untuk initial load
-        skip: '0'
-      });
-      
-      const response = await fetch(`/api/employees?${searchParams}`, {
+      const response = await fetch('/api/employees', {
         headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-          'X-Timestamp': Date.now().toString(),
+          'Cache-Control': 'no-cache',
         },
-        cache: 'no-store'
       });
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         
-        // Jika error adalah koneksi database dan masih ada retry, coba lagi
         if (
           errorData.code === 'DB_CONNECTION_ERROR' &&
           retryCount < maxRetries
@@ -257,40 +221,25 @@ export default function EmployeePage() {
         throw new Error(errorData.error || 'Gagal mengambil data karyawan');
       }
       
-      const responseData = await response.json();
+      const data = await response.json();
       
-      // Handle new pagination structure
-      const employeesData = responseData.data || responseData; // Support both old and new structure
-      const paginationInfo = responseData.pagination;
-      
-      // Optimized logging - hanya log summary, bukan data lengkap
-      console.log(`📊 Fetched ${employeesData.length} employees (first 3: ${employeesData.slice(0, 3).map((emp: Employee) => emp.employeeId).join(', ')})`);
-      
-      if (paginationInfo) {
-        console.log(`📄 Pagination:`, { 
-          total: paginationInfo.total, 
-          take: paginationInfo.take, 
-          skip: paginationInfo.skip,
-          hasMore: paginationInfo.hasMore 
-        });
-      }
-      
-      setEmployees(employeesData);
-      
-      // Reset pagination saat data berubah
-      setCurrentPage(1);
-      setSelectedEmployees([]);
-      setSelectAll(false);
-      
-      // Reset retry count on success
-      if (retryCount > 0) {
-        toast.success('Berhasil memuat data karyawan setelah retry');
+      // API employees mengembalikan { data: [...], pagination: {...} }
+      if (data.data && Array.isArray(data.data)) {
+        setEmployees(data.data);
+        
+        // Tampilkan peringatan untuk kontrak yang akan berakhir
+        checkExpiringContracts(data.data);
+        
+        if (retryCount > 0) {
+          toast.success('Berhasil memuat data karyawan setelah retry');
+        }
+      } else {
+        throw new Error('Format data tidak valid');
       }
       
     } catch (error) {
       console.error('Error fetching employees:', error);
       
-      // Jika masih ada retry dan ini bukan error parsing, coba lagi
       if (retryCount < maxRetries && !String(error).includes('Unexpected token')) {
         console.log(`Retry ${retryCount + 1}/${maxRetries} after error:`, error);
         toast.warning(`Gagal memuat data, mencoba lagi... (${retryCount + 1}/${maxRetries})`);
@@ -298,21 +247,19 @@ export default function EmployeePage() {
         return fetchEmployees(retryCount + 1);
       }
       
-      // Jika semua retry gagal, tampilkan error dan kosongkan data
       const errorMessage = error instanceof Error ? error.message : String(error);
       toast.error(`Gagal memuat data karyawan: ${errorMessage}`, {
         duration: 6000,
         action: {
           label: "Coba Lagi",
-          onClick: () => fetchEmployees(0)
+          onClick: () => fetchEmployees(0, true)
         }
       });
       
-      // Set data kosong ketika error
+      // Fallback ke data kosong untuk mencegah error UI
       setEmployees([]);
     } finally {
-      // Loading hanya di-reset jika force refresh
-      if (forceRefresh) setLoading(false);
+      setLoading(false);
     }
   };
   
@@ -361,7 +308,7 @@ export default function EmployeePage() {
   const handleSelectAll = (checked: boolean) => {
     setSelectAll(checked);
     if (checked) {
-      setSelectedEmployees(paginatedEmployees.map(emp => emp.id));
+      setSelectedEmployees(employees.map(emp => emp.id));
     } else {
       setSelectedEmployees([]);
     }
@@ -810,17 +757,30 @@ export default function EmployeePage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="typography-h1">Manajemen Karyawan</h1>
-          <p className="typography-muted mt-2">Kelola data karyawan dan kontrak karyawan</p>
+          <p className="typography-muted mt-2">Kelola data karyawan aktif</p>
         </div>
-        <Button onClick={() => setAddModalOpen(true)} className="bg-slate-900 hover:bg-slate-800 text-white">
-          <UserPlus className="mr-2 h-4 w-4" />
-          Tambah Karyawan
-        </Button>
+        <div className="flex gap-3">
+          <Button 
+            variant="outline" 
+            onClick={() => router.push('/employee/archive')} 
+            className="h-10 px-4 text-slate-600 border-slate-300 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+          >
+            <Archive className="mr-2 h-4 w-4" />
+            Lihat Arsip
+          </Button>
+          <Button 
+            onClick={() => setAddModalOpen(true)} 
+            className="h-10 px-4 bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition-colors"
+          >
+            <UserPlus className="mr-2 h-4 w-4" />
+            Tambah Karyawan
+          </Button>
+        </div>
       </div>
       
       <Card>
         <CardHeader>
-          <CardTitle className="typography-h3">Daftar Karyawan</CardTitle>
+          <CardTitle className="typography-h3">Daftar Karyawan Aktif</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex justify-between mb-4 gap-4">
@@ -986,11 +946,11 @@ export default function EmployeePage() {
                 <TableHeader className="bg-muted/50 border-b">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-12 px-4 py-3 font-semibold text-muted-foreground">
-                      <Checkbox
-                        checked={selectAll}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                        aria-label="Select all employees"
-                      />
+                                              <Checkbox
+                          checked={selectAll}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          aria-label="Select all employees"
+                        />
                     </TableHead>
                     <TableHead className="px-4 py-3 font-semibold text-muted-foreground">NIK</TableHead>
                     <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Nama</TableHead>

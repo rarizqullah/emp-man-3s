@@ -17,127 +17,17 @@ import {
   DollarSign,
   Gift,
   Calendar,
-  Archive,
-  UserCog,
-  ChevronDown
+  UserCog
 } from "lucide-react";
 import { Sidebar, SidebarBody, SidebarLink, useSidebar } from "@/components/ui/sidebar";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 
 interface MenuItem {
   title: string;
   url: string;
   icon: React.ComponentType<{ className?: string }>;
-  items?: {
-    title: string;
-    url: string;
-    icon?: React.ComponentType<{ className?: string }>;
-  }[];
 }
-
-interface ExpandableMenuProps {
-  item: MenuItem;
-  isActive: boolean;
-  isGroupActive: boolean;
-}
-
-const ExpandableMenu = ({ item, isActive, isGroupActive }: ExpandableMenuProps) => {
-  const { open, pinned } = useSidebar();
-  const pathname = usePathname();
-  const [expanded, setExpanded] = React.useState(isGroupActive);
-  const isExpanded = open || pinned;
-
-  React.useEffect(() => {
-    setExpanded(isGroupActive);
-  }, [isGroupActive]);
-
-  if (!item.items) {
-    return (
-      <SidebarLink
-        link={{
-          label: item.title,
-          href: item.url,
-          icon: <item.icon className={cn("w-5 h-5", isActive ? "text-primary" : "text-gray-600")} />
-        }}
-        className={cn(
-          "mb-1",
-          isActive ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"
-        )}
-      />
-    );
-  }
-
-  return (
-    <div className="mb-1">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className={cn(
-          "w-full flex items-center justify-start gap-3 py-2 px-2 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors",
-          isGroupActive ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"
-        )}
-      >
-        <div className="flex-shrink-0">
-          <item.icon className={cn("w-5 h-5", isGroupActive ? "text-primary" : "text-gray-600")} />
-        </div>
-        
-        <motion.span
-          animate={{
-            display: isExpanded ? "inline-block" : "none",
-            opacity: isExpanded ? 1 : 0,
-          }}
-          className="text-sm font-medium flex-1 text-left"
-        >
-          {item.title}
-        </motion.span>
-        
-        <motion.div
-          animate={{
-            display: isExpanded ? "block" : "none",
-            opacity: isExpanded ? 1 : 0,
-            rotate: expanded ? 180 : 0,
-          }}
-          transition={{ duration: 0.2 }}
-        >
-          <ChevronDown className="w-4 h-4" />
-        </motion.div>
-      </button>
-
-      <AnimatePresence>
-        {expanded && isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className="ml-8 mt-1 space-y-1">
-              {item.items.map((subItem) => {
-                const subActive = pathname === subItem.url || pathname.startsWith(subItem.url + "/");
-                return (
-                  <Link
-                    key={subItem.title}
-                    href={subItem.url}
-                    className={cn(
-                      "flex items-center gap-2 py-2 px-3 rounded-md text-sm transition-colors",
-                      subActive 
-                        ? "bg-primary/10 text-primary font-medium" 
-                        : "text-gray-600 hover:bg-gray-50"
-                    )}
-                  >
-                    {subItem.icon && <subItem.icon className="w-4 h-4" />}
-                    <span>{subItem.title}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -147,12 +37,7 @@ export function AppSidebar() {
     return pathname === url || pathname.startsWith(url + "/");
   };
 
-  // Helper function untuk mengecek apakah grup aktif
-  const isGroupActive = (urls: string[]) => {
-    return urls.some(url => pathname.startsWith(url));
-  };
-
-  // Menu items utama
+  // Menu items utama - semua langsung tanpa submenu
   const mainNavItems: MenuItem[] = [
     {
       title: "Dashboard",
@@ -163,18 +48,6 @@ export function AppSidebar() {
       title: "Karyawan",
       url: "/employee",
       icon: Users,
-      items: [
-        {
-          title: "Manajemen Karyawan",
-          url: "/employee",
-          icon: UserCog,
-        },
-        {
-          title: "Arsip Karyawan",
-          url: "/employee/archive",
-          icon: Archive,
-        }
-      ]
     },
     {
       title: "Absensi",
@@ -193,8 +66,8 @@ export function AppSidebar() {
     },
   ];
 
-  // Configuration menu items
-  const configItems = [
+  // Configuration menu items - semua langsung tanpa submenu
+  const configItems: MenuItem[] = [
     {
       title: "Departemen",
       url: "/configuration/departments",
@@ -227,21 +100,13 @@ export function AppSidebar() {
     },
   ];
 
-  const configurationItem: MenuItem = {
-    title: "Pengaturan",
-    url: "/configuration",
-    icon: Settings,
-    items: configItems,
-  };
-
-      return (
+  return (
     <Sidebar>
       <SidebarBody className="justify-between gap-0 aceternity-sidebar sidebar-content">
         <SidebarInner
           mainNavItems={mainNavItems}
-          configurationItem={configurationItem}
+          configItems={configItems}
           isActive={isActive}
-          isGroupActive={isGroupActive}
         />
       </SidebarBody>
     </Sidebar>
@@ -250,12 +115,11 @@ export function AppSidebar() {
 
 interface SidebarInnerProps {
   mainNavItems: MenuItem[];
-  configurationItem: MenuItem;
+  configItems: MenuItem[];
   isActive: (url: string) => boolean;
-  isGroupActive: (urls: string[]) => boolean;
 }
 
-function SidebarInner({ mainNavItems, configurationItem, isActive, isGroupActive }: SidebarInnerProps) {
+function SidebarInner({ mainNavItems, configItems, isActive }: SidebarInnerProps) {
   const { open, pinned } = useSidebar();
   const isExpanded = open || pinned;
 
@@ -293,17 +157,23 @@ function SidebarInner({ mainNavItems, configurationItem, isActive, isGroupActive
         </motion.div>
 
         {mainNavItems.map((item) => (
-          <ExpandableMenu
+          <SidebarLink
             key={item.title}
-            item={item}
-            isActive={isActive(item.url)}
-            isGroupActive={isGroupActive([item.url])}
+            link={{
+              label: item.title,
+              href: item.url,
+              icon: <item.icon className={cn("w-5 h-5", isActive(item.url) ? "text-primary" : "text-gray-600")} />
+            }}
+            className={cn(
+              "mb-1",
+              isActive(item.url) ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"
+            )}
           />
         ))}
       </div>
 
       {/* Configuration Section */}
-      <div className="space-y-1 mt-8">
+      <div className="mt-6 space-y-1">
         <motion.div
           animate={{
             display: isExpanded ? "block" : "none",
@@ -316,11 +186,20 @@ function SidebarInner({ mainNavItems, configurationItem, isActive, isGroupActive
           </h3>
         </motion.div>
 
-        <ExpandableMenu
-          item={configurationItem}
-          isActive={false}
-          isGroupActive={isGroupActive(['/configuration'])}
-        />
+        {configItems.map((item) => (
+          <SidebarLink
+            key={item.title}
+            link={{
+              label: item.title,
+              href: item.url,
+              icon: <item.icon className={cn("w-5 h-5", isActive(item.url) ? "text-primary" : "text-gray-600")} />
+            }}
+            className={cn(
+              "mb-1",
+              isActive(item.url) ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-50"
+            )}
+          />
+        ))}
       </div>
     </div>
   );

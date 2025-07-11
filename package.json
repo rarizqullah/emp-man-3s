@@ -13,6 +13,7 @@
     "test:gateway": "bun run src/scripts/test-api-gateway.ts",
     "test:network-resilience": "node test-network-resilience.js",
     "test:auth-timeout": "node test-auth-timeout-fix.js",
+    "test": "npx playwright test",
     "monitor:auth": "bun run src/scripts/monitor-auth-performance.ts",
     "api-gateway:health": "curl -s http://localhost:3000/api/gateway/health | json_pp",
     "api-gateway:metrics": "curl -s http://localhost:3000/api/gateway/admin/metrics | json_pp"
@@ -30,6 +31,7 @@
     "@radix-ui/react-hover-card": "^1.1.14",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-popover": "^1.1.6",
+    "@radix-ui/react-scroll-area": "^1.2.9",
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
@@ -68,17 +70,20 @@
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.59.0",
     "react-hot-toast": "^2.5.2",
-    "recharts": "^2.15.1",
+    "recharts": "^3.1.0",
+    "socket.io-client": "^4.8.1",
     "sonner": "^2.0.1",
     "swr": "^2.3.4",
     "tailwind-merge": "^3.0.2",
     "tailwindcss-animate": "^1.0.7",
     "xlsx": "^0.18.5",
-    "zod": "^3.25.67"
+    "zod": "^3.25.67",
+    "zustand": "^5.0.6"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@next/bundle-analyzer": "^15.3.5",
+    "@playwright/test": "^1.54.1",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.9",
@@ -88,6 +93,7 @@
     "esbuild": "0.20.0",
     "eslint": "^9",
     "eslint-config-next": "15.2.0",
+    "playwright": "^1.54.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
