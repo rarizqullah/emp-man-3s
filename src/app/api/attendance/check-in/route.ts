@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { validateAttendanceTime, detectLatenessAndCalculateRoundedTime, calculateAdjustedCheckInTime } from '@/lib/utils/attendance-calculator';
 import { ShiftCycleManager } from '@/lib/utils/shift-cycle-manager';
 import { startOfDay, endOfDay } from 'date-fns';
+import { ActivityLogger } from '@/lib/activity-logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -160,6 +161,21 @@ export async function POST(request: NextRequest) {
         latenessMessage: latenessInfo.latenessMessage
       }
     });
+    
+    // Log activity
+    try {
+      await ActivityLogger.logAttendance('CHECK_IN', employeeId, {
+        shiftName: employee.shift.name,
+        department: employee.department?.name,
+        isLate: latenessInfo.isLate,
+        minutesLate: latenessInfo.roundedMinutesLate,
+        actualCheckInTime: actualCheckInTime.toISOString(),
+        recordedCheckInTime: finalCheckInTime.toISOString()
+      });
+    } catch (logError) {
+      console.error('Failed to log check-in activity:', logError);
+      // Don't fail the check-in if logging fails
+    }
     
     console.log(`✅ Enhanced strict validation check-in successful for employee ${employee.user.name} at ${finalCheckInTime.toISOString()}`);
     

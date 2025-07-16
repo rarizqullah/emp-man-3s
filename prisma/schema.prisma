@@ -12,7 +12,7 @@ model User {
   id                  String       @id @default(uuid())
   email               String       @unique
   name                String
-  phone               String?      // Field telepon
+  phone               String? // Field telepon
   role                Role         @default(EMPLOYEE)
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
@@ -83,13 +83,13 @@ model Position {
 }
 
 model Department {
-  id              String           @id @default(uuid())
-  name            String           @unique
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  employees       Employee[]
-  salaryRates     SalaryRate[]
-  subDepartments  SubDepartment[]
+  id             String          @id @default(uuid())
+  name           String          @unique
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  employees      Employee[]
+  salaryRates    SalaryRate[]
+  subDepartments SubDepartment[]
 
   @@map("departments")
 }
@@ -211,31 +211,31 @@ model SalaryRate {
 }
 
 model Allowance {
-  id                    String              @id @default(uuid())
-  name                  String              @unique
-  description           String?
-  applicableRule        String              // Ketentuan berlaku
-  umkAmount             Float?              // UMK (Upah Minimum Kota/Kabupaten)
-  companyPercentage     Float?              // Persentase perusahaan
-  companyAmount         Float?              // Nominal perusahaan (dikalkulasi otomatis)
-  employeePercentage    Float?              // Persentase karyawan
-  employeeAmount        Float?              // Nominal karyawan (dikalkulasi otomatis)
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
-  employeeAllowances    EmployeeAllowance[]
+  id                 String              @id @default(uuid())
+  name               String              @unique
+  description        String?
+  applicableRule     String // Ketentuan berlaku
+  umkAmount          Float? // UMK (Upah Minimum Kota/Kabupaten)
+  companyPercentage  Float? // Persentase perusahaan
+  companyAmount      Float? // Nominal perusahaan (dikalkulasi otomatis)
+  employeePercentage Float? // Persentase karyawan
+  employeeAmount     Float? // Nominal karyawan (dikalkulasi otomatis)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  employeeAllowances EmployeeAllowance[]
 
   @@map("allowances")
 }
 
 model EmployeeAllowance {
-  id               String    @id @default(uuid())
-  employeeId       String
-  allowanceId      String
-  isActive         Boolean   @default(true)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  allowance        Allowance @relation(fields: [allowanceId], references: [id], onDelete: Cascade)
-  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid())
+  employeeId  String
+  allowanceId String
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  allowance   Allowance @relation(fields: [allowanceId], references: [id], onDelete: Cascade)
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, allowanceId])
   @@map("employee_allowances")
@@ -314,6 +314,17 @@ model WarningHistory {
   @@map("warning_history")
 }
 
+model ActivityLog {
+  id         String   @id @default(uuid())
+  email      String
+  waktuLogin DateTime @default(now()) @map("waktu_login")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@index([waktuLogin])
+  @@map("activity_logs")
+}
+
 enum Role {
   ADMIN
   MANAGER
@@ -366,4 +377,13 @@ enum PermissionStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum ActivityType {
+  AUTH
+  ATTENDANCE
+  EMPLOYEE
+  PERMISSION
+  SALARY
+  SYSTEM
 }

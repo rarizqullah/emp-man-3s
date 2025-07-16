@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { format, startOfMonth, endOfMonth, getDaysInMonth, getDay, isSameDay, isSameMonth } from "date-fns";
+import { useState, useEffect } from "react";
+import { startOfMonth, endOfMonth, format } from "date-fns";
 import { id } from "date-fns/locale";
 import { CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,114 +26,164 @@ export function SalaryDatePicker({
   disabled = false
 }: SalaryDatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+
+  // Initialize state properly
+  useEffect(() => {
+    if (startDate) {
+      setSelectedYear(startDate.getFullYear());
+      setSelectedMonth(startDate.getMonth());
+    } else {
+      // Set default to current year
+      const now = new Date();
+      setSelectedYear(now.getFullYear());
+      setSelectedMonth(null); // Let user explicitly choose
+    }
+  }, [startDate]);
 
   const months = [
-    "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
-    "Jul", "Agu", "Sep", "Okt", "Nov", "Des"
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
   ];
 
-  const weekdays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-
-  const handlePrevMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  const handlePrevYear = () => {
+    setSelectedYear(prev => prev - 1);
   };
 
-  const handleNextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  const handleNextYear = () => {
+    setSelectedYear(prev => prev + 1);
   };
 
   const handleMonthSelect = (monthIndex: number) => {
-    const firstDay = startOfMonth(new Date(currentDate.getFullYear(), monthIndex));
-    const lastDay = endOfMonth(new Date(currentDate.getFullYear(), monthIndex));
-    
-    if (onDateChange) {
-      onDateChange(firstDay, lastDay);
+    console.log('Month selected:', monthIndex, months[monthIndex]);
+    setSelectedMonth(monthIndex);
+  };
+
+  const handleConfirmSelection = () => {
+    if (selectedMonth === null || selectedMonth === undefined) {
+      console.log('No month selected');
+      return;
     }
+    
+    console.log('Confirming selection:', { selectedMonth, selectedYear });
+    
+    // Create date range for the selected month
+    const firstDay = startOfMonth(new Date(selectedYear, selectedMonth, 1));
+    const lastDay = endOfMonth(new Date(selectedYear, selectedMonth, 1));
+    
+    console.log('Date range created:', { 
+      firstDay: firstDay.toISOString(), 
+      lastDay: lastDay.toISOString() 
+    });
+    
+    if (onDateChange && typeof onDateChange === 'function') {
+      onDateChange(firstDay, lastDay);
+      console.log('Date change callback executed');
+    } else {
+      console.warn('onDateChange callback not found or not a function');
+    }
+    
+    setIsOpen(false);
+  };
+
+  const handleCancel = () => {
+    // Reset to initial values or null
+    setSelectedMonth(startDate?.getMonth() !== undefined ? startDate.getMonth() : null);
+    setSelectedYear(startDate?.getFullYear() || new Date().getFullYear());
     setIsOpen(false);
   };
 
   const formatPeriod = () => {
     if (startDate && endDate) {
-      // Format yang lebih singkat: "Jul 2025" instead of "Juli 2025"
-      return `${months[startDate.getMonth()]} ${startDate.getFullYear()}`;
+      return format(startDate, 'MMMM yyyy', { locale: id });
     }
     return placeholder;
   };
 
-  const renderCalendarGrid = () => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDayOfMonth = new Date(year, month, 1);
-    const daysInMonth = getDaysInMonth(firstDayOfMonth);
-    const startDay = getDay(firstDayOfMonth);
-    
-    const days = [];
-    
-    // Empty cells for days before the first day of month
-    for (let i = 0; i < startDay; i++) {
-      const prevMonth = new Date(year, month - 1, 0);
-      const day = prevMonth.getDate() - startDay + i + 1;
-      days.push(
-        <div
-          key={`prev-${i}`}
-          className="h-8 w-8 text-sm text-gray-300 flex items-center justify-center"
-        >
-          {day}
-        </div>
-      );
-    }
-    
-    // Days of the current month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dayDate = new Date(year, month, day);
-      const isToday = isSameDay(dayDate, new Date());
-      const isSelected = startDate && isSameMonth(dayDate, startDate);
-      
-      days.push(
-        <button
-          key={day}
-          className={cn(
-            "h-8 w-8 text-sm rounded-md hover:bg-blue-50 hover:text-blue-600 transition-colors flex items-center justify-center",
-            isToday && "bg-blue-600 text-white font-medium",
-            isSelected && !isToday && "bg-blue-100 text-blue-600 font-medium"
-          )}
-          onClick={() => handleMonthSelect(month)}
-        >
-          {day}
-        </button>
-      );
-    }
-    
-    // Fill remaining cells
-    const totalCells = Math.ceil(days.length / 7) * 7;
-    let nextMonthDay = 1;
-    for (let i = days.length; i < totalCells; i++) {
-      days.push(
-        <div
-          key={`next-${i}`}
-          className="h-8 w-8 text-sm text-gray-300 flex items-center justify-center"
-        >
-          {nextMonthDay++}
-        </div>
-      );
-    }
-    
+  const renderMonthGrid = () => {
     return (
-      <div className="grid grid-cols-7 gap-1">
-        {weekdays.map((day, index) => (
-          <div key={index} className="h-8 w-8 text-xs font-medium text-gray-500 flex items-center justify-center">
-            {day}
+      <div className="space-y-4">
+        {/* Year Navigation */}
+        <div className="flex items-center justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handlePrevYear}
+            className="h-8 w-8 p-0"
+            type="button"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          
+          <div className="text-lg font-semibold">
+            {selectedYear}
           </div>
-        ))}
-        {days}
+          
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleNextYear}
+            className="h-8 w-8 p-0"
+            type="button"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Month Grid */}
+        <div className="grid grid-cols-3 gap-2">
+          {months.map((month, index) => {
+            const isSelected = selectedMonth === index;
+            const isCurrentMonth = new Date().getMonth() === index && new Date().getFullYear() === selectedYear;
+            const isPeriodMonth = startDate && startDate.getMonth() === index && startDate.getFullYear() === selectedYear;
+            
+            return (
+              <Button
+                key={index}
+                variant={isSelected ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleMonthSelect(index)}
+                className={cn(
+                  "h-10 text-sm transition-colors",
+                  isCurrentMonth && !isSelected && "border-blue-500 text-blue-600",
+                  isPeriodMonth && !isSelected && "border-green-500 text-green-600"
+                )}
+                type="button"
+              >
+                {month}
+              </Button>
+            );
+          })}
+        </div>
+
+        {/* Selected Period Info */}
+        {selectedMonth !== null && (
+          <div className="p-3 bg-blue-50 rounded-md text-sm text-blue-800">
+            <div className="font-medium">Periode yang dipilih:</div>
+            <div>{months[selectedMonth]} {selectedYear}</div>
+            <div className="text-xs mt-1 text-blue-600">
+              {startOfMonth(new Date(selectedYear, selectedMonth)).toLocaleDateString('id-ID')} - {endOfMonth(new Date(selectedYear, selectedMonth)).toLocaleDateString('id-ID')}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
 
+  // Reset selectedMonth ketika popover dibuka
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (open) {
+      // Reset ke nilai awal saat membuka
+      setSelectedMonth(startDate?.getMonth() !== undefined ? startDate.getMonth() : null);
+      setSelectedYear(startDate?.getFullYear() || new Date().getFullYear());
+    }
+  };
+
   return (
     <div className={cn("grid gap-2", className)}>
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <Popover open={isOpen} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <Button
             variant="outline"
@@ -142,6 +192,7 @@ export function SalaryDatePicker({
               !startDate && "text-muted-foreground"
             )}
             disabled={disabled}
+            type="button"
           >
             <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
             <span className="truncate text-sm">
@@ -150,51 +201,29 @@ export function SalaryDatePicker({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
-          <div className="p-3">
-            {/* Header dengan navigasi bulan */}
-            <div className="flex items-center justify-between mb-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handlePrevMonth}
-                className="h-7 w-7 p-0"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              
-              <div className="text-sm font-semibold">
-                {months[currentDate.getMonth()]} {currentDate.getFullYear()}
-              </div>
-              
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleNextMonth}
-                className="h-7 w-7 p-0"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            {/* Calendar Grid */}
-            {renderCalendarGrid()}
+          <div className="p-4">
+            {/* Month Grid */}
+            {renderMonthGrid()}
             
             {/* Footer actions */}
-            <div className="flex gap-2 pt-3 mt-3 border-t">
+            <div className="flex gap-2 pt-4 mt-4 border-t">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsOpen(false)}
+                onClick={handleCancel}
                 className="flex-1"
+                type="button"
               >
                 Batal
               </Button>
               <Button
                 size="sm"
-                onClick={() => handleMonthSelect(currentDate.getMonth())}
+                onClick={handleConfirmSelection}
+                disabled={selectedMonth === null}
                 className="flex-1"
+                type="button"
               >
-                Pilih
+                Pilih Periode
               </Button>
             </div>
           </div>

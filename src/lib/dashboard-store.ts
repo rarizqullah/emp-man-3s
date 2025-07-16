@@ -13,8 +13,9 @@ export interface AttendanceStats {
 
 export interface RecentActivity {
   id: string
-  type: 'check-in' | 'check-out' | 'leave-request' | 'late-arrival'
+  type: 'check-in' | 'check-out' | 'leave-request' | 'late-arrival' | 'login'
   employeeName: string
+  email?: string
   timestamp: Date
   details?: string
 }
@@ -36,6 +37,20 @@ export interface Notification {
   actionUrl?: string
 }
 
+export interface LoginActivity {
+  id: string
+  email: string
+  waktuLogin: string
+  timeAgo: string
+  formattedTime: string
+}
+
+export interface LoginStats {
+  todayLogins: number
+  totalLogins: number
+  uniqueUsers: number
+}
+
 export interface DashboardState {
   // Connection status
   isConnected: boolean
@@ -48,6 +63,10 @@ export interface DashboardState {
   recentActivities: RecentActivity[]
   chartData: ChartData[]
   notifications: Notification[]
+  
+  // Login activities
+  loginActivities: LoginActivity[]
+  loginStats: LoginStats | null
 
   // UI state
   selectedTab: string
@@ -79,6 +98,11 @@ export interface DashboardState {
   setRecentActivities: (activities: RecentActivity[]) => void
   setChartData: (data: ChartData[]) => void
 
+  // Login activities actions
+  setLoginActivities: (activities: LoginActivity[]) => void
+  addLoginActivity: (activity: LoginActivity) => void
+  setLoginStats: (stats: LoginStats) => void
+
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'isRead'>) => void
   markNotificationAsRead: (id: string) => void
   markAllNotificationsAsRead: () => void
@@ -104,6 +128,12 @@ export const useDashboardStore = create<DashboardState>()(
       recentActivities: [],
       chartData: [],
       notifications: [],
+      
+      // Login activities
+      loginActivities: [],
+      loginStats: null,
+      loginActivities: [],
+      loginStats: null,
 
       selectedTab: 'overview',
       isNotificationOpen: false,
@@ -159,6 +189,24 @@ export const useDashboardStore = create<DashboardState>()(
 
       setChartData: (data) =>
         set({ chartData: data }),
+
+      // Login activities actions
+      setLoginActivities: (activities) =>
+        set({ loginActivities: activities }),
+
+      addLoginActivity: (activity) =>
+        set((state) => ({
+          loginActivities: [
+            {
+              ...activity,
+              id: activity.id || `login-activity-${Date.now()}-${Math.random()}`
+            },
+            ...state.loginActivities.slice(0, 49) // Keep only latest 50
+          ]
+        })),
+
+      setLoginStats: (stats) =>
+        set({ loginStats: stats }),
 
       addNotification: (notification) =>
         set((state) => ({
@@ -282,6 +330,9 @@ export const useDashboardActions = () =>
     addRecentActivity: state.addRecentActivity,
     setRecentActivities: state.setRecentActivities,
     setChartData: state.setChartData,
+    setLoginActivities: state.setLoginActivities,
+    addLoginActivity: state.addLoginActivity,
+    setLoginStats: state.setLoginStats,
     addNotification: state.addNotification,
     markNotificationAsRead: state.markNotificationAsRead,
     markAllNotificationsAsRead: state.markAllNotificationsAsRead,
@@ -290,4 +341,4 @@ export const useDashboardActions = () =>
     setNotificationOpen: state.setNotificationOpen,
     setLoadingState: state.setLoadingState,
     updatePreferences: state.updatePreferences
-  })) 
+  }))

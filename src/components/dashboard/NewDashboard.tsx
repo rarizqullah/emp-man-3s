@@ -3,12 +3,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { format } from 'date-fns'
 import { id } from 'date-fns/locale'
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Users, UserCheck, UserX, Clock, Activity, TrendingUp, AlertCircle } from 'lucide-react'
 import { AttendanceCharts } from './AttendanceCharts'
+import ActivityPanel from './ActivityPanel'
+import { useDashboardData } from '@/hooks/useSWRHooks'
+import { useSocket, useSocketEvent } from '@/hooks/useSocket'
+import { useAuthActivityLogger } from '@/hooks/useAuthActivityLogger'
+import { toast } from 'react-hot-toast'
 
 // Types
 interface SubDepartment {
@@ -30,53 +34,11 @@ interface ActivityItem {
   icon: string
 }
 
-interface ChartDataPoint {
-  date: string
-  day: string
-  present: number
-  late: number
-  punctual: number
-  absent: number
-  attendanceRate: number
-  punctualityRate: number
-}
-
 interface DashboardStats {
   totalEmployees: number
   presentToday: number
   lateToday: number
   leaveToday: number
-}
-
-interface FilteredStats {
-  totalEmployees: number
-  presentToday: number
-  lateToday: number
-  leaveToday: number
-}
-
-interface DashboardData {
-  activeShift: {
-    id: string
-    name: string
-    shiftType: string
-    mainWorkStart: string | null
-    mainWorkEnd: string | null
-  }
-  stats: DashboardStats
-  filteredStats: FilteredStats | null
-  subDepartments: SubDepartment[]
-  chartData: {
-    punctualityTrend: ChartDataPoint[]
-    attendanceTrend: ChartDataPoint[]
-  }
-  recentActivity: ActivityItem[]
-  metadata: {
-    timestamp: string
-    subDepartmentFilter: string | null
-    currentTime: string
-    currentDay: string
-  }
 }
 
 // Stats Card Component - Clean design with prominent ratio display
@@ -134,133 +96,88 @@ const StatsCard = ({
 
 
 
-// Recent Activity Component - Compact design
-const RecentActivityComponent = ({ activities }: { activities: ActivityItem[] }) => {
-  if (!activities || activities.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full min-h-[240px] text-center">
-        <Activity className="h-10 w-10 text-muted-foreground/30 mb-3" />
-        <h3 className="font-medium text-muted-foreground mb-2">Tidak ada aktivitas terbaru</h3>
-        <p className="text-sm text-muted-foreground">
-          Aktivitas akan muncul di sini saat ada operasi sistem
-        </p>
-      </div>
-    )
-  }
-
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case 'CHECK_IN':
-        return <Clock className="h-4 w-4 text-green-600" />
-      case 'CHECK_OUT':
-        return <Clock className="h-4 w-4 text-blue-600" />
-      default:
-        return <Activity className="h-4 w-4 text-muted-foreground" />
-    }
-  }
-
-  const formatTimestamp = (timestamp: string) => {
-    try {
-      const date = new Date(timestamp)
-      const now = new Date()
-      const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
-      
-      if (diffInMinutes < 1) return 'Baru saja'
-      if (diffInMinutes < 60) return `${diffInMinutes}m yang lalu`
-      if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}j yang lalu`
-      return format(date, 'dd/MM HH:mm')
-    } catch {
-      return 'Invalid date'
-    }
-  }
-
-  return (
-    <div className="space-y-3 max-h-[240px] overflow-y-auto pr-2">
-      {activities.map((activity) => (
-        <div 
-          key={activity.id} 
-          className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg border border-border/50 hover:bg-muted/50 transition-colors"
-        >
-          <div className="flex-shrink-0 mt-0.5">
-            {getActivityIcon(activity.type)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2 mb-1">
-              <h4 className="text-sm font-medium text-foreground truncate">
-                {activity.title}
-              </h4>
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                {formatTimestamp(activity.timestamp)}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mb-1 line-clamp-2">
-              {activity.description}
-            </p>
-            <div className="flex items-center gap-2 text-xs">
-              <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                {activity.department}
-              </Badge>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 export default function NewDashboard() {
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [selectedSubDept, setSelectedSubDept] = useState<string>('all')
   const [viewType, setViewType] = useState<'charts' | 'activity'>('charts')
   const [chartType, setChartType] = useState<'punctuality' | 'attendance'>('punctuality')
   const [days, setDays] = useState<string>('7')
 
+  // Use SWR for data fetching with caching and revalidation
+  const { data, error, isLoading, refresh, mutate } = useDashboardData(selectedSubDept, days)
+
+  // Debug logging
+  useEffect(() => {
+    console.log('Dashboard data state:', { 
+      hasData: !!data, 
+      error, 
+      isLoading,
+      dataKeys: data ? Object.keys(data) : [],
+      statsData: data?.stats,
+      chartDataLength: data?.chartData?.punctualityTrend?.length || 0
+    })
+  }, [data, error, isLoading])
+
+  // Socket.io for real-time updates
+  const socket = useSocket()
+
+  // Authentication activity logging
+  const { logPageAccess } = useAuthActivityLogger()
+
+  // Log dashboard access on component mount
+  useEffect(() => {
+    logPageAccess('Dashboard', {
+      subDepartment: selectedSubDept,
+      viewType,
+      chartType,
+      timeRange: days
+    })
+  }, [logPageAccess, selectedSubDept, viewType, chartType, days])
+
+  // Real-time event handlers
+  useSocketEvent('dashboard-update', useCallback((updateData: { type: string; data: ActivityItem }) => {
+    console.log('Received dashboard update:', updateData)
+    
+    if (updateData.type === 'activity') {
+      // Show toast notification for new activity
+      toast.success(`${updateData.data.title}: ${updateData.data.user}`, {
+        duration: 3000,
+      })
+    }
+    
+    // Trigger data refresh
+    mutate()
+  }, [mutate]))
+
+  useSocketEvent('new-activity', useCallback((activityData: ActivityItem) => {
+    console.log('Received new activity:', activityData)
+    // Activity data will be included in dashboard refresh
+    mutate()
+  }, [mutate]))
+
+  // Join socket rooms on mount
+  useEffect(() => {
+    if (socket) {
+      socket.emit('join-dashboard')
+      socket.emit('join-activities')
+    }
+  }, [socket])
+
   const chartData = chartType === 'punctuality' 
     ? data?.chartData?.punctualityTrend 
     : data?.chartData?.attendanceTrend
 
-  // Fetch dashboard data
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const params = new URLSearchParams()
-      if (selectedSubDept !== 'all') {
-        params.append('subDepartmentId', selectedSubDept)
-      }
-      params.append('days', days)
-      
-      const url = `/api/analytics/dashboard-v2?${params}`
-      const response = await fetch(url)
-        
-        if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: Failed to fetch dashboard data`)
-        }
-        
-        const result = await response.json()
-        
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch dashboard data')
-      }
-      
-          setData(result.data)
-    } catch (err) {
-        console.error('Dashboard fetch error:', err)
-      setError(err instanceof Error ? err.message : 'Unknown error occurred')
-      } finally {
-        setLoading(false)
-      }
-    }, [days, selectedSubDept])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
   // Get current stats based on filter
   const getCurrentStats = (): DashboardStats => {
-    if (!data) return { totalEmployees: 0, presentToday: 0, lateToday: 0, leaveToday: 0 }
+    if (!data) {
+      console.log('No data available for stats')
+      return { totalEmployees: 0, presentToday: 0, lateToday: 0, leaveToday: 0 }
+    }
+    
+    console.log('Using data for stats:', { 
+      hasFilteredStats: !!data.filteredStats, 
+      selectedSubDept,
+      statsData: data.stats 
+    })
     
     // If filtered by sub-department, use filtered stats
     if (selectedSubDept !== 'all' && data.filteredStats) {
@@ -268,15 +185,19 @@ export default function NewDashboard() {
     }
     
     // Otherwise use overall stats
-    return data.stats
+    return data.stats || { totalEmployees: 0, presentToday: 0, lateToday: 0, leaveToday: 0 }
   }
 
   // Get total employees for ratio display (always show overall total)
   const getTotalEmployees = (): number => {
-    return data?.stats.totalEmployees || 0
+    if (!data?.stats) {
+      console.log('No stats data available for total employees')
+      return 0
+    }
+    return data.stats.totalEmployees || 0
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-6 h-screen max-h-screen overflow-hidden">
         <div className="animate-pulse">
@@ -306,22 +227,77 @@ export default function NewDashboard() {
   }
 
   if (error) {
+    console.error('Dashboard error:', error)
     return (
       <div className="flex flex-col items-center justify-center h-[400px] text-center space-y-4">
         <AlertCircle className="h-12 w-12 text-destructive" />
         <div>
           <h3 className="text-lg font-semibold text-foreground mb-2">Error Loading Dashboard</h3>
-          <p className="text-muted-foreground mb-4">{error}</p>
-          <Button onClick={fetchData} size="sm">
+          <p className="text-muted-foreground mb-4 max-w-md">
+            {error.includes('Unauthorized') ? 
+              'Session expired. Please login again.' : 
+              `Failed to load dashboard data: ${error}`
+            }
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={refresh} size="sm">
               Coba Lagi
             </Button>
+            <Button 
+              onClick={() => {
+                console.log('Refreshing with force reload...')
+                window.location.reload()
+              }} 
+              variant="outline" 
+              size="sm"
+            >
+              Reload Halaman
+            </Button>
+            {error.includes('Unauthorized') && (
+              <Button 
+                onClick={() => {
+                  window.location.href = '/login'
+                }} 
+                variant="destructive" 
+                size="sm"
+              >
+                Login Ulang
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     )
   }
 
   if (!data) {
-    return null
+    console.log('No data received from API - likely authentication or server issue')
+    return (
+      <div className="flex flex-col items-center justify-center h-[400px] text-center space-y-4">
+        <AlertCircle className="h-12 w-12 text-muted-foreground" />
+        <div>
+          <h3 className="text-lg font-semibold text-foreground mb-2">No Data Available</h3>
+          <p className="text-muted-foreground mb-4">
+            Data dashboard tidak tersedia. Ini mungkin karena:<br/>
+            • Session expired atau authentication gagal<br/>
+            • Server sedang bermasalah<br/>
+            • Database belum memiliki data
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={refresh} size="sm">
+              Refresh Data
+            </Button>
+            <Button 
+              onClick={() => window.location.href = '/login'} 
+              variant="outline" 
+              size="sm"
+            >
+              Login Ulang
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   const currentStats = getCurrentStats()
@@ -344,7 +320,7 @@ export default function NewDashboard() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Semua Sub Department</SelectItem>
-                {data.subDepartments.map((subDept) => (
+                {data?.subDepartments?.map((subDept: SubDepartment) => (
                   <SelectItem key={subDept.id} value={subDept.id}>
                     {subDept.name}
                   </SelectItem>
@@ -428,20 +404,10 @@ export default function NewDashboard() {
               onDaysChange={setDays}
             />
           ) : (
-            <Card className="flex-1 min-h-0">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg font-semibold">Aktivitas Terbaru</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Aktivitas operasional sistem terbaru
-                </p>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <RecentActivityComponent activities={data.recentActivity} />
-            </CardContent>
-          </Card>
+            <ActivityPanel />
           )}
         </div>
       </div>
     </div>
   )
-} 
+}

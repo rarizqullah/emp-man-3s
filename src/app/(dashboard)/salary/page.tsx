@@ -103,6 +103,21 @@ export default function SalaryPageUpdated() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [selectedSalaryDetails, setSelectedSalaryDetails] = useState<Salary | null>(null);
 
+  // Tambahkan useEffect untuk sinkronisasi periode saat dialog dibuka
+  useEffect(() => {
+    if (isGeneratingOpen) {
+      // Sinkronkan periode generate dengan filter jika ada
+      if (dateFrom && dateTo) {
+        setGenerateStartDate(dateFrom);
+        setGenerateEndDate(dateTo);
+      } else {
+        setGenerateStartDate(undefined);
+        setGenerateEndDate(undefined);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGeneratingOpen]);
+
   // Fetch data salaries dengan filter
   const fetchSalaries = async () => {
     try {
@@ -154,13 +169,21 @@ export default function SalaryPageUpdated() {
 
   // Generate gaji dengan date range picker
   const handleGenerateSalaries = async () => {
+    console.log('Generate salaries clicked:', { generateStartDate, generateEndDate });
+    
     if (!generateStartDate || !generateEndDate) {
-      toast.error('Pilih tanggal mulai dan akhir untuk generate gaji');
+      toast.error('Pilih periode terlebih dahulu untuk generate gaji');
       return;
     }
 
     try {
       setIsGenerating(true);
+      
+      console.log('Sending request to generate salaries with:', {
+        startDate: generateStartDate.toISOString(),
+        endDate: generateEndDate.toISOString(),
+        departmentId: filterDepartment !== "ALL" ? filterDepartment : undefined
+      });
       
       const response = await fetch('/api/salaries/generate-by-date', {
         method: 'POST',
@@ -174,13 +197,24 @@ export default function SalaryPageUpdated() {
         }),
       });
       
+      console.log('Response status:', response.status);
+      
       if (response.ok) {
         const result = await response.json();
-        toast.success(result.message);
+        console.log('Generate result:', result);
+        toast.success(result.message || 'Gaji berhasil dihitung');
         setIsGeneratingOpen(false);
-        fetchSalaries(); // Refresh data
+        // Reset form
+        setGenerateStartDate(undefined);
+        setGenerateEndDate(undefined);
+        // Update filter periode agar data langsung ter-refresh
+        setDateFrom(generateStartDate);
+        setDateTo(generateEndDate);
+        // Refresh data
+        fetchSalaries();
       } else {
         const error = await response.json();
+        console.error('Generate error:', error);
         toast.error(error.error || 'Gagal menghitung gaji');
       }
     } catch (error) {
@@ -286,11 +320,13 @@ export default function SalaryPageUpdated() {
   useEffect(() => {
     fetchDepartments();
     fetchSalaries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto refresh saat filter berubah
   useEffect(() => {
     fetchSalaries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterDepartment, filterPaymentStatus, dateFrom, dateTo]);
 
   return (
@@ -567,6 +603,21 @@ export default function SalaryPageUpdated() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Display selected period */}
+            {generateStartDate && generateEndDate && (
+              <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-2 w-2 bg-primary rounded-full"></div>
+                  <span className="text-sm font-medium">Periode yang dipilih:</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {format(generateStartDate, 'dd MMMM yyyy', { locale: id })} 
+                  {' - '}
+                  {format(generateEndDate, 'dd MMMM yyyy', { locale: id })}
+                </p>
+              </div>
+            )}
           </div>
           
           <DialogFooter>

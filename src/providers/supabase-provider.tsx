@@ -166,20 +166,38 @@ export default function SupabaseProvider({
     try {
       setSyncAttempted(false);
       
-      // Clear localStorage
+      // Use our custom logout API that includes activity logging
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        console.warn('⚠️ Logout API warning:', result.message);
+      } else {
+        console.log('✅ Logout successful via API');
+      }
+      
+      // Clear localStorage regardless of API result
       localStorage.removeItem('auth_backup');
       
-      // Sign out dengan timeout
+      // Also perform client-side signout as fallback
       await withTimeout(
         supabaseClient.auth.signOut(),
         AUTH_TIMEOUT
       );
       
-      // Redirect ke login
+      // Redirect to login
       router.push('/login');
     } catch (error) {
       console.error('❌ Sign out error:', error);
-      // Force redirect even if signOut fails
+      
+      // Clear localStorage and force redirect even if logout fails
+      localStorage.removeItem('auth_backup');
       router.push('/login');
     }
   };

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseRouteHandler } from '@/lib/supabase/server'
 import { prisma } from '@/lib/db'
 import { format, startOfDay, endOfDay, subDays } from 'date-fns'
+import { ActivityLogger } from '@/lib/activity-logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,19 +13,49 @@ export async function GET(request: NextRequest) {
       'Cache-Control': 'no-store, max-age=0'
     }
     
-    // Auth check
+    // Auth check with better error handling
     const supabase = await supabaseRouteHandler()
-    const { data: { session } } = await supabase.auth.getSession()
-
-    if (!session?.user) {
+    
+    let session = null
+    try {
+      const { data: { session: sessionData }, error: sessionError } = await supabase.auth.getSession()
+      session = sessionData
+      
+      if (sessionError) {
+        console.error('Session error:', sessionError)
+        return NextResponse.json({ 
+          success: false,
+          error: 'Session validation failed',
+          details: sessionError.message
+        }, { 
+          status: 401,
+          headers 
+        })
+      }
+    } catch (error) {
+      console.error('Auth check error:', error)
       return NextResponse.json({ 
         success: false,
-        error: 'Unauthorized' 
+        error: 'Authentication service unavailable',
+        details: error instanceof Error ? error.message : 'Unknown auth error'
+      }, { 
+        status: 503,
+        headers 
+      })
+    }
+
+    if (!session?.user) {
+      console.log('No valid session found for dashboard request')
+      return NextResponse.json({ 
+        success: false,
+        error: 'Unauthorized - Please login again'
       }, { 
         status: 401,
         headers 
       })
     }
+
+    console.log(`Dashboard API accessed by user: ${session.user.email}`)
 
     const { searchParams } = new URL(request.url)
     const subDepartmentId = searchParams.get('subDepartmentId')
@@ -35,13 +66,8 @@ export async function GET(request: NextRequest) {
     const currentTimeStr = format(currentTime, 'HH:mm')
     const currentDay = format(currentTime, 'EEEE').toUpperCase()
 
-    // Get all shifts that are active today
+    // Get all shifts that are active today (handle both string array and potential format issues)
     const shifts = await prisma.shift.findMany({
-      where: {
-        workingDays: {
-          has: currentDay
-        }
-      },
       include: {
         employees: {
           where: {
@@ -54,44 +80,85 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Use first shift as active shift, or create default if none
-    const activeShift = shifts.length > 0 ? shifts[0] : {
-      id: 'default',
-      name: 'Default Shift',
-      shiftType: 'NORMAL',
-      mainWorkStart: null,
-      mainWorkEnd: null,
-      employees: []
-    }
+    // Filter shifts by working day (handle both array formats and empty arrays)
+    const activeShifts = shifts.filter(shift => {
+      if (!shift.workingDays || shift.workingDays.length === 0) {
+        // If no working days specified, assume it works all days
+        return true
+      }
+      
+      // Check if current day is in working days (handle different formats)
+      return shift.workingDays.includes(currentDay) || 
+             shift.workingDays.includes(currentDay.toLowerCase()) ||
+             shift.workingDays.includes(currentDay.toUpperCase())
+    })
+
+    // Use first active shift, or fallback to first shift, or create default
+    const activeShift = activeShifts.length > 0 ? activeShifts[0] : 
+                      shifts.length > 0 ? shifts[0] : {
+                        id: 'default',
+                        name: 'Default Shift',
+                        shiftType: 'NORMAL',
+                        mainWorkStart: null,
+                        mainWorkEnd: null,
+                        employees: []
+                      }
 
     // Get today's date range
     const today = new Date()
     const startOfToday = startOfDay(today)
     const endOfToday = endOfDay(today)
 
-    // Get all employees for the active shift
-    const allShiftEmployees = await prisma.employee.findMany({
-      where: {
-        shiftId: activeShift.id,
-        deletedAt: null
-      },
-      include: {
-        attendances: {
-          where: {
-            attendanceDate: {
-              gte: startOfToday,
-              lte: endOfToday
+    // Get all employees for the active shift (handle default case better)
+    let allShiftEmployees = []
+    if (activeShift.id !== 'default') {
+      allShiftEmployees = await prisma.employee.findMany({
+        where: {
+          shiftId: activeShift.id,
+          deletedAt: null
+        },
+        include: {
+          attendances: {
+            where: {
+              attendanceDate: {
+                gte: startOfToday,
+                lte: endOfToday
+              }
+            }
+          },
+          subDepartment: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      })
+    } else {
+      // If no active shift, get all employees to show some data
+      allShiftEmployees = await prisma.employee.findMany({
+        where: {
+          deletedAt: null
+        },
+        include: {
+          attendances: {
+            where: {
+              attendanceDate: {
+                gte: startOfToday,
+                lte: endOfToday
+              }
+            }
+          },
+          subDepartment: {
+            select: {
+              id: true,
+              name: true
             }
           }
         },
-        subDepartment: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
-    })
+        take: 100 // Limit to avoid overwhelming data
+      })
+    }
 
     // Get filtered employees for specific sub-department if requested
     const filteredEmployees = subDepartmentId && subDepartmentId !== 'all' 
@@ -155,7 +222,7 @@ export async function GET(request: NextRequest) {
       const dayStart = startOfDay(date)
       const dayEnd = endOfDay(date)
       
-      // Get attendance for this day if we have an active shift
+      // Get attendance for this day
       let dayAttendances = []
       if (activeShift.id !== 'default') {
         dayAttendances = await prisma.attendance.findMany({
@@ -174,22 +241,37 @@ export async function GET(request: NextRequest) {
             employee: true
           }
         })
+      } else {
+        // If no active shift, get attendance from all employees
+        dayAttendances = await prisma.attendance.findMany({
+          where: {
+            attendanceDate: {
+              gte: dayStart,
+              lte: dayEnd
+            },
+            employee: {
+              deletedAt: null,
+              ...(subDepartmentId && subDepartmentId !== 'all' ? { subDepartmentId } : {})
+            }
+          },
+          include: {
+            employee: true
+          },
+          take: 100 // Limit to avoid overwhelming data
+        })
       }
 
       const dayEmployees = subDepartmentId && subDepartmentId !== 'all' 
         ? filteredEmployees 
         : allShiftEmployees
 
-      // Use only real data from database
-      let present, late, punctual, absent, attendanceRate, punctualityRate
-      
-      // Real data from actual employees and attendance records
-      present = dayAttendances.length
-      late = dayAttendances.filter((att: any) => att.isLate === true).length
-      punctual = present - late
-      absent = dayEmployees.length - present
-      attendanceRate = dayEmployees.length > 0 ? Math.round((present / dayEmployees.length) * 100) : 0
-      punctualityRate = present > 0 ? Math.round((punctual / present) * 100) : 100
+      // Calculate stats with fallback for empty data
+      const present = dayAttendances.length
+      const late = dayAttendances.filter((att) => att.isLate === true).length
+      const punctual = present - late
+      const absent = Math.max(0, dayEmployees.length - present)
+      const attendanceRate = dayEmployees.length > 0 ? Math.round((present / dayEmployees.length) * 100) : 0
+      const punctualityRate = present > 0 ? Math.round((punctual / present) * 100) : 100
 
       chartData.push({
         date: format(date, 'yyyy-MM-dd'),
@@ -203,112 +285,8 @@ export async function GET(request: NextRequest) {
       })
     }
     
-    // Get recent activity from various sources
-    const recentActivity: any[] = []
-
-    // Get recent check-ins
-    const recentCheckIns = await prisma.attendance.findMany({
-      where: {
-        employee: {
-          shiftId: activeShift.id,
-          deletedAt: null
-        },
-        checkInTime: {
-          not: null
-        }
-      },
-      include: {
-        employee: {
-          select: {
-            user: {
-              select: {
-                name: true
-              }
-            },
-            department: {
-              select: {
-                name: true
-              }
-            }
-          }
-        }
-      },
-      orderBy: {
-        checkInTime: 'desc'
-      },
-      take: 5
-    })
-
-    // Add check-in activities
-    recentCheckIns.forEach((attendance) => {
-      if (attendance.checkInTime) {
-        recentActivity.push({
-          id: `checkin-${attendance.id}`,
-          type: 'CHECK_IN',
-          title: 'Check In',
-          description: `${attendance.employee.user.name} melakukan check-in`,
-          user: attendance.employee.user.name,
-          department: attendance.employee.department.name,
-          timestamp: attendance.checkInTime.toISOString(),
-          icon: 'clock-in'
-        })
-      }
-    })
-
-    // Get recent check-outs
-    const recentCheckOuts = await prisma.attendance.findMany({
-      where: {
-        employee: {
-          shiftId: activeShift.id,
-          deletedAt: null
-        },
-        checkOutTime: {
-          not: null
-        }
-      },
-      include: {
-        employee: {
-          select: {
-            user: {
-              select: {
-                name: true
-              }
-            },
-            department: {
-              select: {
-                name: true
-              }
-            }
-          }
-        }
-      },
-      orderBy: {
-        checkOutTime: 'desc'
-      },
-      take: 3
-    })
-
-    // Add check-out activities
-    recentCheckOuts.forEach((attendance) => {
-      if (attendance.checkOutTime) {
-        recentActivity.push({
-          id: `checkout-${attendance.id}`,
-          type: 'CHECK_OUT',
-          title: 'Check Out',
-          description: `${attendance.employee.user.name} melakukan check-out`,
-          user: attendance.employee.user.name,
-          department: attendance.employee.department.name,
-          timestamp: attendance.checkOutTime.toISOString(),
-          icon: 'clock-out'
-        })
-      }
-    })
-
-    // Sort activities by timestamp
-    recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-
-    // Limit to 10 most recent activities
-    const limitedActivity = recentActivity.slice(0, 10)
+    // Get recent activity from ActivityLogger
+    const recentActivity = await ActivityLogger.getRecentActivities(10)
 
     const response = {
       success: true,
@@ -342,7 +320,7 @@ export async function GET(request: NextRequest) {
           punctualityTrend: chartData,
           attendanceTrend: chartData
         },
-        recentActivity: limitedActivity,
+        recentActivity: recentActivity,
         metadata: {
           timestamp: new Date().toISOString(),
           subDepartmentFilter: subDepartmentId,

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { calculateWorkHours, validateAttendanceTime, calculateAutoTimeRecord } from '@/lib/utils/attendance-calculator';
 import { SessionCheckoutManager } from '@/lib/utils/session-checkout-manager';
 import { startOfDay, endOfDay } from 'date-fns';
+import { ActivityLogger } from '@/lib/activity-logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -196,6 +197,25 @@ export async function POST(request: NextRequest) {
         })
       }
     });
+    
+    // Log activity
+    try {
+      await ActivityLogger.logAttendance('CHECK_OUT', employeeId, {
+        shiftName: employee.shift.name,
+        department: employee.department?.name,
+        mainWorkHours: workHours.mainWorkHours,
+        regularOvertimeHours: workHours.regularOvertimeHours,
+        weeklyOvertimeHours: workHours.weeklyOvertimeHours,
+        checkInTime: todayAttendance.checkInTime?.toISOString(),
+        checkOutTime: finalCheckOutTime.toISOString(),
+        isLateCheckout,
+        lateCheckoutLabel,
+        isManualOverride
+      });
+    } catch (logError) {
+      console.error('Failed to log check-out activity:', logError);
+      // Don't fail the check-out if logging fails
+    }
     
     console.log(`✅ Multi-session check-out successful for employee ${employee.user.name} at ${finalCheckOutTime.toISOString()}`);
     console.log(`Work hours calculated:`, workHours);

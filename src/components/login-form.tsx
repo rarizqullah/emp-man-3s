@@ -43,13 +43,66 @@ export function LoginForm({
     try {
       console.log('🔐 Login attempt for:', data.email);
       
+      // Try our custom login API first
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: data.email,
+            password: data.password,
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            console.log('✅ Login successful via API for:', result.user?.email);
+            
+            // Wait a moment for session to be established
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Verify authentication by checking session
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            
+            if (user) {
+              console.log('✅ User authentication verified:', user.email);
+              
+              toast({
+                title: 'Login Berhasil',
+                description: `Selamat datang kembali, ${result.user?.name || user.email}!`,
+              });
+              
+              // Wait for toast to display
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              // Redirect to intended page
+              console.log('🔄 Redirecting to:', redirectUrl);
+              router.push(redirectUrl);
+              return;
+            }
+          }
+        }
+        
+        // If API login fails, try fallback
+        console.warn('⚠️ API login failed, trying fallback method');
+        
+      } catch (apiError) {
+        console.warn('⚠️ API login error, trying fallback method:', apiError);
+      }
+      
+      // Fallback to direct Supabase login
+      console.log('🔄 Using fallback Supabase login for:', data.email);
+      
       const { data: authData, error } = await supabaseClient.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
 
       if (error) {
-        console.error('❌ Login failed:', error.message);
+        console.error('❌ Fallback login failed:', error.message);
         
         // Berikan pesan error yang lebih jelas untuk user
         let errorMessage = error.message;
@@ -73,7 +126,7 @@ export function LoginForm({
         return;
       }
 
-      console.log('✅ Login successful for:', authData.user?.email);
+      console.log('✅ Fallback login successful for:', authData.user?.email);
       
       // Tunggu sebentar untuk memastikan session tersimpan
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -104,11 +157,23 @@ export function LoginForm({
           variant: 'destructive',
         });
       }
+      
     } catch (error) {
       console.error('❌ Login error:', error);
+      
+      // More specific error handling
+      let errorMessage = 'Gagal masuk ke akun. Silakan coba lagi nanti.';
+      if (error instanceof Error) {
+        if (error.message.includes('fetch')) {
+          errorMessage = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
+        } else if (error.message.includes('network')) {
+          errorMessage = 'Masalah jaringan. Silakan coba lagi.';
+        }
+      }
+      
       toast({
         title: 'Terjadi Kesalahan',
-        description: 'Gagal masuk ke akun. Silakan coba lagi nanti.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {

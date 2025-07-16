@@ -36,10 +36,16 @@ import {
   RefreshCw,
   Users,
   FileDown,
-  Filter
+  Filter,
+  Trash2,
+  CheckCircle,
+  XCircle,
+  MoreHorizontal,
+  Edit
 } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
+import { cn } from "@/lib/utils";
 import dynamic from 'next/dynamic';
 
 // Dynamic import untuk Face Recognition component (heavy component dengan TensorFlow.js)
@@ -67,8 +73,22 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 
 import { 
@@ -138,6 +158,11 @@ export default function AttendancePage() {
   // Department options untuk filter
   const [departments, setDepartments] = useState<string[]>([]);
   const [shifts, setShifts] = useState<string[]>([]);
+
+  // Selection state for bulk operations
+  const [selectedRecords, setSelectedRecords] = useState<string[]>([]);
+  const [selectAll, setSelectAll] = useState(false);
+  const [isPerformingBulkOperation, setIsPerformingBulkOperation] = useState(false);
 
   // Format time untuk tampilan
   const formatTime = (timeString: string | null | undefined): string => {
@@ -217,6 +242,130 @@ export default function AttendancePage() {
   const endIndex = startIndex + pageSize;
   const paginatedData = filteredAttendance.slice(startIndex, endIndex);
 
+  // Handle multiple selection
+  const handleSelectRecord = (recordId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedRecords(prev => [...prev, recordId]);
+    } else {
+      setSelectedRecords(prev => prev.filter(id => id !== recordId));
+      setSelectAll(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    setSelectAll(checked);
+    if (checked) {
+      setSelectedRecords(paginatedData.map(record => record.id));
+    } else {
+      setSelectedRecords([]);
+    }
+  };
+
+  // Bulk operation handlers
+  const handleBulkDelete = async () => {
+    if (selectedRecords.length === 0) {
+      toast.error('Pilih minimal satu data untuk dihapus');
+      return;
+    }
+    
+    setIsPerformingBulkOperation(true);
+    try {
+      const response = await fetch('/api/attendance/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ids: selectedRecords }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Gagal menghapus data');
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        toast.success(`${selectedRecords.length} data presensi berhasil dihapus`);
+        setSelectedRecords([]);
+        setSelectAll(false);
+        await fetchTodayAttendance(); // Refresh data
+      } else {
+        throw new Error(result.message || 'Gagal menghapus data');
+      }
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+      toast.error('Gagal menghapus data. Silakan coba lagi.');
+    } finally {
+      setIsPerformingBulkOperation(false);
+    }
+  };
+
+  const handleBulkStatusChange = async (newStatus: string) => {
+    if (selectedRecords.length === 0) {
+      toast.error('Pilih minimal satu data untuk diubah statusnya');
+      return;
+    }
+
+    setIsPerformingBulkOperation(true);
+    try {
+      const response = await fetch('/api/attendance/bulk-status-update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          ids: selectedRecords,
+          status: newStatus 
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Gagal mengubah status');
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        const statusLabel = newStatus;
+        toast.success(`${selectedRecords.length} data berhasil diubah menjadi ${statusLabel}`);
+        setSelectedRecords([]);
+        setSelectAll(false);
+        await fetchTodayAttendance(); // Refresh data
+      } else {
+        throw new Error(result.message || 'Gagal mengubah status');
+      }
+    } catch (error) {
+      console.error('Bulk status change error:', error);
+      toast.error('Gagal mengubah status. Silakan coba lagi.');
+    } finally {
+      setIsPerformingBulkOperation(false);
+    }
+  };
+
+  const handleBulkExport = () => {
+    if (selectedRecords.length === 0) {
+      toast.error('Pilih minimal satu data untuk diekspor');
+      return;
+    }
+    
+    const selectedData = filteredAttendance.filter(record => selectedRecords.includes(record.id));
+    
+    // Simple CSV export
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "ID,Nama,Departemen,Shift,Jam Masuk,Jam Keluar,Status\n"
+      + selectedData.map(record => 
+          `${record.employeeId},${record.employeeName},${record.department},${record.shift},${formatTime(record.checkInTime)},${formatTime(record.checkOutTime)},${record.status}`
+        ).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `presensi_terpilih_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success(`${selectedRecords.length} data berhasil diekspor`);
+  };
+
   // Handle page change
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -237,6 +386,19 @@ export default function AttendancePage() {
       setShifts(uniqueShifts);
     }
   }, [attendanceData]);
+
+  // Check if all visible records are selected
+  useEffect(() => {
+    const allPaginatedIds = paginatedData.map(record => record.id);
+    const allSelected = allPaginatedIds.length > 0 && allPaginatedIds.every(id => selectedRecords.includes(id));
+    setSelectAll(allSelected);
+  }, [selectedRecords, paginatedData]);
+
+  // Reset selection when changing pages or filters
+  useEffect(() => {
+    setSelectedRecords([]);
+    setSelectAll(false);
+  }, [currentPage, pageSize, departmentFilter, statusFilter, shiftFilter, searchTerm]);
 
   // Fungsi untuk export data ke Excel
   const handleExportToExcel = async () => {
@@ -606,8 +768,26 @@ export default function AttendancePage() {
             </CardHeader>
             <CardContent>
               {/* Summary info */}
-              <div className="mb-4 text-sm text-muted-foreground">
-                Menampilkan {startIndex + 1}-{Math.min(endIndex, filteredAttendance.length)} dari {filteredAttendance.length} data presensi
+              <div className="mb-4 flex justify-between items-center">
+                <div className="text-sm text-muted-foreground">
+                  Menampilkan {startIndex + 1}-{Math.min(endIndex, filteredAttendance.length)} dari {filteredAttendance.length} data presensi
+                </div>
+                {selectedRecords.length > 0 && (
+                  <div className="text-sm font-medium text-primary flex items-center gap-2">
+                    {selectedRecords.length} data terpilih
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => {
+                        setSelectedRecords([]);
+                        setSelectAll(false);
+                      }}
+                      className="h-6 px-2 text-xs"
+                    >
+                      Bersihkan
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-between mb-4 gap-4">
@@ -695,6 +875,65 @@ export default function AttendancePage() {
                 </div>
                 
                 <div className="flex gap-2">
+                  {selectedRecords.length > 0 && (
+                    <>
+                      <Button variant="outline" className="text-slate-700 border-slate-200 hover:bg-slate-50" size="sm" onClick={handleBulkExport}>
+                        <FileDown className="mr-2 h-4 w-4" />
+                        Export Terpilih ({selectedRecords.length})
+                      </Button>
+                      
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" className="text-slate-700 border-slate-200 hover:bg-slate-50" size="sm" disabled={isPerformingBulkOperation}>
+                            <MoreHorizontal className="mr-2 h-4 w-4" />
+                            Aksi Bulk ({selectedRecords.length})
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-[220px]">
+                          <DropdownMenuItem onClick={() => handleBulkStatusChange('PRESENT')} className="cursor-pointer">
+                            <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
+                            Ubah Status ke Hadir
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleBulkStatusChange('ABSENT')} className="cursor-pointer">
+                            <XCircle className="mr-2 h-4 w-4 text-red-600" />
+                            Ubah Status ke Tidak Hadir
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleBulkStatusChange('LATE')} className="cursor-pointer">
+                            <Edit className="mr-2 h-4 w-4 text-yellow-600" />
+                            Ubah Status ke Terlambat
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer text-red-600 focus:text-red-600">
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Hapus Data Terpilih
+                              </DropdownMenuItem>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Konfirmasi Penghapusan</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Apakah Anda yakin ingin menghapus {selectedRecords.length} data presensi yang dipilih? 
+                                  Tindakan ini tidak dapat dibatalkan.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Batal</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleBulkDelete} className="bg-red-600 hover:bg-red-700">
+                                  {isPerformingBulkOperation ? 'Menghapus...' : 'Hapus'}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </>
+                  )}
+                  <Button variant="outline" onClick={fetchTodayAttendance} disabled={isLoading}>
+                    <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
                   <Button variant="outline" onClick={() => router.push("/attendance/history")}>
                     <Clock className="mr-2 h-4 w-4" />
                     Lihat Riwayat
@@ -716,6 +955,13 @@ export default function AttendancePage() {
                   <Table>
                     <TableHeader className="bg-muted/50 border-b">
                       <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-12 px-4 py-3 font-semibold text-muted-foreground">
+                          <Checkbox
+                            checked={selectAll}
+                            onChange={(e) => handleSelectAll(e.target.checked)}
+                            aria-label="Select all records"
+                          />
+                        </TableHead>
                         <TableHead className="px-4 py-3 font-semibold text-muted-foreground">ID</TableHead>
                         <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Nama</TableHead>
                         <TableHead className="px-4 py-3 font-semibold text-muted-foreground">Departemen</TableHead>
@@ -734,7 +980,24 @@ export default function AttendancePage() {
                         paginatedData.map((attendance) => {
                           const statusBadge = getStatusBadge(attendance.status);
                           return (
-                            <TableRow key={attendance.id}>
+                            <TableRow 
+                              key={attendance.id}
+                              className={cn(
+                                "hover:bg-muted/30 transition-colors border-b cursor-pointer",
+                                selectedRecords.includes(attendance.id) && "bg-blue-50/50 dark:bg-blue-900/20"
+                              )}
+                              onClick={() => handleSelectRecord(attendance.id, !selectedRecords.includes(attendance.id))}
+                            >
+                              <TableCell className="px-4 py-3 w-12">
+                                <Checkbox
+                                  checked={selectedRecords.includes(attendance.id)}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    handleSelectRecord(attendance.id, !selectedRecords.includes(attendance.id));
+                                  }}
+                                  aria-label={`Select record ${attendance.id}`}
+                                />
+                              </TableCell>
                               <TableCell className="px-4 py-3 font-mono text-sm">
                                 {attendance.employeeId}
                               </TableCell>
@@ -774,7 +1037,7 @@ export default function AttendancePage() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={11} className="text-center h-24">
+                          <TableCell colSpan={12} className="text-center h-24">
                             <div className="flex flex-col items-center gap-2">
                               <Users className="h-8 w-8 text-muted-foreground" />
                               <div>

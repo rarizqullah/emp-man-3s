@@ -3,6 +3,8 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from '@/components/ui/toaster';
 import SupabaseProvider from '@/providers/supabase-provider';
+import SWRProvider from '@/providers/SWRProvider';
+import SocketProvider from '@/providers/SocketProvider';
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -25,8 +27,12 @@ export default function RootLayout({
     <html lang="id">
       <body className={inter.className}>
         <SupabaseProvider>
-          {children}
-          <Toaster />
+          <SWRProvider>
+            <SocketProvider>
+              {children}
+              <Toaster />
+            </SocketProvider>
+          </SWRProvider>
         </SupabaseProvider>
       </body>
     </html>
