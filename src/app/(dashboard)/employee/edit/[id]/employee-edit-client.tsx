@@ -54,6 +54,7 @@ interface Employee {
   warningStatus: string;
   gender: string | null;
   address: string | null;
+  bankAccountNumber: string | null;
   faceData?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -61,6 +62,7 @@ interface Employee {
     id: string;
     name: string;
     email: string;
+    phone?: string;
     role: string;
   };
   department: {
@@ -115,6 +117,7 @@ const employeeEditSchema = z.object({
     phone: z.string().optional(),
     gender: z.string(),
     address: z.string().optional(),
+    bankAccountNumber: z.string().optional(),
   }),
   departmentInfo: z.object({
     departmentId: z.string().min(1, { message: "Departemen harus dipilih" }),
@@ -166,6 +169,7 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
         phone: "",
         gender: "",
         address: "",
+        bankAccountNumber: "",
       },
       departmentInfo: {
         departmentId: "",
@@ -200,6 +204,7 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
       form.setValue("personalInfo.phone", data.user.phone || "");
       form.setValue("personalInfo.gender", data.gender || "");
       form.setValue("personalInfo.address", data.address || "");
+      form.setValue("personalInfo.bankAccountNumber", data.bankAccountNumber || "");
       
       form.setValue("departmentInfo.departmentId", data.departmentId);
       form.setValue("departmentInfo.subDepartmentId", data.subDepartmentId || "");
@@ -359,6 +364,8 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
     try {
       setSubmitting(true);
       
+      console.log('Form data before formatting:', data);
+      
       // Format data for API
       const formattedData = {
         // User data
@@ -377,7 +384,10 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
         contractEndDate: data.contractInfo.contractEndDate || null,
         gender: data.personalInfo.gender,
         address: data.personalInfo.address || null,
+        bankAccountNumber: data.personalInfo.bankAccountNumber || null,
       };
+      
+      console.log('Formatted data for API:', formattedData);
       
       // Send update request
       const response = await fetch(`/api/employees/${employeeId}`, {
@@ -388,17 +398,41 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
         body: JSON.stringify(formattedData),
       });
       
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Gagal memperbarui data karyawan");
+        console.error('API Error Response:', errorData);
+        
+        // Handle validation errors specifically
+        if (errorData.details && Array.isArray(errorData.details)) {
+          const validationMessages = errorData.details.map((detail: { path?: string[]; message: string }) => 
+            `${detail.path?.join('.')}: ${detail.message}`
+          ).join(', ');
+          throw new Error(`Validasi gagal: ${validationMessages}`);
+        }
+        
+        throw new Error(errorData.error || errorData.details || "Gagal memperbarui data karyawan");
       }
+      
+      const result = await response.json();
+      console.log('Update result:', result);
       
       toast.success("Data karyawan berhasil diperbarui");
       router.push(`/employee/${employeeId}`);
       
     } catch (error) {
       console.error("Error updating employee:", error);
-      toast.error(`Gagal memperbarui data karyawan: ${error instanceof Error ? error.message : "Unknown error"}`);
+      
+      let errorMessage = "Terjadi kesalahan yang tidak diketahui";
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      toast.error(`Gagal memperbarui data karyawan: ${errorMessage}`);
     } finally {
       setSubmitting(false);
     }
@@ -604,6 +638,24 @@ export function EmployeeEditClient({ employeeId }: { employeeId: string }) {
                             <Textarea 
                               placeholder="Masukkan alamat lengkap" 
                               className="min-h-[100px]" 
+                              {...field} 
+                              value={field.value || ""}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="personalInfo.bankAccountNumber"
+                      render={({ field }) => (
+                        <FormItem className="md:col-span-2">
+                          <FormLabel>No. Rekening Bank</FormLabel>
+                          <FormControl>
+                            <Input 
+                              placeholder="Masukkan nomor rekening bank" 
                               {...field} 
                               value={field.value || ""}
                             />

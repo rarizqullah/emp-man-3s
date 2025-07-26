@@ -71,17 +71,23 @@ export const useDashboardData = (subDepartmentId?: string, days: string = '7') =
     errorRetryInterval: 2000,
     fallbackData: null, // Provide fallback data
     shouldRetryOnError: (error) => {
-      // Don't retry on 4xx errors (client errors)
+      // Don't retry on 4xx errors (client errors) or specific server errors
       if (error?.message?.includes('HTTP 4')) {
         return false
+      }
+      if (error?.message?.includes('Authentication required')) {
+        return false
+      }
+      if (error?.message?.includes('connection pool')) {
+        return true // Retry connection pool errors
       }
       return true
     },
     onError: (error) => {
       console.error('Dashboard data fetch error:', {
-        message: error?.message,
-        stack: error?.stack,
-        url: key
+        message: error?.message || 'Unknown error',
+        url: key,
+        timestamp: new Date().toISOString()
       })
     },
     onSuccess: (data) => {

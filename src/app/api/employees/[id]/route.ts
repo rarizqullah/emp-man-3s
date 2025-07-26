@@ -27,7 +27,7 @@ const employeeUpdateSchema = z.object({
   shiftId: z.string().uuid().optional(),
   contractType: z.enum([ContractType.PERMANENT, ContractType.TRAINING]).optional(),
   contractNumber: z.string().optional().nullable(),
-  contractStartDate: z.string().transform(str => new Date(str)).optional(),
+  contractStartDate: z.string().optional().transform(str => str ? new Date(str) : undefined),
   contractEndDate: z.string().optional().nullable().transform(str => str ? new Date(str) : null),
   warningStatus: z.enum([
     WarningStatus.NONE,
@@ -35,8 +35,12 @@ const employeeUpdateSchema = z.object({
     WarningStatus.SP2,
     WarningStatus.SP3
   ]).optional(),
-  gender: z.enum([Gender.MALE, Gender.FEMALE]).optional(),
+  gender: z.string().optional().transform(val => {
+    if (!val) return undefined;
+    return val === 'FEMALE' || val === 'Female' || val === 'female' ? Gender.FEMALE : Gender.MALE;
+  }),
   address: z.string().optional().nullable(),
+  bankAccountNumber: z.string().optional().nullable(),
   faceData: z.string().optional().nullable(),
 });
 
@@ -168,7 +172,7 @@ export async function GET(
       new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Employee query timeout')), 15000)
       )
-    ]);
+    ]) as any;
     
     if (!employee) {
       console.log(`Karyawan dengan ID ${employeeId} tidak ditemukan`);
@@ -192,6 +196,7 @@ export async function GET(
         // Data Pribadi
         gender: employee.gender,
         address: employee.address || '',
+        bankAccountNumber: employee.bankAccountNumber || null,
         faceData: employee.faceData || null,
         
         // Data Pekerjaan
@@ -335,27 +340,39 @@ export async function PUT(
     const employeeParams = await params;
     const employeeId = employeeParams.id;
     
+    console.log(`PUT request untuk employee dengan ID: ${employeeId}`);
+    
     const data = await request.json();
+    console.log('Data yang diterima:', JSON.stringify(data, null, 2));
     
     // Validasi input
     const validatedData = employeeUpdateSchema.parse(data);
+    console.log('Data setelah validasi:', JSON.stringify(validatedData, null, 2));
     
     // Update karyawan
     const employee = await updateEmployee(employeeId, validatedData);
+    console.log('Employee berhasil diupdate:', employee.id);
     
     return NextResponse.json(employee);
   } catch (error) {
     console.error('Gagal mengupdate karyawan:', error);
     
     if (error instanceof z.ZodError) {
+      console.error('Zod validation errors:', error.errors);
       return NextResponse.json(
         { error: 'Validasi gagal', details: error.errors },
         { status: 400 }
       );
     }
     
+    // Log detail error untuk debugging
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
+    
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mengupdate karyawan' },
+      { error: 'Terjadi kesalahan saat mengupdate karyawan', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

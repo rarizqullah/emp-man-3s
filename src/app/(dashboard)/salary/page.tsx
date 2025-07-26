@@ -30,8 +30,22 @@ interface Department {
   name: string;
 }
 
+interface Allowance {
+  id: string;
+  name: string;
+  companyAmount: number;
+  employeeAmount: number;
+}
+
+interface EmployeeAllowance {
+  id: string;
+  isActive: boolean;
+  allowance: Allowance;
+}
+
 interface Employee {
   employeeId: string;
+  bankAccountNumber?: string | null;
   user: {
     name: string;
     email: string;
@@ -45,6 +59,7 @@ interface Employee {
     name: string;
   } | null;
   contractType: 'PERMANENT' | 'TRAINING';
+  employeeAllowances?: EmployeeAllowance[];
 }
 
 interface Salary {
@@ -264,9 +279,28 @@ export default function SalaryPageUpdated() {
   };
 
   // Handle view salary details
-  const handleViewDetails = (salary: Salary) => {
-    setSelectedSalaryDetails(salary);
-    setIsDetailsOpen(true);
+  const handleViewDetails = async (salary: Salary) => {
+    try {
+      setIsDetailsOpen(true);
+      setSelectedSalaryDetails(null); // Clear previous data while loading
+      
+      // Fetch detailed salary data including allowances
+      const response = await fetch(`/api/salaries/${salary.id}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch salary details');
+      }
+      
+      const result = await response.json();
+      if (result.success) {
+        setSelectedSalaryDetails(result.data);
+      } else {
+        throw new Error(result.error || 'Failed to fetch salary details');
+      }
+    } catch (error) {
+      console.error('Error fetching salary details:', error);
+      toast.error('Gagal memuat detail gaji');
+      setIsDetailsOpen(false);
+    }
   };
 
   // Handle payment status update
@@ -655,7 +689,7 @@ export default function SalaryPageUpdated() {
             </DialogDescription>
           </DialogHeader>
           
-          {selectedSalaryDetails && (
+          {selectedSalaryDetails ? (
             <div className="space-y-4">
               {/* Data Karyawan */}
               <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
@@ -675,6 +709,10 @@ export default function SalaryPageUpdated() {
                   <Label className="text-sm font-medium">Posisi</Label>
                   <p className="text-sm">{selectedSalaryDetails.employee.position?.name || '-'}</p>
                 </div>
+                <div>
+                  <Label className="text-sm font-medium">No. Rekening</Label>
+                  <p className="text-sm">{selectedSalaryDetails.employee.bankAccountNumber || '-'}</p>
+                </div>
               </div>
 
               {/* Periode Gaji */}
@@ -687,45 +725,100 @@ export default function SalaryPageUpdated() {
 
               {/* Rekap Jam Kerja */}
               <div className="p-4 bg-muted rounded-lg">
-                <Label className="text-sm font-medium mb-2 block">Rekap Jam Kerja</Label>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <p className="font-medium">Jam Kerja Utama</p>
-                    <p>{selectedSalaryDetails.mainWorkHours} jam</p>
+                <Label className="text-sm font-medium mb-3 block">Rekap Jam Kerja</Label>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-medium">Jam Kerja Utama</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedSalaryDetails.mainWorkHours} jam × {selectedSalaryDetails.mainWorkHours > 0 ? formatCurrency(Math.round(selectedSalaryDetails.baseSalary / selectedSalaryDetails.mainWorkHours)) : formatCurrency(0)}/jam
+                      </p>
+                    </div>
+                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.baseSalary)}</span>
                   </div>
-                  <div>
-                    <p className="font-medium">Lembur Reguler</p>
-                    <p>{selectedSalaryDetails.regularOvertimeHours} jam</p>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-medium">Lembur Reguler</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedSalaryDetails.regularOvertimeHours} jam × {selectedSalaryDetails.regularOvertimeHours > 0 ? formatCurrency(Math.round(selectedSalaryDetails.overtimeSalary / selectedSalaryDetails.regularOvertimeHours)) : formatCurrency(0)}/jam
+                      </p>
+                    </div>
+                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.overtimeSalary)}</span>
                   </div>
-                  <div>
-                    <p className="font-medium">Lembur Mingguan</p>
-                    <p>{selectedSalaryDetails.weeklyOvertimeHours} jam</p>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-medium">Lembur Mingguan</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedSalaryDetails.weeklyOvertimeHours} jam × {selectedSalaryDetails.weeklyOvertimeHours > 0 ? formatCurrency(Math.round(selectedSalaryDetails.weeklyOvertimeSalary / selectedSalaryDetails.weeklyOvertimeHours)) : formatCurrency(0)}/jam
+                      </p>
+                    </div>
+                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.weeklyOvertimeSalary)}</span>
+                  </div>
+                  <div className="border-t pt-2 flex justify-between font-medium">
+                    <span>Total Jam Kerja: {selectedSalaryDetails.mainWorkHours + selectedSalaryDetails.regularOvertimeHours + selectedSalaryDetails.weeklyOvertimeHours} jam</span>
+                    <span>{formatCurrency(selectedSalaryDetails.baseSalary + selectedSalaryDetails.overtimeSalary + selectedSalaryDetails.weeklyOvertimeSalary)}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Rincian Pendapatan */}
-              <div className="p-4 bg-muted rounded-lg">
-                <Label className="text-sm font-medium mb-2 block">Rincian Pendapatan</Label>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span>Gaji Pokok</span>
-                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.baseSalary)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Gaji Lembur Reguler</span>
-                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.overtimeSalary)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Gaji Lembur Mingguan</span>
-                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.weeklyOvertimeSalary)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total Tunjangan</span>
-                    <span className="font-medium">{formatCurrency(selectedSalaryDetails.totalAllowances)}</span>
+              {/* Rincian Tunjangan */}
+              {selectedSalaryDetails.employee?.employeeAllowances && selectedSalaryDetails.employee.employeeAllowances.length > 0 && (
+                <div className="p-4 bg-muted rounded-lg">
+                  <Label className="text-sm font-medium mb-3 block">Rincian Tunjangan</Label>
+                  <div className="space-y-3 text-sm">
+                    {selectedSalaryDetails.employee.employeeAllowances
+                      .filter((empAllowance: EmployeeAllowance) => empAllowance.isActive)
+                      .map((empAllowance: EmployeeAllowance, index: number) => {
+                        const companyAmount = empAllowance.allowance.companyAmount || 0;
+                        const employeeAmount = empAllowance.allowance.employeeAmount || 0;
+                        const netAmount = companyAmount - employeeAmount;
+                        
+                        return (
+                          <div key={index} className="border border-gray-200 rounded-lg p-3 bg-white">
+                            <div className="font-medium text-gray-800 mb-2">
+                              {empAllowance.allowance.name}
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-green-600">• Kontribusi Perusahaan:</span>
+                                <span className="font-medium text-green-600">
+                                  +{formatCurrency(companyAmount)}
+                                </span>
+                              </div>
+                              {employeeAmount > 0 && (
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-red-600">• Potongan Karyawan:</span>
+                                  <span className="font-medium text-red-600">
+                                    -{formatCurrency(employeeAmount)}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex justify-between text-xs border-t pt-1">
+                                <span className="font-medium text-blue-600">• Net Tunjangan:</span>
+                                <span className="font-bold text-blue-600">
+                                  {netAmount >= 0 ? "+" : ""}{formatCurrency(netAmount)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    <div className="border-t-2 pt-3 flex justify-between font-semibold">
+                      <span>Total Net Tunjangan:</span>
+                      <span className={selectedSalaryDetails.totalAllowances >= 0 ? "text-green-600" : "text-red-600"}>
+                        {selectedSalaryDetails.totalAllowances >= 0 ? "+" : ""}{formatCurrency(selectedSalaryDetails.totalAllowances)}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {selectedSalaryDetails.employee?.employeeAllowances && selectedSalaryDetails.employee.employeeAllowances.filter((empAllowance: EmployeeAllowance) => empAllowance.isActive).length === 0 && (
+                <div className="p-4 bg-muted rounded-lg">
+                  <Label className="text-sm font-medium mb-2 block">Rincian Tunjangan</Label>
+                  <p className="text-muted-foreground text-center py-2 text-sm">Tidak ada tunjangan aktif</p>
+                </div>
+              )}
 
               {/* Total Gaji Bersih */}
               <div className="p-4 bg-primary/10 rounded-lg">
@@ -753,6 +846,13 @@ export default function SalaryPageUpdated() {
                 <p className="text-sm">
                   {format(new Date(selectedSalaryDetails.createdAt), 'dd MMMM yyyy HH:mm', { locale: id })}
                 </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                <p className="text-sm text-muted-foreground">Memuat detail gaji...</p>
               </div>
             </div>
           )}

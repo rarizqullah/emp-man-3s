@@ -80,6 +80,7 @@ const employeeFormSchema = z.object({
     idNumber: z.string().min(10, { message: "Nomor identitas harus diisi minimal 10 karakter" }),
     positionId: z.string().min(1, { message: "Jabatan harus dipilih" }),
     gender: z.nativeEnum(Gender),
+    bankAccountNumber: z.string().optional(),
   }),
   departmentInfo: z.object({
     department: z.string().min(1, { message: "Departemen harus dipilih" }),
@@ -108,6 +109,7 @@ const defaultValues: EmployeeFormValues = {
     idNumber: "",
     positionId: "",
     gender: Gender.MALE,
+    bankAccountNumber: "",
   },
   departmentInfo: {
     department: "",
@@ -456,6 +458,7 @@ export function AddEmployeeModal({
         positionId: data.personalInfo.positionId, // Ambil dari personalInfo
         gender: data.personalInfo.gender,
         address: data.personalInfo.address,
+        bankAccountNumber: data.personalInfo.bankAccountNumber || null,
         
         // Data departemen
         department: data.departmentInfo.department,
@@ -770,6 +773,20 @@ export function AddEmployeeModal({
                         <FormLabel>Alamat</FormLabel>
                         <FormControl>
                           <Input placeholder="Masukkan alamat lengkap" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="personalInfo.bankAccountNumber"
+                    render={({ field }) => (
+                      <FormItem className="col-span-2">
+                        <FormLabel>No. Rekening Bank (Opsional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Masukkan nomor rekening bank" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

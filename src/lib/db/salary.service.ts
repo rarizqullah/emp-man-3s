@@ -3,6 +3,71 @@ import { ContractType, PaymentStatus } from '@prisma/client';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 
+// Interface untuk employee dengan bank account
+interface EmployeeWithBankAccount {
+  id: string;
+  employeeId: string;
+  contractType: string;
+  bankAccountNumber?: string | null;
+  user: {
+    name: string;
+    email: string;
+  };
+  department: {
+    id: string;
+    name: string;
+  };
+  position?: {
+    id: string;
+    name: string;
+  } | null;
+  employeeAllowances: EmployeeAllowanceWithDetails[];
+}
+
+// Interface untuk employee allowance dengan detail
+interface EmployeeAllowanceWithDetails {
+  allowance: {
+    id: string;
+    name: string;
+    description: string | null;
+    applicableRule: string;
+    umkAmount: number | null;
+    companyPercentage: number | null;
+    companyAmount: number | null;
+    employeePercentage: number | null;
+    employeeAmount: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  id: string;
+  employeeId: string;
+  allowanceId: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Fungsi untuk membulatkan nominal gaji ke kelipatan 100 terdekat
+ * Aturan pembulatan:
+ * - 20.360 → 20.400 (60 dibulatkan ke atas menjadi 100)
+ * - 20.320 → 20.300 (20 dibulatkan ke bawah menjadi 0)
+ * - 20.350 → 20.400 (50 dibulatkan ke atas menjadi 100)
+ * 
+ * Logika: Jika dua digit terakhir >= 50, bulatkan ke atas, jika < 50 bulatkan ke bawah
+ */
+function roundSalaryToNearestHundred(amount: number): number {
+  const remainder = amount % 100;
+  
+  if (remainder >= 50) {
+    // Bulatkan ke atas ke kelipatan 100 berikutnya
+    return Math.ceil(amount / 100) * 100;
+  } else {
+    // Bulatkan ke bawah ke kelipatan 100 sebelumnya
+    return Math.floor(amount / 100) * 100;
+  }
+}
+
 // Interface untuk input perhitungan gaji
 export interface SalaryCalculationInput {
   employeeId: string;
@@ -132,7 +197,7 @@ export async function calculateEmployeeSalary(input: SalaryCalculationInput): Pr
     overtimeSalary: Math.round(overtimeSalary),
     weeklyOvertimeSalary: Math.round(weeklyOvertimeSalary),
     totalAllowances: Math.round(totalCompanyAllowances - totalEmployeeAllowanceDeductions),
-    totalSalary: Math.round(totalSalary),
+    totalSalary: roundSalaryToNearestHundred(totalSalary),
     employee,
     allowances: activeAllowances.map(empAllowance => ({
       type: empAllowance.allowance.name,
@@ -298,7 +363,7 @@ export async function getSalaries(filter: SalaryFilter = {}) {
  * Mendapatkan detail gaji berdasarkan ID
  */
 export async function getSalaryById(id: string) {
-  return prisma.salary.findUnique({
+  const salary = await prisma.salary.findUnique({
     where: { id },
     include: {
       employee: {
@@ -315,6 +380,8 @@ export async function getSalaryById(id: string) {
       }
     }
   });
+  
+  return salary;
 }
 
 /**
@@ -454,7 +521,8 @@ export async function exportSalarySlipPDF(salaryId: string) {
       email: salary.employee.user.email,
       department: salary.employee.department.name,
       position: salary.employee.position?.name || '-',
-      contractType: salary.employee.contractType === 'PERMANENT' ? 'Permanen' : 'Training'
+      contractType: salary.employee.contractType === 'PERMANENT' ? 'Permanen' : 'Training',
+      bankAccountNumber: (salary.employee as EmployeeWithBankAccount).bankAccountNumber || '-'
     },
     period: {
       start: format(salary.periodStart, 'dd MMMM yyyy', { locale: localeId }),
@@ -492,9 +560,11 @@ export async function exportSalarySlipPDF(salaryId: string) {
         amount: salary.weeklyOvertimeSalary
       }
     },
-    allowances: salary.employee.employeeAllowances?.map((empAllowance: any) => ({
+    allowances: salary.employee.employeeAllowances?.map((empAllowance: EmployeeAllowanceWithDetails) => ({
       type: empAllowance.allowance.name,
-      amount: empAllowance.allowance.companyAmount || 0
+      companyAmount: empAllowance.allowance.companyAmount || 0,
+      employeeAmount: empAllowance.allowance.employeeAmount || 0,
+      netAmount: (empAllowance.allowance.companyAmount || 0) - (empAllowance.allowance.employeeAmount || 0)
     })) || [],
     netSalary: salary.totalSalary,
     paymentStatus: salary.paymentStatus === PaymentStatus.PAID ? 'Dibayar' : 'Belum Dibayar',
@@ -518,7 +588,7 @@ export async function exportSalarySlipPDF(salaryId: string) {
 /**
  * Handle contract status change untuk perhitungan gaji otomatis
  */
-export async function handleContractStatusChange(employeeId: string, newContractType: ContractType) {
+export async function handleContractStatusChange(employeeId: string) {
   // Cek apakah ada gaji yang belum dibayar untuk karyawan ini
   const unpaidSalaries = await prisma.salary.findMany({
     where: {

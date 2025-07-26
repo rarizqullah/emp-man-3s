@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTokenFromRequest, verifyToken } from '@/lib/jwt-client';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { PermissionStatus, PermissionType, Prisma } from '@prisma/client';
+import { requireAuth, requireRole, ApiResponse } from '@/lib/auth/api-helpers';
 
 // Schema validasi untuk pembuatan permission
 const permissionCreateSchema = z.object({
@@ -35,63 +35,16 @@ const permissionCreateSchema = z.object({
   path: ["endDate"]
 });
 
-// Helper function untuk mendapatkan session dari token JWT
-async function getSession(request: NextRequest) {
+// GET /api/leaves - Mendapatkan daftar izin/cuti
+export const GET = requireAuth(async (request: NextRequest, user) => {
   try {
-    const token = getTokenFromRequest(request);
-    if (!token) return null;
-    
-    const payload = await verifyToken(token);
-    if (!payload) return null;
-    
-    // Ambil data user lengkap dari database
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      include: {
-        employee: {
-          include: {
-            department: true,
-            position: true
-          }
-        }
-      }
+    // Log user data untuk debugging
+    console.log('[API Leaves] User data:', {
+      userId: user.id,
+      name: user.name,
+      role: user.role,
+      employeeId: user.employeeId
     });
-    
-    if (!user) return null;
-    
-    return {
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        employeeId: user.employee?.id
-      }
-    };
-  } catch (error) {
-    console.error('Error getting session:', error);
-    return null;
-  }
-}
-
-// GET /api/permissions
-export async function GET(request: NextRequest) {
-  try {
-    // Log HTTP Headers untuk debugging
-    console.log('[API Permissions] Request headers:', Object.fromEntries(request.headers.entries()));
-    
-    // Cek session untuk autentikasi
-    const session = await getSession(request);
-    console.log('[API Permissions] Session data:', session ? {
-      userId: session.user.id,
-      name: session.user.name,
-      role: session.user.role,
-      employeeId: session.user.employeeId
-    } : 'No session');
-    
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     // Ambil parameter query
     const { searchParams } = new URL(request.url);
@@ -125,14 +78,14 @@ export async function GET(request: NextRequest) {
     // Superadmin dan Admin dapat melihat semua izin
     // Manager dapat melihat izin dari departemennya
     // User hanya dapat melihat izinnya sendiri
-    if (session.user.role === 'EMPLOYEE') {
+    if (user.role === 'EMPLOYEE') {
       // User hanya dapat melihat izinnya sendiri
-      where.userId = session.user.id;
-    } else if (session.user.role === 'MANAGER' && session.user.employeeId) {
+      where.userId = user.id;
+    } else if (user.role === 'MANAGER' && user.employeeId) {
       // Dapatkan departemen manager
       const managerEmployee = await prisma.employee.findUnique({
         where: {
-          id: session.user.employeeId
+          id: user.employeeId
         },
         select: {
           departmentId: true
@@ -224,31 +177,22 @@ export async function GET(request: NextRequest) {
       rejectionReason: permission.rejectionReason,
     }));
 
-    return NextResponse.json(formattedPermissions);
+    return ApiResponse.success(formattedPermissions);
   } catch (error) {
     console.error('Gagal mengambil data izin:', error);
-    return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mengambil data izin' },
-      { status: 500 }
-    );
+    return ApiResponse.error('Terjadi kesalahan saat mengambil data izin', 500);
   }
-}
+});
 
-// POST /api/permissions
-export async function POST(request: NextRequest) {
+// POST /api/leaves - Membuat izin/cuti baru
+export const POST = requireAuth(async (request: NextRequest, user) => {
   try {
-    // Cek session untuk autentikasi
-    const session = await getSession(request);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     // Parse dan validasi data
     const data = await request.json();
     const validatedData = permissionCreateSchema.parse(data);
     
     // Tentukan userId berdasarkan employee yang dipilih atau user yang login
-    let userId = session.user.id;
+    let userId = user.id;
     
     // Jika employeeId diberikan (admin/manager membuat untuk karyawan lain)
     if (validatedData.employeeId) {
@@ -258,10 +202,7 @@ export async function POST(request: NextRequest) {
       });
       
       if (!employee) {
-        return NextResponse.json(
-          { error: 'Karyawan tidak ditemukan' },
-          { status: 404 }
-        );
+        return ApiResponse.error('Karyawan tidak ditemukan', 404);
       }
       
       userId = employee.userId;
@@ -338,20 +279,14 @@ export async function POST(request: NextRequest) {
       rejectionReason: null,
     };
 
-    return NextResponse.json(formattedPermission, { status: 201 });
+    return ApiResponse.success(formattedPermission, 201);
   } catch (error) {
     console.error('Gagal membuat izin:', error);
     
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Validasi gagal', details: error.errors },
-        { status: 400 }
-      );
+      return ApiResponse.error('Validasi gagal', 400, error.errors);
     }
     
-    return NextResponse.json(
-      { error: 'Terjadi kesalahan saat membuat izin' },
-      { status: 500 }
-    );
+    return ApiResponse.error('Terjadi kesalahan saat membuat izin', 500);
   }
-} 
+}); 

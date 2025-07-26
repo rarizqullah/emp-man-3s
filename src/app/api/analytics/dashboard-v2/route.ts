@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseRouteHandler } from '@/lib/supabase/server'
-import { prisma } from '@/lib/db'
+import { prisma, safeQuery, ensureDatabaseConnection } from '@/lib/db'
 import { format, startOfDay, endOfDay, subDays } from 'date-fns'
 import { ActivityLogger } from '@/lib/activity-logger'
 
@@ -13,19 +13,43 @@ export async function GET(request: NextRequest) {
       'Cache-Control': 'no-store, max-age=0'
     }
     
+    // Check database connection first with timeout
+    const dbHealthy = await ensureDatabaseConnection();
+    if (!dbHealthy) {
+      console.error('Database connection failed');
+      return NextResponse.json({ 
+        success: false,
+        error: 'Database connection unavailable',
+        details: 'Please try again in a moment'
+      }, { 
+        status: 503,
+        headers 
+      });
+    }
+    
     // Auth check with better error handling
     const supabase = await supabaseRouteHandler()
     
     let session = null
     try {
-      const { data: { session: sessionData }, error: sessionError } = await supabase.auth.getSession()
+      // Add timeout for auth session check
+      const sessionPromise = supabase.auth.getSession();
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Auth session timeout')), 3000)
+      );
+      
+      const { data: { session: sessionData }, error: sessionError } = await Promise.race([
+        sessionPromise, 
+        timeoutPromise
+      ]);
+      
       session = sessionData
       
       if (sessionError) {
         console.error('Session error:', sessionError)
         return NextResponse.json({ 
           success: false,
-          error: 'Session validation failed',
+          error: 'Authentication error',
           details: sessionError.message
         }, { 
           status: 401,
@@ -67,18 +91,22 @@ export async function GET(request: NextRequest) {
     const currentDay = format(currentTime, 'EEEE').toUpperCase()
 
     // Get all shifts that are active today (handle both string array and potential format issues)
-    const shifts = await prisma.shift.findMany({
-      include: {
-        employees: {
-          where: {
-            deletedAt: null
+    const shifts = await safeQuery(
+      () => prisma.shift.findMany({
+        include: {
+          employees: {
+            where: {
+              deletedAt: null
+            }
           }
+        },
+        orderBy: {
+          name: 'asc'
         }
-      },
-      orderBy: {
-        name: 'asc'
-      }
-    })
+      }),
+      2, // max retries
+      8000 // 8 second timeout
+    );
 
     // Filter shifts by working day (handle both array formats and empty arrays)
     const activeShifts = shifts.filter(shift => {
@@ -112,55 +140,61 @@ export async function GET(request: NextRequest) {
     // Get all employees for the active shift (handle default case better)
     let allShiftEmployees = []
     if (activeShift.id !== 'default') {
-      allShiftEmployees = await prisma.employee.findMany({
-        where: {
-          shiftId: activeShift.id,
-          deletedAt: null
-        },
-        include: {
-          attendances: {
-            where: {
-              attendanceDate: {
-                gte: startOfToday,
-                lte: endOfToday
+      allShiftEmployees = await safeQuery(
+        () => prisma.employee.findMany({
+          where: {
+            shiftId: activeShift.id,
+            deletedAt: null
+          },
+          include: {
+            attendances: {
+              where: {
+                attendanceDate: {
+                  gte: startOfToday,
+                  lte: endOfToday
+                }
+              }
+            },
+            subDepartment: {
+              select: {
+                id: true,
+                name: true
               }
             }
-          },
-          subDepartment: {
-            select: {
-              id: true,
-              name: true
-            }
           }
-        }
-      })
+        }),
+        2, // max retries
+        8000 // 8 second timeout
+      );
     } else {
       // If no active shift, get all employees to show some data
-      allShiftEmployees = await prisma.employee.findMany({
-        where: {
-          deletedAt: null
-        },
-        include: {
-          attendances: {
-            where: {
-              attendanceDate: {
-                gte: startOfToday,
-                lte: endOfToday
+      allShiftEmployees = await safeQuery(
+        () => prisma.employee.findMany({
+          where: {
+            deletedAt: null
+          },
+          include: {
+            attendances: {
+              where: {
+                attendanceDate: {
+                  gte: startOfToday,
+                  lte: endOfToday
+                }
+              }
+            },
+            subDepartment: {
+              select: {
+                id: true,
+                name: true
               }
             }
           },
-          subDepartment: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        },
-        take: 100 // Limit to avoid overwhelming data
-      })
-    }
-
-    // Get filtered employees for specific sub-department if requested
+          take: 100 // Limit to avoid overwhelming data
+        }),
+        2, // max retries
+        8000 // 8 second timeout
+      );
+    }    // Get filtered employees for specific sub-department if requested
     const filteredEmployees = subDepartmentId && subDepartmentId !== 'all' 
       ? allShiftEmployees.filter(emp => emp.subDepartmentId === subDepartmentId)
       : allShiftEmployees

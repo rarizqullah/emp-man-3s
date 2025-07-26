@@ -13,6 +13,7 @@ export interface EmployeeCreateInput {
   contractStartDate: Date;
   contractEndDate?: Date;
   warningStatus?: WarningStatus;
+  bankAccountNumber?: string;
   faceData?: string;
 }
 
@@ -35,6 +36,7 @@ export interface EmployeeUpdateInput {
   warningStatus?: WarningStatus;
   gender?: Gender; // Tambahkan gender yang hilang
   address?: string | null; // Tambahkan address yang hilang
+  bankAccountNumber?: string | null; // Tambahkan nomor rekening
   faceData?: string | null;
 }
 
@@ -71,6 +73,7 @@ export async function getAllEmployees() {
         warningStatus: true,
         gender: true,
         address: true,
+        bankAccountNumber: true,
         faceData: true,
         createdAt: true,
         updatedAt: true,
@@ -160,6 +163,7 @@ export async function getAllEmployees() {
               warningStatus: true,
               gender: true,
               address: true,
+              bankAccountNumber: true,
               faceData: true,
               createdAt: true,
               updatedAt: true,
@@ -256,6 +260,7 @@ export async function getEmployeeById(id: string) {
             warningStatus: true,
             gender: true,
             address: true,
+            bankAccountNumber: true,
             faceData: true,
             createdAt: true,
             updatedAt: true,
@@ -640,6 +645,10 @@ export async function updateEmployee(id: string, data: EmployeeUpdateInput) {
     
     if (data.address !== undefined) {
       employeeUpdateData.address = data.address;
+    }
+    
+    if (data.bankAccountNumber !== undefined) {
+      employeeUpdateData.bankAccountNumber = data.bankAccountNumber;
     }
     
     if (data.faceData !== undefined) {

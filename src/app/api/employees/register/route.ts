@@ -27,6 +27,7 @@ const employeeRegisterSchema = z.object({
     val === "FEMALE" || val === "Female" || val === "female" ? Gender.FEMALE : Gender.MALE
   ),
   address: z.string().optional().nullable(),
+  bankAccountNumber: z.string().optional().nullable(),
   faceData: z.string().optional().nullable(),
 });
 
@@ -121,6 +122,7 @@ export async function POST(request: NextRequest) {
             warningStatus: WarningStatus.NONE,
             gender: validatedData.gender,
             address: validatedData.address,
+            bankAccountNumber: validatedData.bankAccountNumber,
             faceData: validatedData.faceData,
           },
         });

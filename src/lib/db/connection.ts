@@ -2,24 +2,28 @@ import { PrismaClient } from '@prisma/client';
 
 // Enhanced database connection configuration untuk production-ready performance
 const createPrismaClient = () => {
+  const connectionUrl = process.env.DATABASE_POOLING_URL || process.env.DATABASE_URL;
+  
+  // Add connection pool parameters to URL if not already present
+  const url = new URL(connectionUrl!);
+  if (!url.searchParams.has('pool_timeout')) {
+    url.searchParams.set('pool_timeout', '20'); // Increased from 15 to 20 for more stability
+  }
+  if (!url.searchParams.has('connection_limit')) {
+    url.searchParams.set('connection_limit', '12'); // Increased from 8 to 12 for higher concurrency
+  }
+  if (!url.searchParams.has('connect_timeout')) {
+    url.searchParams.set('connect_timeout', '15'); // Increased from 10 to 15
+  }
+  
   return new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
     errorFormat: 'pretty',
     datasources: {
       db: {
-        url: process.env.DATABASE_POOLING_URL || process.env.DATABASE_URL,
+        url: url.toString(),
       },
     },
-    // Enhanced configuration for better performance - commented out for compatibility
-    // __internal: {
-    //   engine: {
-    //     // Connection pool configuration
-    //     pool_timeout: 30, // 30 seconds pool timeout
-    //     connection_limit: 20, // Max 20 connections
-    //     // Query timeout
-    //     query_timeout: 60, // 60 seconds query timeout
-    //   },
-    // },
   });
 };
 
@@ -45,7 +49,7 @@ export const ensureDatabaseConnection = async (maxRetries: number = 3): Promise<
       await Promise.race([
         prisma.$executeRaw`SELECT 1`,
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Connection check timeout')), 10000)
+          setTimeout(() => reject(new Error('Connection check timeout')), 12000) // Increased from 10s to 12s
         )
       ]);
       
@@ -126,13 +130,13 @@ export const getDatabaseStats = async () => {
     const [
       userCount,
       employeeCount,
-      attendanceCount,
-      connectionTest
+      attendanceCount
     ] = await Promise.all([
       prisma.user.count(),
       prisma.employee.count(),
       prisma.attendance.count(),
-      prisma.$executeRaw`SELECT 1 as connection_test`
+      // Test connection
+      prisma.$executeRaw`SELECT 1 as connection_test`.then(() => true).catch(() => false)
     ]);
 
     const queryDuration = Date.now() - startTime;
@@ -180,7 +184,8 @@ export const getConnectionPoolStats = async () => {
 // Safe query wrapper dengan retry mechanism
 export const safeQuery = async <T>(
   queryFn: () => Promise<T>,
-  maxRetries: number = 3
+  maxRetries: number = 3,
+  timeoutMs: number = 18000 // Increased from 15000 to 18000 (18s)
 ): Promise<T> => {
   let lastError: Error | null = null;
   
@@ -195,7 +200,7 @@ export const safeQuery = async <T>(
       const result = await Promise.race([
         queryFn(),
         new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Query timeout')), 30000)
+          setTimeout(() => reject(new Error('Query timeout')), timeoutMs)
         )
       ]);
       

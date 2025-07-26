@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Pencil, Plus, Search, Trash2, Clock } from 'lucide-react'
+import { Pencil, Plus, Search, Trash2, Clock, ArrowRightLeft } from 'lucide-react'
+import { ShiftRotationDialog } from '@/components/shift-rotation/ShiftRotationDialog'
 import {
   Form,
   FormControl,
@@ -151,6 +152,7 @@ export default function ShiftsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [currentShift, setCurrentShift] = useState<Shift | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isRotationDialogOpen, setIsRotationDialogOpen] = useState(false)
   
   // Form untuk tambah/edit shift
   const form = useForm<ShiftFormValues>({
@@ -604,6 +606,14 @@ export default function ShiftsPage() {
           >
             <Clock className="mr-2 h-4 w-4" />
             Perbaiki Jam Istirahat
+          </Button>
+          <Button 
+            variant="outline"
+            onClick={() => setIsRotationDialogOpen(true)}
+            disabled={isLoading}
+          >
+            <ArrowRightLeft className="mr-2 h-4 w-4" />
+            Rotasi Shift
           </Button>
           <Button 
             variant="outline"
@@ -1355,6 +1365,12 @@ export default function ShiftsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Dialog Rotasi Shift */}
+      <ShiftRotationDialog 
+        isOpen={isRotationDialogOpen} 
+        onClose={() => setIsRotationDialogOpen(false)} 
+      />
     </div>
   )
 } 

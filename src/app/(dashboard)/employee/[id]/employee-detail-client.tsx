@@ -56,6 +56,7 @@ interface Employee {
   warningStatus: string;
   gender: string | null;
   address: string | null;
+  bankAccountNumber: string | null;
   faceData?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -220,6 +221,10 @@ const EmployeeInfo = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
               <span className="text-sm text-muted-foreground">Jenis Kelamin</span>
               <span className="text-sm sm:col-span-2">{data.gender === "MALE" ? "Laki-laki" : data.gender === "FEMALE" ? "Perempuan" : "-"}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-0">
+              <span className="text-sm text-muted-foreground">Nomor Rekening</span>
+              <span className="text-sm sm:col-span-2">{data.bankAccountNumber || '-'}</span>
             </div>
           </CardContent>
         </Card>

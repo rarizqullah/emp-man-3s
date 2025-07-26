@@ -74,7 +74,8 @@ export function SalarySlipPDF({
         ['Email', ':', slipData.employee.email],
         ['Departemen', ':', slipData.employee.department],
         ['Posisi', ':', slipData.employee.position],
-        ['Status Kontrak', ':', slipData.employee.contractType]
+        ['Status Kontrak', ':', slipData.employee.contractType],
+        ['No. Rekening', ':', slipData.employee.bankAccountNumber || '-']
       ];
       
       employeeData.forEach(([label, colon, value]) => {

@@ -39,6 +39,7 @@ model Employee {
   warningStatus      WarningStatus       @default(NONE)
   gender             Gender              @default(MALE)
   address            String?
+  bankAccountNumber  String?
   faceData           String?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -46,6 +47,8 @@ model Employee {
   deletedAt          DateTime?
   deletedBy          String?
   deletionReason     String?
+  // Shift rotation fields
+  shiftRotationGroupId String?           @map("shift_rotation_group_id")
   attendances        Attendance[]
   contractHistory    ContractHistory[]
   employeeAllowances EmployeeAllowance[]
@@ -54,6 +57,7 @@ model Employee {
   shift              Shift               @relation(fields: [shiftId], references: [id])
   subDepartment      SubDepartment?      @relation(fields: [subDepartmentId], references: [id])
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shiftRotationGroup ShiftRotationGroup? @relation(fields: [shiftRotationGroupId], references: [id])
   salaries           Salary[]
   shiftHistory       ShiftHistory[]
   warningHistory     WarningHistory[]
@@ -63,6 +67,7 @@ model Employee {
   @@index([subDepartmentId])
   @@index([positionId])
   @@index([shiftId])
+  @@index([shiftRotationGroupId])
   @@index([contractType])
   @@index([warningStatus])
   @@index([deletedAt])
@@ -95,14 +100,15 @@ model Department {
 }
 
 model SubDepartment {
-  id           String     @id @default(uuid())
-  name         String
-  departmentId String
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  employees    Employee[]
-  shifts       Shift[]
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  id                  String               @id @default(uuid())
+  name                String
+  departmentId        String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  employees           Employee[]
+  shifts              Shift[]
+  shiftRotationGroups ShiftRotationGroup[]
+  department          Department           @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
   @@unique([name, departmentId])
   @@map("sub_departments")
@@ -127,6 +133,10 @@ model Shift {
   employees            Employee[]
   ShiftHistory         ShiftHistory[]
   subDepartment        SubDepartment? @relation(fields: [subDepartmentId], references: [id])
+  
+  // Relasi ke grup rotasi
+  rotationGroupA       ShiftRotationGroup? @relation("ShiftA")
+  rotationGroupB       ShiftRotationGroup? @relation("ShiftB")
 
   @@map("shifts")
 }
@@ -323,6 +333,32 @@ model ActivityLog {
   @@index([email])
   @@index([waktuLogin])
   @@map("activity_logs")
+}
+
+model ShiftRotationGroup {
+  id              String    @id @default(uuid())
+  name            String    @unique // e.g., "Rotasi Pagi-Sore Produksi"
+  description     String?   // Deskripsi grup rotasi
+  subDepartmentId String?   @map("sub_department_id")
+  anchorDate      DateTime  @map("anchor_date") // Tanggal referensi untuk memulai hitungan minggu
+  isActive        Boolean   @default(true) // Status aktif grup rotasi
+
+  shiftAId        String    @unique @map("shift_a_id")
+  shiftBId        String    @unique @map("shift_b_id")
+
+  shiftA          Shift     @relation("ShiftA", fields: [shiftAId], references: [id])
+  shiftB          Shift     @relation("ShiftB", fields: [shiftBId], references: [id])
+
+  subDepartment   SubDepartment? @relation(fields: [subDepartmentId], references: [id])
+  employees       Employee[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([subDepartmentId])
+  @@index([isActive])
+  @@index([anchorDate])
+  @@map("shift_rotation_groups")
 }
 
 enum Role {

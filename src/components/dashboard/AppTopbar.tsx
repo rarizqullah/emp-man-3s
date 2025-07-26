@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useSupabase } from "@/providers/supabase-provider";
+import { useUserRole } from "@/hooks/useUserRole";
 import toast from "react-hot-toast";
 import {
   Breadcrumb,
@@ -27,7 +28,8 @@ import {
 export function AppTopbar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, signOut } = useSupabase();
+  const { user: supabaseUser, signOut } = useSupabase();
+  const { user: userWithRole, role, isLoading } = useUserRole();
   const [currentTime, setCurrentTime] = useState(new Date());
   
   useEffect(() => {
@@ -73,12 +75,12 @@ export function AppTopbar() {
     }
   };
 
-  // Dapatkan nama user dari metadata Supabase
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || "User";
-  const userRole = user?.user_metadata?.role || "EMPLOYEE";
+  // Dapatkan nama user dari useUserRole atau fallback ke Supabase metadata
+  const userName = userWithRole?.name || supabaseUser?.user_metadata?.name || supabaseUser?.email?.split('@')[0] || "User";
+  const userRole = role || "EMPLOYEE";
 
   // Generate breadcrumbs
-  const segments = pathname.split("/").filter(Boolean);
+  const segments = pathname?.split("/").filter(Boolean) || [];
   const breadcrumbs = [] as React.ReactNode[];
   let accumulated = "";
   segments.forEach((seg, idx) => {
@@ -151,8 +153,15 @@ export function AppTopbar() {
             <DropdownMenuLabel>
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none">{userName}</p>
-                <p className="text-xs text-muted-foreground">{user?.email || ""}</p>
-                <p className="text-xs text-muted-foreground">{formatRole(userRole)}</p>
+                <p className="text-xs text-muted-foreground">{userWithRole?.email || supabaseUser?.email || ""}</p>
+                <div className="flex items-center gap-1">
+                  <div className={`w-2 h-2 rounded-full ${
+                    role === 'ADMIN' ? 'bg-red-500' : 
+                    role === 'MANAGER' ? 'bg-blue-500' : 
+                    'bg-green-500'
+                  }`} />
+                  <p className="text-xs text-muted-foreground font-medium">{formatRole(userRole)}</p>
+                </div>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

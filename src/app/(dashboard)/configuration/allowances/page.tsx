@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { 
   Search, 
@@ -9,10 +8,7 @@ import {
   RefreshCw, 
   Edit, 
   Trash2, 
-  Filter,
-  FileDown,
   MoreHorizontal,
-  CreditCard,
   Calculator
 } from "lucide-react";
 
@@ -27,7 +23,6 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { 
   DropdownMenu,
@@ -36,20 +31,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -126,7 +113,6 @@ const formatCurrency = (amount?: number | null) => {
 };
 
 export default function AllowancesPage() {
-  const router = useRouter();
   const [allowances, setAllowances] = useState<Allowance[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -138,10 +124,13 @@ export default function AllowancesPage() {
   const [bulkEditModalOpen, setBulkEditModalOpen] = useState(false);
   const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
   const [selectedAllowance, setSelectedAllowance] = useState<Allowance | null>(null);
+  
+  // State untuk loading operations
+  const [bulkEditLoading, setBulkEditLoading] = useState(false);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
 
   // State untuk multiple selection
   const [selectedAllowances, setSelectedAllowances] = useState<string[]>([]);
-  const [selectAll, setSelectAll] = useState(false);
 
   // State untuk pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -227,16 +216,26 @@ export default function AllowancesPage() {
       setSelectedAllowances(prev => [...prev, allowanceId]);
     } else {
       setSelectedAllowances(prev => prev.filter(id => id !== allowanceId));
-      setSelectAll(false);
     }
   };
 
   const handleSelectAll = (checked: boolean) => {
-    setSelectAll(checked);
+    const currentPageIds = paginatedAllowances.map(allowance => allowance.id);
+    
     if (checked) {
-      setSelectedAllowances(paginatedAllowances.map(allowance => allowance.id));
+      // Select all allowances in current page
+      setSelectedAllowances(prev => {
+        const newSelection = [...prev];
+        currentPageIds.forEach(id => {
+          if (!newSelection.includes(id)) {
+            newSelection.push(id);
+          }
+        });
+        return newSelection;
+      });
     } else {
-      setSelectedAllowances([]);
+      // Deselect all allowances in current page
+      setSelectedAllowances(prev => prev.filter(id => !currentPageIds.includes(id)));
     }
   };
 
@@ -312,63 +311,114 @@ export default function AllowancesPage() {
   // Handler untuk bulk edit
   const handleBulkEdit = async (data: BulkEditFormValues) => {
     try {
-      const promises = selectedAllowances.map(allowanceId => 
-        fetch(`/api/allowances/${allowanceId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(data),
-        })
-      );
-
-      const responses = await Promise.all(promises);
+      setBulkEditLoading(true);
       
-      // Check if all requests were successful
-      const failed = responses.filter(response => !response.ok);
-      if (failed.length > 0) {
-        throw new Error(`${failed.length} tunjangan gagal diupdate`);
+      // Filter hanya nilai yang tidak undefined
+      const updates: {
+        umkAmount?: number;
+        companyPercentage?: number;
+        employeePercentage?: number;
+      } = {};
+      if (data.umkAmount !== undefined && data.umkAmount !== null) {
+        updates.umkAmount = data.umkAmount;
+      }
+      if (data.companyPercentage !== undefined && data.companyPercentage !== null) {
+        updates.companyPercentage = data.companyPercentage;
+      }
+      if (data.employeePercentage !== undefined && data.employeePercentage !== null) {
+        updates.employeePercentage = data.employeePercentage;
       }
 
-      toast.success(`${selectedAllowances.length} tunjangan berhasil diupdate`);
+      // Validasi bahwa minimal ada satu field yang diisi
+      if (Object.keys(updates).length === 0) {
+        toast.error('Silakan isi minimal satu field untuk diupdate');
+        return;
+      }
+
+      const response = await fetch('/api/allowances/bulk-edit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          allowanceIds: selectedAllowances,
+          updates
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        // Handle specific error cases
+        if (result.notFoundIds && result.notFoundIds.length > 0) {
+          toast.error(`Beberapa tunjangan tidak ditemukan. Silakan refresh halaman.`);
+        } else {
+          toast.error(result.error || 'Gagal mengupdate tunjangan');
+        }
+        return;
+      }
+
+      toast.success(result.message || `${result.updatedCount} tunjangan berhasil diupdate`);
       fetchAllowances();
       setBulkEditModalOpen(false);
       setSelectedAllowances([]);
-      setSelectAll(false);
       bulkEditForm.reset();
     } catch (error: unknown) {
       console.error('Error bulk editing allowances:', error);
       const errorMessage = error instanceof Error ? error.message : 'Terjadi kesalahan saat mengupdate tunjangan';
       toast.error(errorMessage);
+    } finally {
+      setBulkEditLoading(false);
     }
   };
 
   // Handler untuk bulk delete
   const handleBulkDelete = async () => {
-    try {
-      const promises = selectedAllowances.map(allowanceId => 
-        fetch(`/api/allowances/${allowanceId}`, {
-          method: 'DELETE',
-        })
-      );
+    if (selectedAllowances.length === 0) {
+      toast.error('Pilih minimal satu tunjangan untuk dihapus');
+      return;
+    }
 
-      const responses = await Promise.all(promises);
+    try {
+      setBulkDeleteLoading(true);
       
-      // Check if all requests were successful
-      const failed = responses.filter(response => !response.ok);
-      if (failed.length > 0) {
-        throw new Error(`${failed.length} tunjangan gagal dihapus`);
+      const response = await fetch('/api/allowances/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          allowanceIds: selectedAllowances
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        // Handle specific error cases
+        if (result.allowancesInUse && result.allowancesInUse.length > 0) {
+          const allowanceList = result.allowancesInUse
+            .map((allowance: { name: string; employeeCount: number }) => `${allowance.name} (${allowance.employeeCount} karyawan)`)
+            .join(', ');
+          toast.error(`Tidak dapat menghapus tunjangan yang masih digunakan: ${allowanceList}`);
+        } else if (result.notFoundIds && result.notFoundIds.length > 0) {
+          toast.error(`Beberapa tunjangan tidak ditemukan. Silakan refresh halaman.`);
+        } else {
+          toast.error(result.error || 'Gagal menghapus tunjangan');
+        }
+        return;
       }
 
-      toast.success(`${selectedAllowances.length} tunjangan berhasil dihapus`);
+      toast.success(result.message || `${result.deletedCount} tunjangan berhasil dihapus`);
       fetchAllowances();
       setBulkDeleteModalOpen(false);
       setSelectedAllowances([]);
-      setSelectAll(false);
     } catch (error: unknown) {
       console.error('Error bulk deleting allowances:', error);
       const errorMessage = error instanceof Error ? error.message : 'Terjadi kesalahan saat menghapus tunjangan';
       toast.error(errorMessage);
+    } finally {
+      setBulkDeleteLoading(false);
     }
   };
   const handleDeleteAllowance = async () => {
@@ -443,6 +493,7 @@ export default function AllowancesPage() {
                     size="sm" 
                     onClick={() => setBulkDeleteModalOpen(true)}
                     className="text-red-600 border-red-200 hover:bg-red-50"
+                    disabled={selectedAllowances.length === 0}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Hapus ({selectedAllowances.length})
@@ -468,7 +519,12 @@ export default function AllowancesPage() {
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-12 px-4 py-3 font-semibold text-muted-foreground">
                       <Checkbox
-                        checked={selectAll}
+                        checked={(() => {
+                          const currentPageIds = paginatedAllowances.map(allowance => allowance.id);
+                          const selectedInCurrentPage = currentPageIds.filter(id => selectedAllowances.includes(id));
+                          
+                          return selectedInCurrentPage.length === currentPageIds.length && currentPageIds.length > 0;
+                        })()}
                         onChange={(e) => handleSelectAll(e.target.checked)}
                         aria-label="Select all allowances"
                       />
@@ -925,12 +981,21 @@ export default function AllowancesPage() {
               </div>
               
               <DialogFooter>
-                <Button variant="outline" type="button" onClick={() => setBulkEditModalOpen(false)}>
+                <Button variant="outline" type="button" onClick={() => setBulkEditModalOpen(false)} disabled={bulkEditLoading}>
                   Batal
                 </Button>
-                <Button type="submit">
-                  <Calculator className="mr-2 h-4 w-4" />
-                  Update & Kalkulasi
+                <Button type="submit" disabled={bulkEditLoading}>
+                  {bulkEditLoading ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Mengupdate...
+                    </>
+                  ) : (
+                    <>
+                      <Calculator className="mr-2 h-4 w-4" />
+                      Update & Kalkulasi
+                    </>
+                  )}
                 </Button>
               </DialogFooter>
             </form>
@@ -949,13 +1014,23 @@ export default function AllowancesPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={bulkDeleteLoading}>Batal</AlertDialogCancel>
             <AlertDialogAction 
               onClick={handleBulkDelete} 
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={bulkDeleteLoading}
             >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Hapus {selectedAllowances.length} Tunjangan
+              {bulkDeleteLoading ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Menghapus...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Hapus {selectedAllowances.length} Tunjangan
+                </>
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

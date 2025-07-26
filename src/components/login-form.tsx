@@ -43,58 +43,18 @@ export function LoginForm({
     try {
       console.log('🔐 Login attempt for:', data.email);
       
-      // Try our custom login API first
-      try {
-        const response = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: data.email,
-            password: data.password,
-          }),
+      // Check if email format is valid first
+      if (!data.email.includes('@')) {
+        toast({
+          title: 'Format Email Salah',
+          description: 'Silakan masukkan email dengan format yang benar',
+          variant: 'destructive',
         });
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success) {
-            console.log('✅ Login successful via API for:', result.user?.email);
-            
-            // Wait a moment for session to be established
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Verify authentication by checking session
-            const { data: { user } } = await supabaseClient.auth.getUser();
-            
-            if (user) {
-              console.log('✅ User authentication verified:', user.email);
-              
-              toast({
-                title: 'Login Berhasil',
-                description: `Selamat datang kembali, ${result.user?.name || user.email}!`,
-              });
-              
-              // Wait for toast to display
-              await new Promise(resolve => setTimeout(resolve, 500));
-              
-              // Redirect to intended page
-              console.log('🔄 Redirecting to:', redirectUrl);
-              router.push(redirectUrl);
-              return;
-            }
-          }
-        }
-        
-        // If API login fails, try fallback
-        console.warn('⚠️ API login failed, trying fallback method');
-        
-      } catch (apiError) {
-        console.warn('⚠️ API login error, trying fallback method:', apiError);
+        return;
       }
       
-      // Fallback to direct Supabase login
-      console.log('🔄 Using fallback Supabase login for:', data.email);
+      // Direct Supabase login with better error handling
+      console.log('🔄 Attempting Supabase login for:', data.email);
       
       const { data: authData, error } = await supabaseClient.auth.signInWithPassword({
         email: data.email,
@@ -102,20 +62,23 @@ export function LoginForm({
       });
 
       if (error) {
-        console.error('❌ Fallback login failed:', error.message);
+        console.error('❌ Login failed:', error.message);
         
-        // Berikan pesan error yang lebih jelas untuk user
-        let errorMessage = error.message;
+                // Handle specific error types
+        let errorMessage = 'Terjadi kesalahan saat login. Silakan coba lagi.';
         
-        // Handle pesan error spesifik dari Supabase
         if (error.message.includes('Invalid login credentials')) {
-          errorMessage = 'Email atau password yang Anda masukkan salah. Silakan coba lagi.';
+          errorMessage = 'Email atau password salah. Silakan periksa kembali data login Anda.';
         } else if (error.message.includes('Email not confirmed')) {
-          errorMessage = 'Email Anda belum dikonfirmasi. Silakan cek email untuk konfirmasi.';
+          errorMessage = 'Email belum dikonfirmasi. Silakan cek email Anda untuk link konfirmasi.';
         } else if (error.message.includes('too_many_requests')) {
-          errorMessage = 'Terlalu banyak percobaan login. Silakan tunggu beberapa menit dan coba lagi.';
-        } else if (!errorMessage || errorMessage.trim() === '') {
-          errorMessage = 'Terjadi kesalahan saat login. Silakan periksa email dan password Anda.';
+          errorMessage = 'Terlalu banyak percobaan login. Silakan tunggu beberapa menit sebelum mencoba lagi.';
+        } else if (error.message.includes('Invalid email')) {
+          errorMessage = 'Format email tidak valid. Silakan masukkan email yang benar.';
+        } else if (error.message.includes('Signup not allowed')) {
+          errorMessage = 'Pendaftaran tidak diizinkan. Hubungi administrator untuk membuat akun.';
+        } else if (error.message.includes('Network')) {
+          errorMessage = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
         }
         
         toast({
@@ -126,27 +89,37 @@ export function LoginForm({
         return;
       }
 
-      console.log('✅ Fallback login successful for:', authData.user?.email);
+      if (!authData.user) {
+        console.error('❌ No user data returned from login');
+        toast({
+          title: 'Gagal Masuk',
+          description: 'Login gagal, tidak ada data user. Silakan coba lagi.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      console.log('✅ Login successful for:', authData.user?.email);
       
-      // Tunggu sebentar untuk memastikan session tersimpan
+      // Wait for session to be established
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Verifikasi bahwa user sudah terautentikasi
+      // Verify session
       const { data: { user } } = await supabaseClient.auth.getUser();
       
       if (user) {
         console.log('✅ User authentication verified:', user.email);
         
-        // Login berhasil, arahkan ke dashboard atau halaman tujuan
+        // Success notification
         toast({
           title: 'Login Berhasil',
-          description: `Selamat datang kembali, ${user.email}!`,
+          description: `Selamat datang kembali!`,
         });
         
-        // Tunggu toast selesai ditampilkan
+        // Brief delay for toast
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Redirect ke halaman yang dituju
+        // Redirect
         console.log('🔄 Redirecting to:', redirectUrl);
         router.push(redirectUrl);
       } else {
@@ -161,13 +134,12 @@ export function LoginForm({
     } catch (error) {
       console.error('❌ Login error:', error);
       
-      // More specific error handling
-      let errorMessage = 'Gagal masuk ke akun. Silakan coba lagi nanti.';
+      let errorMessage = 'Gagal masuk ke akun. Silakan coba lagi.';
       if (error instanceof Error) {
-        if (error.message.includes('fetch')) {
+        if (error.message.includes('fetch') || error.message.includes('network')) {
           errorMessage = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
-        } else if (error.message.includes('network')) {
-          errorMessage = 'Masalah jaringan. Silakan coba lagi.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Koneksi timeout. Silakan coba lagi.';
         }
       }
       

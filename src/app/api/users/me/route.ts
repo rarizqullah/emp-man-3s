@@ -1,75 +1,76 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { NextRequest } from 'next/server';
+import { prisma, safeQuery } from '@/lib/db';
+import { requireAuth, ApiResponse } from '@/lib/auth/api-helpers';
 
-export async function GET() {
+export const GET = requireAuth(async (request: NextRequest, user) => {
   try {
-    // Dapatkan session Supabase untuk memeriksa apakah user terautentikasi
-    const supabase = await createServerSupabaseClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    // User sudah terautentikasi melalui requireAuth, langsung gunakan data user
+    console.log('🔍 Getting user profile for:', user.email);
     
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Tidak terautentikasi' },
-        { status: 401 }
-      );
-    }
-    
-    // Dapatkan user berdasarkan email
-    const email = session.user.email;
-    if (!email) {
-      return NextResponse.json(
-        { error: 'Email tidak ditemukan di session' },
-        { status: 400 }
-      );
-    }
-    
-    // Cari user di database
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        employee: {
-          select: {
-            id: true,
-            employeeId: true,
-            contractStartDate: true,
-            department: {
-              select: {
-                name: true
-              }
-            },
-            subDepartment: {
-              select: {
-                name: true
-              }
-            },
-            position: {
-              select: {
-                name: true
+    // Dapatkan data lengkap user dari database dengan safeQuery untuk timeout protection
+    const userData = await safeQuery(
+      () => prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          employee: {
+            select: {
+              id: true,
+              employeeId: true,
+              contractStartDate: true,
+              department: {
+                select: {
+                  name: true
+                }
+              },
+              subDepartment: {
+                select: {
+                  name: true
+                }
+              },
+              position: {
+                select: {
+                  name: true
+                }
               }
             }
           }
         }
-      }
-    });
+      }),
+      3, // max retries
+      12000 // 12 second timeout - increased from 8s
+    );
     
-    if (!user) {
-      return NextResponse.json(
-        { error: 'User tidak ditemukan' },
-        { status: 404 }
-      );
+    if (!userData) {
+      return ApiResponse.notFound('User tidak ditemukan di database');
     }
     
-    return NextResponse.json(user);
+    // Log untuk debugging
+    console.log('✅ User profile retrieved:', {
+      id: userData.id,
+      email: userData.email,
+      role: userData.role,
+      hasEmployee: !!userData.employee
+    });
+    
+    return ApiResponse.success(userData, 'Profil user berhasil dimuat');
+    
   } catch (error) {
-    console.error('Error fetching user profile:', error);
-    return NextResponse.json(
-      { error: 'Terjadi kesalahan saat memuat profil user' },
-      { status: 500 }
-    );
+    console.error('❌ Error fetching user profile:', error);
+    
+    // Return more specific error messages
+    if (error instanceof Error) {
+      if (error.message.includes('timeout')) {
+        return ApiResponse.error('Request timeout. Silakan coba lagi.', 408);
+      }
+      if (error.message.includes('connection')) {
+        return ApiResponse.error('Database connection error. Silakan coba lagi.', 503);
+      }
+    }
+    
+    return ApiResponse.error('Terjadi kesalahan saat memuat profil user', 500);
   }
-} 
+}); 
