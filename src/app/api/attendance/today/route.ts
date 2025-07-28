@@ -10,9 +10,9 @@ export async function GET() {
     // Inisialisasi client Supabase menggunakan supabaseRouteHandler
     const supabase = await supabaseRouteHandler();
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { user }, error } = await supabase.auth.getUser();
 
-    if (!session || !session.user) {
+    if (error || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -20,12 +20,12 @@ export async function GET() {
     }
 
     // Dapatkan data user dari database
-    const user = await prisma.user.findUnique({
-      where: { authId: session.user.id },
+    const dbUser = await prisma.user.findUnique({
+      where: { authId: user.id },
       select: { id: true, role: true }
     });
 
-    if (!user) {
+    if (!dbUser) {
       return NextResponse.json(
         { error: 'User tidak ditemukan' },
         { status: 404 }
@@ -37,7 +37,7 @@ export async function GET() {
     const endDate = endOfDay(today);
 
     // Jika user adalah admin, ambil semua attendance hari ini
-    if (user.role === 'ADMIN') {
+    if (dbUser.role === 'ADMIN') {
       const attendances = await prisma.attendance.findMany({
         where: {
           createdAt: {

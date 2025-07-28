@@ -12,7 +12,7 @@ model User {
   id                  String       @id @default(uuid())
   email               String       @unique
   name                String
-  phone               String? // Field telepon
+  phone               String?
   role                Role         @default(EMPLOYEE)
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
@@ -25,44 +25,41 @@ model User {
 }
 
 model Employee {
-  id                 String              @id @default(uuid())
-  userId             String              @unique
-  employeeId         String              @unique
-  departmentId       String
-  subDepartmentId    String?
-  positionId         String?
-  shiftId            String
-  contractType       ContractType
-  contractNumber     String?
-  contractStartDate  DateTime
-  contractEndDate    DateTime?
-  warningStatus      WarningStatus       @default(NONE)
-  gender             Gender              @default(MALE)
-  address            String?
-  bankAccountNumber  String?
-  faceData           String?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  // Soft delete fields
-  deletedAt          DateTime?
-  deletedBy          String?
-  deletionReason     String?
-  // Shift rotation fields
-  shiftRotationGroupId String?           @map("shift_rotation_group_id")
-  attendances        Attendance[]
-  contractHistory    ContractHistory[]
-  employeeAllowances EmployeeAllowance[]
-  department         Department          @relation(fields: [departmentId], references: [id])
-  position           Position?           @relation(fields: [positionId], references: [id])
-  shift              Shift               @relation(fields: [shiftId], references: [id])
-  subDepartment      SubDepartment?      @relation(fields: [subDepartmentId], references: [id])
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shiftRotationGroup ShiftRotationGroup? @relation(fields: [shiftRotationGroupId], references: [id])
-  salaries           Salary[]
-  shiftHistory       ShiftHistory[]
-  warningHistory     WarningHistory[]
+  id                   String              @id @default(uuid())
+  userId               String              @unique
+  employeeId           String              @unique
+  departmentId         String
+  subDepartmentId      String?
+  positionId           String?
+  shiftId              String
+  contractType         ContractType
+  contractNumber       String?
+  contractStartDate    DateTime
+  contractEndDate      DateTime?
+  warningStatus        WarningStatus       @default(NONE)
+  gender               Gender              @default(MALE)
+  address              String?
+  bankAccountNumber    String?
+  faceData             String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  deletedAt            DateTime?
+  deletedBy            String?
+  deletionReason       String?
+  shiftRotationGroupId String?             @map("shift_rotation_group_id")
+  attendances          Attendance[]
+  contractHistory      ContractHistory[]
+  employeeAllowances   EmployeeAllowance[]
+  department           Department          @relation(fields: [departmentId], references: [id])
+  position             Position?           @relation(fields: [positionId], references: [id])
+  shift                Shift               @relation(fields: [shiftId], references: [id])
+  shiftRotationGroup   ShiftRotationGroup? @relation(fields: [shiftRotationGroupId], references: [id])
+  subDepartment        SubDepartment?      @relation(fields: [subDepartmentId], references: [id])
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  salaries             Salary[]
+  shiftHistory         ShiftHistory[]
+  warningHistory       WarningHistory[]
 
-  // Indexes untuk optimasi query
   @@index([departmentId])
   @@index([subDepartmentId])
   @@index([positionId])
@@ -106,8 +103,8 @@ model SubDepartment {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   employees           Employee[]
-  shifts              Shift[]
   shiftRotationGroups ShiftRotationGroup[]
+  shifts              Shift[]
   department          Department           @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
   @@unique([name, departmentId])
@@ -115,28 +112,26 @@ model SubDepartment {
 }
 
 model Shift {
-  id                   String         @id @default(uuid())
-  name                 String         @unique
+  id                   String              @id @default(uuid())
+  name                 String              @unique
   shiftType            ShiftType
   mainWorkStart        DateTime?
   mainWorkEnd          DateTime?
   lunchBreakStart      DateTime?
   lunchBreakEnd        DateTime?
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
   regularOvertimeEnd   DateTime?
   regularOvertimeStart DateTime?
   subDepartmentId      String?
   weeklyOvertimeEnd    DateTime?
   weeklyOvertimeStart  DateTime?
-  workingDays          String[]       @default([])
+  workingDays          String[]            @default([])
   employees            Employee[]
   ShiftHistory         ShiftHistory[]
-  subDepartment        SubDepartment? @relation(fields: [subDepartmentId], references: [id])
-  
-  // Relasi ke grup rotasi
   rotationGroupA       ShiftRotationGroup? @relation("ShiftA")
   rotationGroupB       ShiftRotationGroup? @relation("ShiftB")
+  subDepartment        SubDepartment?      @relation(fields: [subDepartmentId], references: [id])
 
   @@map("shifts")
 }
@@ -161,14 +156,12 @@ model Attendance {
   isCheckOutValidated  Boolean          @default(false)
   overtimeEndTime      DateTime?
   overtimeStartTime    DateTime?
-  // Lateness tracking fields
   isLate               Boolean          @default(false)
   minutesLate          Int?
   roundedMinutesLate   Int?
   latenessMessage      String?
   employee             Employee         @relation(fields: [employeeId], references: [id])
 
-  // Indexes untuk optimasi query absensi
   @@index([employeeId])
   @@index([attendanceDate])
   @@index([employeeId, attendanceDate])
@@ -196,7 +189,6 @@ model Salary {
   updatedAt            DateTime      @updatedAt
   employee             Employee      @relation(fields: [employeeId], references: [id])
 
-  // Indexes untuk optimasi query gaji
   @@index([employeeId])
   @@index([periodStart])
   @@index([periodEnd])
@@ -224,12 +216,12 @@ model Allowance {
   id                 String              @id @default(uuid())
   name               String              @unique
   description        String?
-  applicableRule     String // Ketentuan berlaku
-  umkAmount          Float? // UMK (Upah Minimum Kota/Kabupaten)
-  companyPercentage  Float? // Persentase perusahaan
-  companyAmount      Float? // Nominal perusahaan (dikalkulasi otomatis)
-  employeePercentage Float? // Persentase karyawan
-  employeeAmount     Float? // Nominal karyawan (dikalkulasi otomatis)
+  applicableRule     String
+  umkAmount          Float?
+  companyPercentage  Float?
+  companyAmount      Float?
+  employeePercentage Float?
+  employeeAmount     Float?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   employeeAllowances EmployeeAllowance[]
@@ -268,7 +260,6 @@ model Permission {
   approvedBy      User?            @relation("ApprovedPermissions", fields: [approvedById], references: [id])
   user            User             @relation("UserPermissions", fields: [userId], references: [id], onDelete: Cascade)
 
-  // Indexes untuk optimasi query permission
   @@index([userId])
   @@index([status])
   @@index([type])
@@ -336,24 +327,20 @@ model ActivityLog {
 }
 
 model ShiftRotationGroup {
-  id              String    @id @default(uuid())
-  name            String    @unique // e.g., "Rotasi Pagi-Sore Produksi"
-  description     String?   // Deskripsi grup rotasi
-  subDepartmentId String?   @map("sub_department_id")
-  anchorDate      DateTime  @map("anchor_date") // Tanggal referensi untuk memulai hitungan minggu
-  isActive        Boolean   @default(true) // Status aktif grup rotasi
-
-  shiftAId        String    @unique @map("shift_a_id")
-  shiftBId        String    @unique @map("shift_b_id")
-
-  shiftA          Shift     @relation("ShiftA", fields: [shiftAId], references: [id])
-  shiftB          Shift     @relation("ShiftB", fields: [shiftBId], references: [id])
-
-  subDepartment   SubDepartment? @relation(fields: [subDepartmentId], references: [id])
+  id              String         @id @default(uuid())
+  name            String         @unique
+  description     String?
+  subDepartmentId String?        @map("sub_department_id")
+  anchorDate      DateTime       @map("anchor_date")
+  isActive        Boolean        @default(true)
+  shiftAId        String         @unique @map("shift_a_id")
+  shiftBId        String         @unique @map("shift_b_id")
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
   employees       Employee[]
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  shiftA          Shift          @relation("ShiftA", fields: [shiftAId], references: [id])
+  shiftB          Shift          @relation("ShiftB", fields: [shiftBId], references: [id])
+  subDepartment   SubDepartment? @relation(fields: [subDepartmentId], references: [id])
 
   @@index([subDepartmentId])
   @@index([isActive])

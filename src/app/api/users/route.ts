@@ -162,14 +162,14 @@ export async function GET(request: Request) {
     }
 
     const supabase = await supabaseRouteHandler(request);
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
     
-    if (sessionError) {
-      console.error('Error getting session:', sessionError);
+    if (userError) {
+      console.error('Error getting user:', userError);
       return NextResponse.json({ error: 'Error authenticating user' }, { status: 401 });
     }
     
-    if (!session) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -206,9 +206,9 @@ export async function GETSupabase(request: Request) {
     }
 
     const supabase = await supabaseRouteHandler(request);
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { user: authUser }, error } = await supabase.auth.getUser();
     
-    if (!session) {
+    if (error || !authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

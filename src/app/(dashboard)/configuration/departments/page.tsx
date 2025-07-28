@@ -131,9 +131,10 @@ export default function DepartmentsPage() {
       setIsAddDialogOpen(false)
       form.reset()
       toast.success('Departemen berhasil ditambahkan')
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error:', error)
-      toast.error(error.message || 'Gagal menambahkan departemen')
+      const errorMessage = error instanceof Error ? error.message : 'Gagal menambahkan departemen'
+      toast.error(errorMessage)
     }
   }
 
@@ -166,9 +167,10 @@ export default function DepartmentsPage() {
       setIsEditDialogOpen(false)
       form.reset()
       toast.success('Departemen berhasil diperbarui')
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error:', error)
-      toast.error(error.message || 'Gagal mengupdate departemen')
+      const errorMessage = error instanceof Error ? error.message : 'Gagal mengupdate departemen'
+      toast.error(errorMessage)
     }
   }
 
@@ -195,9 +197,10 @@ export default function DepartmentsPage() {
       await fetchDepartments()
       setIsDeleteDialogOpen(false)
       toast.success('Departemen berhasil dihapus')
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error:', error)
-      toast.error(error.message || 'Gagal menghapus departemen')
+      const errorMessage = error instanceof Error ? error.message : 'Gagal menghapus departemen'
+      toast.error(errorMessage)
     }
   }
 
@@ -386,7 +389,7 @@ export default function DepartmentsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Konfirmasi Hapus Departemen</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus departemen "{currentDepartment?.name}"? Tindakan ini tidak dapat dibatalkan.
+              Apakah Anda yakin ingin menghapus departemen &quot;{currentDepartment?.name}&quot;? Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

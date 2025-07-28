@@ -1,38 +1,25 @@
-import { NextResponse } from 'next/server';
-import { supabaseRouteHandler } from '@/lib/supabase/server';
+import { NextRequest } from 'next/server';
 import { getTodayAttendanceByEmployeeId } from '@/lib/db/attendance.service';
 import { getEmployeeByUserId } from '@/lib/db/employee.service';
+import { requireAuth, ApiResponse } from '@/lib/auth/api-helpers';
 
-export async function GET() {
+export const GET = requireAuth(async (request: NextRequest, user) => {
   try {
-    // Validasi sesi user menggunakan Supabase auth
-    const supabase = await supabaseRouteHandler();
-    const { data: { session } } = await supabase.auth.getSession();
+    console.log(`Getting current employee data for user: ${user.email}`);
     
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { success: false, message: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Dapatkan data employee berdasarkan user ID dari session
-    console.log(`Mencoba mendapatkan data karyawan dengan user ID: ${session.user.id}`);
-    const employee = await getEmployeeByUserId(session.user.id);
+    // Dapatkan data employee berdasarkan user ID
+    const employee = await getEmployeeByUserId(user.id);
 
     if (!employee) {
-      console.error(`Karyawan dengan user ID ${session.user.id} tidak ditemukan`);
-      return NextResponse.json(
-        { success: false, message: 'Data karyawan tidak ditemukan' },
-        { status: 404 }
-      );
+      console.error(`Employee with user ID ${user.id} not found`);
+      return ApiResponse.notFound('Data karyawan tidak ditemukan');
     }
 
-    console.log(`Berhasil mendapatkan data karyawan: ${employee.id}`);
+    console.log(`Employee data found: ${employee.id}`);
 
     // Dapatkan data presensi hari ini untuk karyawan ini
     const todayAttendance = await getTodayAttendanceByEmployeeId(employee.id);
-    console.log(`Data presensi hari ini: ${todayAttendance ? 'Ada' : 'Tidak ada'}`);
+    console.log(`Today's attendance: ${todayAttendance ? 'Found' : 'Not found'}`);
 
     // Format data employee untuk response
     const formattedEmployee = {
@@ -48,8 +35,8 @@ export async function GET() {
         name: employee.department?.name || '',
       },
       subDepartment: employee.subDepartment ? {
-        id: employee.subDepartment.id,
-        name: employee.subDepartment.name,
+        id: employee.subDepartment?.id || '',
+        name: employee.subDepartment?.name || '',
       } : null,
       shift: employee.shift ? {
         id: employee.shift.id,
@@ -67,16 +54,12 @@ export async function GET() {
       } : null,
     };
 
-    return NextResponse.json({
-      success: true,
-      message: 'Data karyawan berhasil didapatkan',
+    return ApiResponse.success({
       employee: formattedEmployee,
-    });
+    }, 'Data karyawan berhasil didapatkan');
+    
   } catch (error) {
     console.error('Error fetching current employee:', error);
-    return NextResponse.json(
-      { success: false, message: 'Terjadi kesalahan saat mengambil data karyawan' },
-      { status: 500 }
-    );
+    return ApiResponse.error('Terjadi kesalahan saat mengambil data karyawan', 500);
   }
-} 
+});

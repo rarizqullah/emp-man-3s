@@ -95,8 +95,8 @@ function ConfigurationPage() {
   );
 }
 
-// Export halaman dengan proteksi role ADMIN
+// Export halaman dengan proteksi role ADMIN - redirect jika tidak ada akses
 export default withRoleProtection(ConfigurationPage, {
   requiredRoles: 'ADMIN',
-  showAccessDenied: true,
+  showAccessDenied: false, // Tidak menampilkan halaman akses ditolak, langsung redirect
 });

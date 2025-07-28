@@ -46,6 +46,18 @@ const nextConfig = {
       config.module.unknownContextCritical = false;
       config.module.unknownContextRegExp = /\/@vladmandic\/face-api/;
     }
+
+    // Fix untuk cookie dependency resolution
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'cookie': require.resolve('cookie'),
+    };
+
+    // Optimasi module resolution untuk Supabase SSR
+    config.resolve.modules = [
+      'node_modules',
+      ...config.resolve.modules || []
+    ];
     
     // Ignore warnings dari @vladmandic/face-api
     config.ignoreWarnings = [
@@ -53,7 +65,12 @@ const nextConfig = {
         module: /node_modules\/@vladmandic\/face-api/,
         message: /Critical dependency/,
       },
+      {
+        module: /node_modules\/cookie/,
+        message: /Module not found/,
+      },
       (warning) => warning.message.includes('@vladmandic/face-api'),
+      (warning) => warning.message.includes('cookie'),
     ];
     
     return config;

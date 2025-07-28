@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseRouteHandler } from '@/lib/supabase/server';
 import { prisma } from '@/lib/db';
-import { Session } from '@supabase/supabase-js';
+import { User } from '@supabase/supabase-js';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,28 +10,25 @@ export async function GET(request: NextRequest) {
     // Validasi sesi user menggunakan Supabase auth
     const supabase = await supabaseRouteHandler();
     
-    // Coba dapatkan session dari cookie atau header Authorization
-    let session: Session | null = null;
+    // Coba dapatkan user dari auth (menggunakan metode yang aman)
+    let user: User | null = null;
     
-    // First try: Get session from cookies (SSR)
-    const sessionResult = await supabase.auth.getSession();
-    session = sessionResult.data.session;
-    const sessionError = sessionResult.error;
+    // First try: Get user from auth (secure method)
+    const userResult = await supabase.auth.getUser();
+    user = userResult.data.user;
+    const userError = userResult.error;
     
-    // Second try: Get session from Authorization header (client-side requests)
-    if (!session) {
+    // Second try: Get user from Authorization header (client-side requests)
+    if (!user) {
       const authHeader = request.headers.get('authorization');
       console.log('Trying authorization header:', authHeader ? 'present' : 'missing');
       
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
         try {
-          const userResult = await supabase.auth.getUser(token);
-          if (userResult.data.user && !userResult.error) {
-            session = {
-              user: userResult.data.user,
-              access_token: token
-            } as Session; // Type assertion for session structure
+          const tokenUserResult = await supabase.auth.getUser(token);
+          if (tokenUserResult.data.user && !tokenUserResult.error) {
+            user = tokenUserResult.data.user;
             console.log('✅ Got user from authorization header');
           }
         } catch (error) {
@@ -40,16 +37,15 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    console.log('Session check:', {
-      hasSession: !!session,
-      hasUser: !!session?.user,
-      userId: session?.user?.id,
-      sessionError
+    console.log('User check:', {
+      hasUser: !!user,
+      userId: user?.id,
+      userError
     });
     
-    // If no session found, check if we have any employees in database and return sample data for testing
-    if (!session || !session.user) {
-      console.log('No session found, checking for any employees in database for testing...');
+    // If no user found, check if we have any employees in database and return sample data for testing
+    if (!user) {
+      console.log('No user found, checking for any employees in database for testing...');
       
       // Try to get any employees for testing purposes
       const anyEmployees = await prisma.employee.findMany({
@@ -105,11 +101,10 @@ export async function GET(request: NextRequest) {
       
       return NextResponse.json(
         { 
-          error: 'Unauthorized - No valid session found and no test data available',
+          error: 'Unauthorized - No valid user found and no test data available',
           debug: {
-            hasSession: !!session,
-            hasUser: !!session?.user,
-            sessionError: sessionError?.message,
+            hasUser: !!user,
+            userError: userError?.message,
             employeesInDb: anyEmployees.length
           }
         },
@@ -118,20 +113,20 @@ export async function GET(request: NextRequest) {
     }
 
     // Dapatkan data user dari database menggunakan authId
-    const user = await prisma.user.findUnique({
-      where: { authId: session.user.id },
+    const dbUser = await prisma.user.findUnique({
+      where: { authId: user.id },
       select: { id: true, role: true, authId: true, name: true, email: true }
     });
 
-    console.log('Database user lookup:', { found: !!user, authId: session.user.id });
+    console.log('Database user lookup:', { found: !!dbUser, authId: user.id });
 
-    if (!user) {
+    if (!dbUser) {
       return NextResponse.json(
         { 
           error: 'User tidak ditemukan di database',
           debug: {
-            authId: session.user.id,
-            sessionEmail: session.user.email
+            authId: user.id,
+            userEmail: user.email
           }
         },
         { status: 404 }
@@ -139,7 +134,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Cek apakah user adalah admin
-    const isAdmin = user.role === 'ADMIN';
+    const isAdmin = dbUser.role === 'ADMIN';
     
     // Query parameter
     const { searchParams } = new URL(request.url);

@@ -184,25 +184,41 @@ export const getConnectionPoolStats = async () => {
 // Safe query wrapper dengan retry mechanism
 export const safeQuery = async <T>(
   queryFn: () => Promise<T>,
-  maxRetries: number = 3,
-  timeoutMs: number = 18000 // Increased from 15000 to 18000 (18s)
+  maxRetries: number = 2, // Reduced dari 3 ke 2 untuk faster response
+  timeoutMs: number = 12000 // Reduced dari 18000 ke 12000 (12s)
 ): Promise<T> => {
   let lastError: Error | null = null;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Ensure connection is healthy
-      if (!(await ensureDatabaseConnection())) {
-        throw new Error('Database connection not available');
+      // Optimized connection check - skip untuk speed jika connection pool sudah ada
+      if (attempt === 1) {
+        // Quick connection check hanya pada attempt pertama
+        const connectionPromise = prisma.$executeRaw`SELECT 1`;
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Connection check timeout')), 3000) // Quick 3s check
+        );
+        
+        try {
+          await Promise.race([connectionPromise, timeoutPromise]);
+        } catch {
+          console.warn(`⚠️ Connection check failed on attempt ${attempt}, proceeding with query...`);
+          // Don't fail here, proceed with query yang mungkin masih bisa sukses
+        }
       }
       
-      // Execute query with timeout
+      // Execute query with timeout - reduced timeout untuk faster failure detection
       const result = await Promise.race([
         queryFn(),
         new Promise<never>((_, reject) => 
           setTimeout(() => reject(new Error('Query timeout')), timeoutMs)
         )
       ]);
+      
+      // Success - log hanya jika ada retry sebelumnya
+      if (attempt > 1) {
+        console.log(`✅ Query succeeded on attempt ${attempt}`);
+      }
       
       return result;
     } catch (error) {
@@ -212,13 +228,14 @@ export const safeQuery = async <T>(
       const isRetryable = isRetryableError(error as Error);
       
       if (!isRetryable || attempt >= maxRetries) {
+        console.error(`❌ Query failed after ${attempt} attempts:`, lastError.message);
         throw error;
       }
       
-      console.warn(`⚠️ Query attempt ${attempt}/${maxRetries} failed, retrying:`, error);
+      console.warn(`⚠️ Query attempt ${attempt}/${maxRetries} failed, retrying:`, lastError.message);
       
-      // Progressive backoff
-      const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+      // Reduced progressive backoff untuk faster retries
+      const backoffMs = Math.min(500 * Math.pow(1.5, attempt - 1), 2000); // Faster backoff
       await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
   }
@@ -258,7 +275,7 @@ if (process.env.NODE_ENV === 'production') {
     } else {
       console.error('❌ Database health check failed');
     }
-  }).catch((error) => {
+  }).catch((error: Error) => {
     console.error('❌ Database connection failed:', error);
   });
 }

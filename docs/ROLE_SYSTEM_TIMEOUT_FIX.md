@@ -27,7 +27,7 @@ This document outlines the fixes implemented to resolve API timeout issues and e
 ### 1. `/src/hooks/useUserRole.ts`
 ```typescript
 // BEFORE
-const timeoutId = setTimeout(() => controller.abort(), 5000);
+const timeoutId = setTimeout(() => controller.abort(), 6000);
 
 // AFTER  
 const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -49,16 +49,16 @@ url.searchParams.set('connect_timeout', '15');
 ### 3. `/src/app/api/users/me/route.ts`
 ```typescript
 // BEFORE
-safeQuery(queryFn, 3, 8000)
+safeQuery(queryFn, 1, 4000)
 
 // AFTER
-safeQuery(queryFn, 3, 12000)
+safeQuery(queryFn, 2, 12000)
 ```
 
 ### 4. `/src/lib/auth/api-helpers.ts`
 ```typescript
 // BEFORE
-setTimeout(() => reject(new Error('Auth session timeout')), 5000)
+setTimeout(() => reject(new Error('Auth session timeout')), 8000)
 
 // AFTER
 setTimeout(() => reject(new Error('Auth session timeout')), 10000)

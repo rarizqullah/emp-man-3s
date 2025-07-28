@@ -8,9 +8,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ emplo
   try {
     // Validasi sesi user menggunakan Supabase auth
     const supabase = await supabaseRouteHandler();
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { user }, error } = await supabase.auth.getUser();
     
-    if (!session || !session.user) {
+    if (error || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -18,12 +18,12 @@ export async function GET(request: NextRequest, props: { params: Promise<{ emplo
     }
 
     // Dapatkan data user dari database menggunakan authId
-    const user = await prisma.user.findUnique({
-      where: { authId: session.user.id }, // Gunakan authId bukan id
+    const dbUser = await prisma.user.findUnique({
+      where: { authId: user.id }, // Gunakan authId bukan id
       select: { id: true, role: true }
     });
 
-    if (!user) {
+    if (!dbUser) {
       return NextResponse.json(
         { error: 'User tidak ditemukan' },
         { status: 404 }

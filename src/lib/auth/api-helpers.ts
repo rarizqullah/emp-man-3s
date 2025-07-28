@@ -15,22 +15,27 @@ export interface AuthenticatedUser {
 // Helper untuk mendapatkan user dari Supabase session
 export async function getUserFromRequest(request: NextRequest): Promise<AuthenticatedUser | null> {
   try {
-    // Coba dapatkan dari Supabase session terlebih dahulu
+    // Menggunakan getUser() yang aman untuk verifikasi auth state
     const supabase = await createServerSupabaseClient();
     
-    // Add timeout for auth session check - increased from 5s to 10s
-    const sessionPromise = supabase.auth.getSession();
+    // Extended timeout for auth user check sesuai dokumentasi
+    const userPromise = supabase.auth.getUser();
     const timeoutPromise = new Promise<never>((_, reject) => 
-      setTimeout(() => reject(new Error('Auth session timeout')), 10000) // Increased from 5s to 10s
+      setTimeout(() => reject(new Error('Auth user timeout')), 10000) // 10s timeout sesuai dokumentasi
     );
     
-    const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
+    const { data: { user: authUser }, error } = await Promise.race([userPromise, timeoutPromise]);
     
-    if (session?.user) {
+    if (error) {
+      console.warn('❌ Auth user verification failed:', error.message);
+      return null;
+    }
+    
+    if (authUser?.email) {
       // Ambil data lengkap user dari database berdasarkan email dengan safeQuery
       const user = await safeQuery(
         () => prisma.user.findUnique({
-          where: { email: session.user.email! },
+          where: { email: authUser.email! },
           select: {
             id: true,
             email: true,
@@ -44,11 +49,17 @@ export async function getUserFromRequest(request: NextRequest): Promise<Authenti
             }
           }
         }),
-        2, // max retries
-        8000 // 8 second timeout - increased from 5s
+        3, // restored retries untuk stability
+        10000 // extended timeout untuk stability - 10 second sesuai dokumentasi
       );
 
       if (user) {
+        // Validate role consistency
+        if (!user.role || !['ADMIN', 'MANAGER', 'EMPLOYEE'].includes(user.role)) {
+          console.error('❌ Invalid user role in auth helper:', user.role);
+          return null;
+        }
+
         return {
           id: user.id,
           email: user.email,
@@ -56,6 +67,34 @@ export async function getUserFromRequest(request: NextRequest): Promise<Authenti
           role: user.role as UserRole,
           employeeId: user.employee?.id
         };
+      } else {
+        // User tidak ada di database, coba buat otomatis jika memungkinkan
+        console.warn('⚠️ User ada di Supabase tapi tidak di database:', authUser.email);
+        
+        try {
+          // Coba buat user baru dengan data minimal
+          const newUser = await prisma.user.create({
+            data: {
+              email: authUser.email!,
+              name: authUser.user_metadata?.name || authUser.email!.split('@')[0],
+              authId: authUser.id,
+              role: 'EMPLOYEE' // Default role
+            }
+          });
+          
+          console.log('✅ Auto-created missing user:', newUser.email);
+          
+          return {
+            id: newUser.id,
+            email: newUser.email,
+            name: newUser.name,
+            role: newUser.role as UserRole,
+            employeeId: undefined
+          };
+        } catch (createError) {
+          console.error('❌ Failed to auto-create user:', createError);
+          return null;
+        }
       }
     }
 
@@ -82,11 +121,17 @@ export async function getUserFromRequest(request: NextRequest): Promise<Authenti
             }
           }
         }),
-        2, // max retries
-        8000 // 8 second timeout - increased from 5s
+        3, // restored retries untuk stability
+        10000 // extended timeout - 10 second sesuai dokumentasi
       );
 
       if (user) {
+        // Validate role consistency
+        if (!user.role || !['ADMIN', 'MANAGER', 'EMPLOYEE'].includes(user.role)) {
+          console.error('❌ Invalid user role in fallback auth:', user.role);
+          return null;
+        }
+
         return {
           id: user.id,
           email: user.email,
@@ -99,12 +144,18 @@ export async function getUserFromRequest(request: NextRequest): Promise<Authenti
 
     return null;
   } catch (error) {
-    console.error('Error getting user from request:', error);
+    console.error('❌ Error getting user from request:', error);
     
     // Log specific error types for debugging
     if (error instanceof Error) {
       if (error.message.includes('timeout')) {
-        console.error('Auth timeout:', error.message);
+        console.error('🕐 Auth timeout:', error.message);
+      } else if (error.message.includes('connection')) {
+        console.error('🔌 Database connection error:', error.message);
+      } else if (error.message.includes('not found')) {
+        console.error('👤 User not found error:', error.message);
+      } else {
+        console.error('🔥 Unexpected auth error:', error.message);
       }
     }
     
@@ -174,22 +225,52 @@ export async function canAccessEmployeeData(
 // Decorator untuk API routes yang memerlukan autentikasi
 export function requireAuth(handler: (request: NextRequest, user: AuthenticatedUser) => Promise<Response>) {
   return async (request: NextRequest): Promise<Response> => {
-    const user = await getUserFromRequest(request);
-    
-    if (!user) {
+    try {
+      const user = await getUserFromRequest(request);
+      
+      if (!user) {
+        console.warn('❌ Unauthorized access attempt');
+        return new Response(
+          JSON.stringify({ 
+            error: 'Unauthorized', 
+            message: 'Login diperlukan untuk mengakses endpoint ini' 
+          }),
+          { 
+            status: 401, 
+            headers: { 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      // Validate role consistency before proceeding
+      if (!user.role || !['ADMIN', 'MANAGER', 'EMPLOYEE'].includes(user.role)) {
+        console.error('❌ Invalid user role in requireAuth:', user.role);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Forbidden', 
+            message: 'Role user tidak valid' 
+          }),
+          { 
+            status: 403, 
+            headers: { 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+      
+      return handler(request, user);
+    } catch (error) {
+      console.error('❌ Error in requireAuth:', error);
       return new Response(
         JSON.stringify({ 
-          error: 'Unauthorized', 
-          message: 'Login diperlukan untuk mengakses endpoint ini' 
+          error: 'Internal Server Error', 
+          message: 'Terjadi kesalahan autentikasi' 
         }),
         { 
-          status: 401, 
+          status: 500, 
           headers: { 'Content-Type': 'application/json' } 
         }
       );
     }
-    
-    return handler(request, user);
   };
 }
 

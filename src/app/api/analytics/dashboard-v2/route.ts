@@ -30,27 +30,27 @@ export async function GET(request: NextRequest) {
     // Auth check with better error handling
     const supabase = await supabaseRouteHandler()
     
-    let session = null
+    let user = null
     try {
-      // Add timeout for auth session check
-      const sessionPromise = supabase.auth.getSession();
+      // Add timeout for auth user check
+      const userPromise = supabase.auth.getUser();
       const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Auth session timeout')), 3000)
+        setTimeout(() => reject(new Error('Auth user timeout')), 3000)
       );
       
-      const { data: { session: sessionData }, error: sessionError } = await Promise.race([
-        sessionPromise, 
+      const { data: { user: userData }, error: userError } = await Promise.race([
+        userPromise, 
         timeoutPromise
       ]);
       
-      session = sessionData
+      user = userData
       
-      if (sessionError) {
-        console.error('Session error:', sessionError)
+      if (userError) {
+        console.error('User auth error:', userError)
         return NextResponse.json({ 
           success: false,
           error: 'Authentication error',
-          details: sessionError.message
+          details: userError.message
         }, { 
           status: 401,
           headers 
@@ -68,8 +68,8 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    if (!session?.user) {
-      console.log('No valid session found for dashboard request')
+    if (!user) {
+      console.log('No valid user found for dashboard request')
       return NextResponse.json({ 
         success: false,
         error: 'Unauthorized - Please login again'
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    console.log(`Dashboard API accessed by user: ${session.user.email}`)
+    console.log(`Dashboard API accessed by user: ${user.email}`)
 
     const { searchParams } = new URL(request.url)
     const subDepartmentId = searchParams.get('subDepartmentId')

@@ -1,14 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, createContext, useContext } from "react";
+import React, { useState, useEffect, useCallback, createContext, useContext } from "react";
 import { AppSidebar } from "@/components/dashboard/AppSidebar";
 import { AppTopbar } from "@/components/dashboard/AppTopbar";
 import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Toaster } from "react-hot-toast";
 import { useSupabase } from "@/providers/supabase-provider";
-import { RoleBasedPageProtection } from "@/components/auth/RoleBasedPageProtection";
-
+import RoleBasedPageProtection from "@/components/auth/RoleBasedPageProtection";
 // Buat context untuk mengelola status autentikasi global
 interface SessionContextType {
   isStayOnPage: boolean;
@@ -90,80 +89,94 @@ export default function DashboardLayout({
   const { user, isLoading } = useSupabase();
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const authChecked = React.useRef(false);
   const pathname = usePathname();
+
+  const checkAuth = useCallback(() => {
+    try {
+      console.log("[DashboardLayout] Memeriksa autentikasi dengan Supabase, loading:", isLoading);
+      
+      // Periksa apakah halaman saat ini adalah halaman izin atau cuti
+      const isPermissionOrLeavePage = 
+        typeof window !== 'undefined' && 
+        window.location && (
+          window.location.pathname.includes('/permission') || 
+          window.location.pathname.includes('/leave')
+        );
+      
+      // Periksa apakah halaman memiliki flag stay-on-page
+      const stayOnPage = 
+        typeof window !== 'undefined' && 
+        (window.__FORCE_STAY_ON_PAGE__ === true || isPermissionOrLeavePage);
+      
+      console.log("[DashboardLayout] Halaman saat ini:", window.location.pathname);
+      console.log("[DashboardLayout] IsPermissionOrLeavePage:", isPermissionOrLeavePage);
+      console.log("[DashboardLayout] __FORCE_STAY_ON_PAGE__ disetel:", stayOnPage);
+      
+      // Masih loading session
+      if (isLoading) {
+        console.log("[DashboardLayout] Session masih loading");
+        return;
+      }
+      
+      // Periksa autentikasi dari Supabase
+      if (!user) {
+        console.log("[DashboardLayout] Session tidak terautentikasi");
+        
+        if (stayOnPage || isPermissionOrLeavePage) {
+          console.log("[DashboardLayout] Stay on page aktif, tidak melakukan redirect");
+          authChecked.current = true;
+          setIsAuthenticated(true); // tetap set true agar konten ditampilkan
+          
+          // Trigger event khusus
+          if (typeof window !== 'undefined') {
+            const event = new CustomEvent('auth:sessionExpired', { 
+              detail: { preventRedirect: true } 
+            });
+            window.dispatchEvent(event);
+          }
+          return;
+        }
+        
+        // Jika bukan halaman izin/cuti, redirect ke login
+        console.log("[DashboardLayout] Redirect ke login");
+        // Tandai untuk mencegah double redirect
+        authChecked.current = true;
+        
+        // Tambahkan parameter redirect_to untuk kembali ke halaman ini setelah login
+        try {
+          router.push(`/login?redirect_to=${encodeURIComponent(pathname || '/')}`);
+        } catch (routerError) {
+          console.error("[DashboardLayout] Router error:", routerError);
+          // Fallback jika router.push gagal
+          window.location.href = `/login?redirect_to=${encodeURIComponent(pathname || '/')}`;
+        }
+        return;
+      }
+      
+      // User sudah terautentikasi
+      console.log("[DashboardLayout] User terautentikasi:", user.email);
+      authChecked.current = true;
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error("[DashboardLayout] Error memeriksa autentikasi:", error);
+      setIsAuthenticated(false);
+    }
+  }, [isLoading, user, pathname, router]);
 
   // Cek autentikasi saat komponen dimuat
   useEffect(() => {
-    const checkAuth = () => {
-      try {
-        console.log("[DashboardLayout] Memeriksa autentikasi dengan Supabase, loading:", isLoading);
-        
-        // Periksa apakah halaman saat ini adalah halaman izin atau cuti
-        const isPermissionOrLeavePage = 
-          typeof window !== 'undefined' && 
-          window.location && (
-            window.location.pathname.includes('/permission') || 
-            window.location.pathname.includes('/leave')
-          );
-        
-        // Periksa apakah halaman memiliki flag stay-on-page
-        const stayOnPage = 
-          typeof window !== 'undefined' && 
-          (window.__FORCE_STAY_ON_PAGE__ === true || isPermissionOrLeavePage);
-        
-        console.log("[DashboardLayout] Halaman saat ini:", pathname);
-        console.log("[DashboardLayout] IsPermissionOrLeavePage:", isPermissionOrLeavePage);
-        console.log("[DashboardLayout] StayOnPage:", stayOnPage);
-        
-        // Masih loading session
-        if (isLoading) {
-          console.log("[DashboardLayout] Session masih loading");
-          return;
-        }
-        
-        // Periksa autentikasi dari Supabase
-        if (!user) {
-          console.log("[DashboardLayout] Session tidak terautentikasi");
-          
-          if (stayOnPage) {
-            console.log("[DashboardLayout] Stay on page aktif, tidak melakukan redirect");
-            setIsAuthenticated(true); // tetap set true agar konten ditampilkan
-            
-            // Trigger event khusus
-            if (typeof window !== 'undefined') {
-              const event = new CustomEvent('auth:sessionExpired', { 
-                detail: { preventRedirect: true } 
-              });
-              window.dispatchEvent(event);
-            }
-            return;
-          }
-          
-          // Jika bukan halaman izin/cuti, redirect ke login
-          console.log("[DashboardLayout] Redirect ke login");
-          
-          // Tambahkan parameter redirect_to untuk kembali ke halaman ini setelah login
-          try {
-            router.push(`/login?redirect_to=${encodeURIComponent(pathname || '/')}`);
-          } catch (routerError) {
-            console.error("[DashboardLayout] Router error:", routerError);
-            // Fallback jika router.push gagal
-            window.location.href = `/login?redirect_to=${encodeURIComponent(pathname || '/')}`;
-          }
-          return;
-        }
-        
-        // User sudah terautentikasi
-        console.log("[DashboardLayout] User terautentikasi:", user.email);
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error("[DashboardLayout] Error memeriksa autentikasi:", error);
-        setIsAuthenticated(false);
-      }
-    };
+    // Jika autentikasi sudah diperiksa, tidak perlu periksa lagi
+    if (authChecked.current) return;
 
+    // Menggunakan data dari Supabase
     checkAuth();
-  }, [isLoading, user, pathname, router]);
+  }, [checkAuth]); // Hanya depend pada checkAuth
+
+  // Navigasi handling
+  useEffect(() => {
+    // Handle navigation if needed
+  }, [pathname]);
 
   // Render loading state
   if (isLoading) {
@@ -189,7 +202,7 @@ export default function DashboardLayout({
     );
   }
 
-  // Layout utama dashboard dengan role protection
+  // Layout utama dashboard
   return (
     <SessionManagementProvider>
       <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">

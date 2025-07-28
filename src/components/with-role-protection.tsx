@@ -21,7 +21,7 @@ export function withRoleProtection<P extends object>(
   const {
     requiredRoles,
     redirectTo,
-    showAccessDenied = true,
+    showAccessDenied = false, // Default behavior: redirect ke halaman sesuai role
     fallbackComponent: FallbackComponent,
   } = options;
 
@@ -53,6 +53,9 @@ export function withRoleProtection<P extends object>(
         if (!hasAccess) {
           if (redirectTo) {
             router.push(redirectTo);
+          } else if (role) {
+            // Redirect ke halaman default sesuai role jika tidak ada redirect khusus
+            router.push(getDefaultRedirectUrl(role));
           }
           return;
         }

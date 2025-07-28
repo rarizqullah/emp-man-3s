@@ -33,7 +33,10 @@ export const MENU_ACCESS_CONFIG = {
 
 // Helper function untuk mengecek akses menu berdasarkan role
 export const hasMenuAccess = (menuRoles: UserRole[], userRole: UserRole | null): boolean => {
-  if (!userRole) return false;
+  if (!userRole || !['ADMIN', 'MANAGER', 'EMPLOYEE'].includes(userRole)) {
+    console.warn('❌ Invalid user role for menu access:', userRole);
+    return false;
+  }
   return menuRoles.includes(userRole);
 };
 
@@ -149,7 +152,10 @@ export const getAccessibleMenus = (userRole: UserRole | null): MenuSection[] => 
 
 // Helper untuk mengecek apakah user dapat mengakses URL tertentu
 export const canAccessUrl = (url: string, userRole: UserRole | null): boolean => {
-  if (!userRole) return false;
+  if (!userRole || !['ADMIN', 'MANAGER', 'EMPLOYEE'].includes(userRole)) {
+    console.warn('❌ Invalid user role for URL access:', userRole);
+    return false;
+  }
   
   // Cari menu item dengan URL yang cocok
   for (const section of MENU_CONFIGURATION) {
@@ -162,6 +168,12 @@ export const canAccessUrl = (url: string, userRole: UserRole | null): boolean =>
     }
   }
   
-  // Default: izinkan akses jika tidak ditemukan konfigurasi (untuk URL dinamis)
-  return true;
+  // Default: izinkan akses untuk /dashboard dan halaman dasar
+  const publicUrls = ['/dashboard', '/profile', '/'];
+  if (publicUrls.some(publicUrl => url === publicUrl || url.startsWith(publicUrl + '/'))) {
+    return true;
+  }
+  
+  // Block access untuk URL yang tidak dikenali
+  return false;
 };

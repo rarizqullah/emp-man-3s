@@ -1,83 +1,63 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { 
   getContractHistoryByEmployeeId, 
   createContractHistory 
 } from '@/lib/db/employee-history.service';
+import { requireRole, ApiResponse, canAccessEmployeeData, AuthenticatedUser } from '@/lib/auth/api-helpers';
 
 // GET /api/employees/[id]/contract-history
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+// Hanya Admin dan Manager yang bisa mengakses riwayat kontrak
+export const GET = requireRole(['ADMIN', 'MANAGER'])(async (request: NextRequest, user: AuthenticatedUser) => {
   try {
-    // Await params terlebih dahulu
-    const { id } = await params;
-    console.log(`[GET] /api/employees/${id}/contract-history - Request received`);
+    // Extract params dari URL - Next.js 13+ App Router approach
+    const url = new URL(request.url);
+    const pathSegments = url.pathname.split('/');
+    const employeeId = pathSegments[pathSegments.indexOf('employees') + 1];
     
-    const employeeId = id;
+    console.log(`[GET] /api/employees/${employeeId}/contract-history - Request received by ${user.email}`);
     console.log(`Getting contract history for employee: ${employeeId}`);
     
-    try {
-      // Pastikan koneksi database
-      const { ensureDatabaseConnection } = await import('@/lib/db');
-      await ensureDatabaseConnection();
-      
-      const contractHistory = await getContractHistoryByEmployeeId(employeeId);
-      console.log(`Contract history data fetched: ${JSON.stringify(contractHistory)}`);
-      
-      return NextResponse.json({ 
-        success: true, 
-        data: contractHistory || [] 
-      });
-    } catch (dbError) {
-      console.error(`Database error in contract history:`, dbError);
-      if (isConnectionError(dbError)) {
-        return NextResponse.json(
-          { success: false, message: 'Terjadi kesalahan koneksi database, silakan coba lagi nanti' },
-          { status: 503 }
-        );
-      }
-      throw dbError;
+    // Otorisasi: Cek apakah user yang login boleh mengakses data karyawan ini
+    const canAccess = await canAccessEmployeeData(user, employeeId);
+    if (!canAccess) {
+      return ApiResponse.forbidden('Anda tidak memiliki izin untuk mengakses data ini.');
     }
+    
+    // Langsung query tanpa ensureDatabaseConnection (Prisma menangani koneksi otomatis)
+    const contractHistory = await getContractHistoryByEmployeeId(employeeId);
+    console.log(`Contract history data fetched for employee: ${employeeId}`);
+    
+    return ApiResponse.success(contractHistory || []);
   } catch (error: unknown) {
     console.error(`Error in contract history GET:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { success: false, message: `Failed to get contract history: ${errorMessage}` },
-      { status: 500 }
-    );
+    return ApiResponse.error(`Gagal mendapatkan riwayat kontrak: ${errorMessage}`, 500);
   }
-}
-
-// Fungsi untuk mengecek apakah error adalah error koneksi
-function isConnectionError(error: unknown): boolean {
-  if (!error) return false;
-  
-  const errorMessage = String(error).toLowerCase();
-  return (
-    errorMessage.includes('connection') &&
-    (errorMessage.includes('reset') || 
-     errorMessage.includes('closed') || 
-     errorMessage.includes('terminated') ||
-     errorMessage.includes('timeout') ||
-     errorMessage.includes('could not connect'))
-  );
-}
+});
 
 // POST /api/employees/[id]/contract-history
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+// Hanya Admin dan Manager yang bisa membuat riwayat kontrak
+export const POST = requireRole(['ADMIN', 'MANAGER'])(async (request: NextRequest, user: AuthenticatedUser) => {
   try {
-    // Await params terlebih dahulu
-    const { id } = await params;
-    console.log(`[POST] /api/employees/${id}/contract-history - Request received`);
+    // Extract params dari URL
+    const url = new URL(request.url);
+    const pathSegments = url.pathname.split('/');
+    const employeeId = pathSegments[pathSegments.indexOf('employees') + 1];
     
-    const employeeId = id;
+    console.log(`[POST] /api/employees/${employeeId}/contract-history - Request received by ${user.email}`);
+    
+    // Otorisasi: Cek apakah user yang login boleh mengubah data karyawan ini
+    const canAccess = await canAccessEmployeeData(user, employeeId);
+    if (!canAccess) {
+      return ApiResponse.forbidden('Anda tidak memiliki izin untuk mengubah data ini.');
+    }
+    
     const data = await request.json();
     console.log(`Creating contract history for employee ${employeeId} with data:`, data);
     
     // Validasi data dasar
     if (!data.contractType || !data.startDate) {
-      return NextResponse.json(
-        { success: false, message: 'Contract type and start date are required' },
-        { status: 400 }
-      );
+      return ApiResponse.error('Tipe kontrak dan tanggal mulai wajib diisi', 400);
     }
     
     // Format data untuk service
@@ -94,16 +74,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const contractHistory = await createContractHistory(contractData);
     console.log(`Contract history created successfully:`, contractHistory);
     
-    return NextResponse.json({ 
-      success: true, 
-      data: contractHistory 
-    });
+    return ApiResponse.success(contractHistory, 'Riwayat kontrak berhasil dibuat');
   } catch (error: unknown) {
     console.error(`Error in contract history POST:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { success: false, message: `Failed to create contract history: ${errorMessage}` },
-      { status: 500 }
-    );
+    return ApiResponse.error(`Gagal membuat riwayat kontrak: ${errorMessage}`, 500);
   }
-} 
+}); 

@@ -87,6 +87,7 @@ export default function SupabaseProvider({
         }
 
         // Get session after user validation
+        // Note: This getSession() is safe because we already validated user with getUser()
         const { data: { session: sessionData } } = await supabaseClient.auth.getSession();
         
         if (sessionData && sessionData.user) {
